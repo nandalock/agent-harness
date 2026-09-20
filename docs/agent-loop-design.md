@@ -1,6 +1,7 @@
 # Agent Loop 设计（第三阶段：运行中输入 + 循环拦截点）
 
-> 状态：**循环本体已落地**（§2 / §3 的语义，见 §8）；**§4 / §5 待拍板**（投递端点与单飞）
+> 状态：**§2–§5 全部落地**（循环本体 §8 · LLM 出口 §9 · RunRegistry 与投递端点 §10）；
+> 未做：§3 的持久化队列、§6.2 的三个拦截点
 > 参考：DeepSeek Harness `dsh-agent-loop`（`inbox.ts` 双队列 · `agent.ts` 四个 waterfall）· `dsh-agent`（事件契约）
 > 关联代码：`backend/agents/runtime/loop/agent_loop.py` · `agent_runtime.py` · `backend/api/agents.py`
 > 前置：Phase 1（健壮性：finish_reason / 重试 / 闭合）· Phase 2（取消通道）已落地
@@ -60,10 +61,13 @@ Phase 2 又添了一例：被取消的轮还在收尾，新的一轮已经开跑
 
 ```python
 class RunRegistry:
-    def register(self, session_id: str, *, cancel: asyncio.Event) -> RunHandle   # 已被占用 → 抛 RunConflict
+    def register(self, session_id: str, handle: RunHandle) -> None   # 已被占用 → 抛 RunConflict
     def get(self, session_id: str) -> RunHandle | None
     def unregister(self, session_id: str) -> None                                # 在 reply() 的 finally 里
 ```
+
+句柄是**协议**（`RunHandle`：`followup` / `steer` / `inject` / `cancel`），不是 AgentLoop 本身 ——
+登记表只负责「找得到、投得进、叫得停」，driver 相位与内部计数不该被外部摸到。
 
 - 第二个 `reply()`（或第二个 `/chat/stream`）命中占用 → 抛领域错误（HTTP 层翻 409）。
 - **拒绝而不是排队**：SSE 世界里排队 = "连接先挂着、轮次稍后才开始"，前端在排队期间拿不到
@@ -78,10 +82,11 @@ class RunRegistry:
 
 ```
 POST /api/agents/{agent_key}/chat/steer
-  body: { session_id, question, target?: "next-step" | "next-turn" }   # 缺省 next-step（= steer）
-  202  { accepted: true, target, queued_seq }                          # 已受理（尚未投递）
-  404  会话不存在
-  409  该会话没有运行中的轮次（target=next-step 时）
+  body: { session_id, question, conversation_id?, target?: "next-step" | "next-turn" }
+  202  { accepted: true, target, msg_id }        # 已受理（尚未投递）；msg_id 用于认领回帧对账
+  400  未知 target
+  404  agent / 会话不存在
+  409  该会话没有运行中的轮次（含 target=next-turn：改用 /chat/stream）
 ```
 
 - **单独端点，不扩 `/chat/stream`**：steer 不需要新的 SSE 流 —— 它喂的是**已经开着的那条**；
@@ -89,13 +94,17 @@ POST /api/agents/{agent_key}/chat/steer
 - 前端 `WorkspaceChat`：`sending` 时把发送键切成「并入当前轮」（走 steer 端点），
   否则走正常 `/chat/stream`。停止键（Phase 2 已接）保持不变。
 
-### 5.1 需要拍板的三个决策
+### 5.1 三个决策（**已拍板，按表落地**）
 
-| # | 决策 | 选项 | 建议 |
+| # | 决策 | 定案 | 实现 |
 |---|---|---|---|
-| A | 投递的**可见性** | ① 只在后端静默投递；② 认领时往 SSE 流回一帧，前端把这条消息上屏 | ② —— 现在的 `user/message` 没有 UI 投影，静默投递会让用户"发完什么都没发生"。需要扩 `TrajectoryProjection`：`user/message` → `traj/open(user)` 节点 |
-| B | `target=next-turn` 但**当前无运行轮次** | ① 直接当成一次新轮（A 的 followup 语义）；② 409 让客户端改用 `/chat` | ① —— followup 的语义本就是"下一轮"，没有当前轮时"下一轮"就是"现在" |
-| C | 轮次结束时**未投递**的输入 | ① 丢弃（A 的 `cancel(keepInbox=false)` 默认）；② 提到下一轮并唤醒 | ② —— HTTP 已经回 202「已受理」，让它凭空消失是最差的体验；实现上就是把剩余 next-step 移到 next-turn 并唤醒 |
+| A | 投递的**可见性** | ② **认领时回帧**：前端先按 202 乐观上屏成「待投递」，后端认领那一刻回一帧（同一个 `msg_id`）翻成已投递 | `TrajectoryProjection` 对本轮**第二条及以后**的 `user/message` 产出 `{"type":"user", content, msg_id}`（第一条是本轮开启输入，前端已上屏，回帧会重影）；消息 id 由投递时生成、随事件回来 |
+| B | `target=next-turn` 但**当前无运行轮次** | ② **409**：让客户端改用 `/chat/stream` | 「下一轮」的语义由那条流承担，投递端点不发明「无人接单也照样受理」。有在跑的轮次时 `next-turn` 照常可用（本轮收敛后开新轮） |
+| C | 轮次结束时**未投递**的输入 | ② **接着投**：下一轮/下一步认领，不丢 | 已在循环里实现（`_turn` 收口后 `has_pending` → 开新轮）；投递方 202 受理即落会话消息，刷新后仍在对话历史里 |
+
+**投递的入口**（§4 的 RunRegistry 是它的前置：没有它，HTTP 层找不到正在跑的那一轮）：
+`POST /api/agents/{agent_key}/chat/steer` → `Gateway.steer` → `registry.get(session_id).steer/followup`。
+前端「运行中发送 = 并入当前轮」；`next-turn` 暂不暴露开关（有真实需求再加）。
 
 ## 6. 循环拦截点（契约先行，实现排后）
 
@@ -189,11 +198,12 @@ agent_loop.py，解耦只做了一半。对齐 A 的 `RequestErrorAction`（`{ki
 
 **本批刻意没做的部分**：
 
+**本批之后已补上的**（见 §10）：`/chat/steer` 端点、`RunRegistry` 同 session 单飞、
+前端「运行中发送 = 并入当前轮」+ 认领回帧上屏。
+
 | 未做 | 现状 / 影响 |
 |---|---|
-| §3 的**持久化**队列（`steer/queued` + `project_pending_input`） | 队列只在内存：进程重启丢待投递输入。还没有对外开放的投递端点，所以这个边界对用户不可见 |
-| §5 的投递端点（`/chat/steer`）与前端「并入当前轮」 | 端点未开 —— §5.1 的三个决策仍未拍板 |
-| §4 的 `RunRegistry` 同 session 单飞 | 优先级**升高**：一轮现在可以连开多个 turn，并发的交错窗口比改造前更大 |
+| §3 的**持久化**队列（`steer/queued` + `project_pending_input`） | 队列只在内存：进程重启丢待投递输入。**端点已经开了，所以这个边界现在对用户可见** —— 重启时正在跑的轮次本来也会断，用户重发即可；真要扛住得把队列落进 Event Log |
 | §6.2 的 `pre_step` / `request` / `turn_stopping` | 未实现；`_StepDecision` 就是 `pre_step` 的落点 |
 
 ## 9. 已落地：LLM 出口抽层（循环不再认识 wire）
@@ -224,3 +234,30 @@ agent_loop.py，解耦只做了一半。对齐 A 的 `RequestErrorAction`（`{ki
 **还没做的**：`purpose`（辅助调用的分类，title/router 迁移时加）· `tool_choice` 的 canonical
 字段（router 的 `required`）· `resolveModelInfo`（上下文窗口 / 默认 max_tokens）· title /
 router / paper 三个仍在裸发 HTTP 的调用方。
+
+## 10. 已落地：运行中输入打通到 UI（§4 + §5）
+
+到此为止 §2–§5 全部落地，链路是：
+
+```
+前端 Composer（运行中发送 = 并入当前轮）
+  → POST /api/agents/{key}/chat/steer  {session_id, question, target?}   → 202 {msg_id}
+  → Gateway.steer：registry.get(session_id) → loop.steer(text)          （无活动 → 409）
+  → 队列里等着，下一个步边界被认领
+  → user/message 事件（带 msg_id）→ TrajectoryProjection → SSE 一帧 {"type":"user", content, msg_id}
+  → 前端把自己那条「待投递」气泡翻成已投递
+```
+
+| 件 | 位置 | 关键点 |
+|---|---|---|
+| `RunRegistry` | `loop/registry.py` | session_id → 活动句柄（`RunHandle` 协议：能投递、能取消）；`register` 占用即 `RunConflict`。`AgentRuntime.reply` 登记句柄（flush **之后**才注销），Gateway 把 `RunConflict` 翻成 `AgentBusy` |
+| 投递端点 | `api/agents.py` | 202 已受理 / 400 未知 target / 404 会话不存在 / 409 没有在跑的轮次。受理即落一条会话消息（刷新后仍在对话历史里） |
+| 错误映射 | `main.py` | `GatewayError` 的**唯一**状态映射表（400/404/409）—— 各端点不再各写一份 try/except |
+| 认领回帧 | `projections/trajectory.py` | 本轮第二条及以后的 `user/message` → `{"type":"user", …}`；第一条是本轮开启输入（前端已上屏，回帧会重影） |
+| 消息身份 | `loop/inbox.py` | `InboxMessage(id, text)`；`followup/steer/inject` 返回 id，认领时随事件回来 —— UI 靠它对上「待投递」 |
+| 前端 | `WorkspaceChat` / `Composer` | Composer 的 `disabled` 只表示「无会话」，发送中不禁用；发送中发送键语义 = steer，并显示「并入当前轮」chip。409（本轮刚收口）不留假气泡：攒到本轮收尾后当新消息发 |
+
+**验证**（真 LLM + 真浏览器）：`/chat/steer` 202 + `msg_id` 贯通到事件；SSE 流收到同一 id 的回帧；
+模型的下一次思考里读到被 steer 的内容（「用户要求停止，用一句话总结…」→ 照做）；浏览器里
+「运行中可输入 → 发一句 → 待投递 → 认领后翻已投递」全程可见；没有在跑的轮次 → 409；
+同 session 第二个请求 → 409 `session/agent-busy`。

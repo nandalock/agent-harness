@@ -31,7 +31,8 @@ from backend.agents.config_service import get_agent_config, save_agent_config, g
 from backend.agents.config_service import list_l1_keywords, create_l1_keyword, update_l1_keyword, delete_l1_keyword
 from backend.core.connection import get_conn
 from backend.services.chat import service as chat_service
-from backend.gateway import AgentNotFound, RequestContext, get_gateway
+from backend.agents.runtime.loop import NEXT_STEP, NEXT_TURN
+from backend.gateway import AgentNotFound, NoActiveRun, RequestContext, get_gateway
 
 router = APIRouter(prefix="/api/agents", tags=["Agents"])
 
@@ -41,6 +42,20 @@ class ChatRequest(BaseModel):
     conversation_id: int | None = None
     visitor_id: str | None = None
     session_id: str | None = None  # AgentRuntime 多轮 Session id：首轮不传（新建），后续传回（恢复）
+
+
+class SteerRequest(BaseModel):
+    """运行中输入（/chat/steer）：喂给**已经开着的那条 SSE 流**，不是新开一条。
+
+    ``session_id`` 必填 —— 投递靠它找到正在跑的那一轮（RunRegistry 按 session_id 登记）。
+
+    ``target``：next-step（默认，并入当前轮 —— 「方向偏了，往这边走」）/
+    next-turn（本轮结束后作为新的一轮 —— 「等我做完这个，再看这个」）。
+    """
+    session_id: str
+    question: str
+    conversation_id: int | None = None  # 给了就落一条会话消息（刷新后仍在对话历史里）
+    target: str = "next-step"
 
 
 class ChatResponse(BaseModel):
@@ -485,6 +500,60 @@ async def agent_chat_stream(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@router.post("/{agent_key}/chat/steer", status_code=202)
+async def agent_chat_steer(
+    agent_key: str,
+    body: SteerRequest,
+    x_tenant_id: int = Header(alias="X-Tenant-ID"),
+) -> dict:
+    """运行中输入：把一条输入投进**正在跑的那一轮**（docs/agent-loop-design.md §5）。
+
+    与 /chat/stream 的分工：那个开一条新的 SSE 流（一轮的开始），这个喂的是**已经开着的那条**，
+    所以回「已受理」而不是再开一条连接。受理 ≠ 已进 LLM 上下文 —— 真正认领发生在下一个步边界，
+    认领时那条 SSE 流会回一帧 ``{"type":"user","content":…,"msg_id":…}``，前端拿同一个 msg_id
+    把自己那条「待投递」气泡翻成已投递（§5.1 决策 A：认领时回帧）。
+
+        202  {"accepted": true, "target": …, "msg_id": …}   已受理（尚未投递）
+        400  未知的 target
+        404  agent 不存在 / conversation_id 不属本租户
+        409  该会话没有正在跑的轮次（已结束 / 从未开始）→ 改用 /chat/stream 发新消息
+    """
+    try:
+        get_gateway().resolve(agent_key)          # 入口存在性检查（不存在即 404，不投递也不落库）
+    except AgentNotFound as e:
+        raise HTTPException(404, str(e))
+    if body.target not in (NEXT_STEP, NEXT_TURN):
+        raise HTTPException(400, f"未知的投递目标: {body.target!r}")
+
+    # 先校验会话再投递：投递是有副作用的（这条输入会被认领进上下文），校验失败不该已经投出去
+    conv = None
+    if body.conversation_id is not None:
+        conv = chat_service.get_conversation(x_tenant_id, body.conversation_id)
+        if conv is None:
+            raise HTTPException(404, "会话不存在")
+
+    try:
+        msg_id = get_gateway().steer(
+            RequestContext(
+                tenant_id=x_tenant_id, agent_key=agent_key, channel="http",
+                session_id=body.session_id, conversation_id=body.conversation_id,
+            ),
+            body.question, body.target,
+        )
+    except NoActiveRun as e:
+        raise HTTPException(409, str(e))
+
+    # 受理即落会话消息：它是一条真实的用户消息（刷新后仍在对话历史里），只是投递延后。
+    # 这是刻意的取舍 —— 「已受理」必须可见，否则用户会看到自己发的消息凭空消失。
+    if conv is not None:
+        chat_service.create_message(
+            x_tenant_id, conv.id,
+            chat_service.MessageCreate(role="customer", content=body.question),
+        )
+
+    return {"accepted": True, "target": body.target, "msg_id": msg_id}
 
 
 @router.post("/{agent_key}/route-test")

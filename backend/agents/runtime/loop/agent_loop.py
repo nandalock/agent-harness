@@ -54,7 +54,13 @@ from backend.agents.runtime.llm import (
 )
 from backend.agents.runtime.loop.assistant_stream import AssistantStream
 from backend.agents.runtime.loop.events import EventSink
-from backend.agents.runtime.loop.inbox import NEXT_STEP, NEXT_TURN, ReactLoopInbox
+from backend.agents.runtime.loop.inbox import (
+    NEXT_STEP,
+    NEXT_TURN,
+    InboxMessage,
+    ReactLoopInbox,
+    new_message,
+)
 from backend.agents.runtime.session import (
     ASSISTANT_MESSAGE,
     LLM_ERROR,
@@ -138,7 +144,7 @@ class _StepDecision:
     输入没有第二份状态（不再有「本轮的问句」这种东西），模型看到的永远是 Event Log
     派生出来的消息。将来的 ``pre_step`` 拦截点（§6.2）就在这一步改写它。
     """
-    messages: list[str]
+    messages: list[InboxMessage]
 
 
 @dataclass(frozen=True)
@@ -247,28 +253,33 @@ class AgentLoop:
 
     # ── 投递：三个动作（同步、不被等待）──
 
-    def followup(self, text: str) -> None:
+    def followup(self, text: str) -> str:
         """投递到 next-turn：本轮结束后作为**新的一轮**开始（空闲时立即开轮）。"""
-        self._send(text, NEXT_TURN, wake=True)
+        return self._send(text, NEXT_TURN, wake=True)
 
-    def steer(self, text: str) -> None:
+    def steer(self, text: str) -> str:
         """投递到 next-step：当前轮余下的**下一步**就并入上下文（空闲时立即开轮）。"""
-        self._send(text, NEXT_STEP, wake=True)
+        return self._send(text, NEXT_STEP, wake=True)
 
-    def inject(self, text: str) -> None:
+    def inject(self, text: str) -> str:
         """投递到 next-step 但**不唤醒**：只在已有轮次运行时才可能被认领（系统侧静默投递）。"""
-        self._send(text, NEXT_STEP, wake=False)
+        return self._send(text, NEXT_STEP, wake=False)
 
-    def _send(self, text: str, target: str, *, wake: bool, abort: asyncio.Event | None = None) -> None:
-        """投递一条输入。``abort`` 只作用于这次唤醒开出来的那一轮（见 run() 的兼容入参）。"""
+    def _send(self, text: str, target: str, *, wake: bool, abort: asyncio.Event | None = None) -> str:
+        """投递一条输入，返回它的 id（认领时随 user/message 事件回来）。
+
+        ``abort`` 只作用于这次唤醒开出来的那一轮（见 run() 的兼容入参）。
+        """
         phase = self._phase
         if wake and isinstance(phase, _Running) and phase.abort.is_set():
             # 已被取消的活动兑现不了这次唤醒：输入落到下一轮，并在本轮收敛后重放唤醒（照搬 A）
             target = NEXT_TURN
             phase.wake_requested = True
-        self._inbox.append(target, text)
+        message = new_message(text)
+        self._inbox.append(target, message)
         if wake:
             self.wake_driver(abort)
+        return message.id
 
     def wake_driver(self, abort: asyncio.Event | None = None) -> None:
         """空闲则启动 driver；有轮次在跑就什么都不做 —— 输入已在队列里，运行中的 driver
@@ -418,9 +429,12 @@ class AgentLoop:
                     })
                     phase.turn = turn
                     opened = True
-                for text in claimed:
-                    # 认领即落事实（surface）：本步与后续所有轮次都从 Event Log 派生到它
-                    self.session.append(USER_MESSAGE, {"content": text})
+                for message in claimed:
+                    # 认领即落事实（surface）：本步与后续所有轮次都从 Event Log 派生到它。
+                    # msg_id 是投递时给的：UI 据此把「已受理（待投递）」翻成「已投递」。
+                    self.session.append(USER_MESSAGE, {
+                        "content": message.text, "msg_id": message.id,
+                    })
 
                 # 取消检查点（step 间隙）：在开新 step 之前响应 —— 不为一个注定被取消的
                 # step 落 step/start。首轮即被取消的照样开过 turn 边界（上面），turn 仍闭合。

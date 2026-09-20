@@ -23,7 +23,7 @@ from backend.agents.runtime.llm import (
     LoopHooks,
     OpenAiChatClient,
 )
-from backend.agents.runtime.loop import AgentLoop
+from backend.agents.runtime.loop import AgentLoop, get_run_registry
 from backend.agents.runtime.loop.events import EventSink
 from backend.agents.runtime.session import (
     Session,
@@ -168,6 +168,12 @@ class AgentRuntime(BaseAgent):
             hooks=LoopHooks(request_error=llm.retry_policy),
         )
 
+        # 同 session 单飞 + 活动句柄登记（docs/agent-loop-design.md §4）：本会话已经有一轮在跑
+        # → RunConflict（Gateway 翻 AgentBusy、通道层翻 409）。登记之后，外部就能按 session_id
+        # 找到这一轮并投递运行中输入 / 叫停它（get_run_registry().get(...)）。
+        # 登记得晚一点是刻意的：句柄就是 loop 本身，它到这里才存在；此前没有任何 LLM 动作。
+        get_run_registry().register(session.header.id, loop)
+
         # 派生消费者装配：TraceProjection（→ AgentReply.trace / done.trace）与
         # session_event_sink（→ UI projection）都是 Session listener，不产生事实。
         # Session.append 同步回调、无 await 间隙 → 按 seq 收到全部事件；
@@ -203,6 +209,11 @@ class AgentRuntime(BaseAgent):
                 # 此处一次性交给 Persistence。done 事件在 flush 之后发出，客户端收到 done ≈
                 # 本 turn 事件已 durable（flush 失败仅记日志，语义见 flush_session_events）。
                 flush_session_events(persistence, session)
+
+            # 注销放在最外层 finally 的最后：注销之后这一轮就不该再接投递了，而上面的
+            # settle / flush 还在往同一份 Event Log 追加事实 —— 让出语义边界，别让第二个
+            # 请求在这期间接手同一个 Session（交错写就是 §4 记的那个漏洞）。
+            get_run_registry().unregister(session.header.id)
 
         if session_enabled:
             # 排一次 LLM 标题升级：**不在本函数里 await**（schedule 不返回 awaitable），

@@ -12,6 +12,10 @@
 // 停止生成：发送中显示为可点的方块键 —— 前端 abort SSE fetch → 服务端连接断开 →
 // AgentLoop 收到取消信号，在下一个检查点收口（stop_reason=cancelled），
 // 已产出的正文保留。不需要额外的取消端点，断开本身就是取消。
+//
+// 运行中输入：发送中**不禁用输入**，发送的含义从「发一条新消息」变成「并入当前轮」
+// （steer）—— 看着 Agent 跑偏就直接说，不必等它跑完再重来。目标队列固定 next-step；
+// 「本轮结束后再做」那种语义（next-turn）等有真实需求再加开关。
 
 import { useRef, useState } from 'react';
 import { Plus, ArrowUp, Square, Loader2, ShieldCheck, ChevronDown, Check } from 'lucide-react';
@@ -19,8 +23,8 @@ import { W, R, WS } from '../theme';
 import { SANDBOX_MODE_LABELS } from './useWorkspace';
 
 interface Props {
-  disabled: boolean;          // 无会话 / 发送中
-  sending: boolean;
+  disabled: boolean;          // **只**表示无会话（不能输入）；发送中不禁用，见文件头
+  sending: boolean;           // 发送中：发送键语义 = 并入当前轮（steer）
   uploading: boolean;
   uploadError: string | null;
   onSend: (text: string) => void;
@@ -85,7 +89,11 @@ export default function Composer({ disabled, sending, uploading, uploadError, on
           onKeyDown={e => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
           }}
-          placeholder={disabled ? '从左侧选择或新建一个会话开始' : '输入消息，Enter 发送，Shift+Enter 换行'}
+          placeholder={
+            disabled ? '从左侧选择或新建一个会话开始'
+              : sending ? '正在运行 —— 输入并发送，会并入当前轮（Enter 发送，Shift+Enter 换行）'
+                : '输入消息，Enter 发送，Shift+Enter 换行'
+          }
           rows={Math.min(14, Math.max(1, text.split('\n').length))}
           className="ws-round"
           style={{
@@ -155,6 +163,17 @@ export default function Composer({ disabled, sending, uploading, uploadError, on
             DeepSeek-V4.1-Flash
           </span>
 
+          {/* 运行中的语义提示：此刻发送 = 并入当前轮（不是发新消息），与沙箱 chip 同形 */}
+          {sending && !disabled && (
+            <span title="现在发送不会另起一轮，而是在下一个步边界并入当前轮"
+              style={{
+                fontSize: 12, color: W.accent, whiteSpace: 'nowrap',
+                padding: '2px 8px', borderRadius: 24, background: `${W.accent}1a`,
+              }}>
+              并入当前轮
+            </span>
+          )}
+
           {sending && (
             /* 危险动作配色（方块 = 停止），与发送键同形以便原地切换不跳动 */
             <button onClick={onStop} title="停止生成"
@@ -166,7 +185,7 @@ export default function Composer({ disabled, sending, uploading, uploadError, on
 
           {/* 背景/禁用态交给 .ws-send：行内 background 会压死 :hover */}
           <button onClick={submit} disabled={!canSend}
-            title="发送（Enter）"
+            title={sending ? '并入当前轮（Enter）' : '发送（Enter）'}
             className="ws-send ws-round"
             style={{
               width: 34, height: 34, borderRadius: 999, flexShrink: 0,

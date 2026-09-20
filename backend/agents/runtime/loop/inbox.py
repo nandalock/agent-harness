@@ -17,6 +17,8 @@
 整段取走（splice），两端都要动，list 的分片语义正好是 A 的 splice。
 """
 import logging
+import uuid
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +27,27 @@ NEXT_TURN = "next-turn"
 NEXT_STEP = "next-step"
 
 
+@dataclass(frozen=True)
+class InboxMessage:
+    """一条待投递的输入（对齐 A 的 UserMessage：消息带身份）。
+
+    ``id`` 只有一个用途：让投递方把「已受理」和「已投递」对上 —— 受理时拿到它，认领时它
+    随 ``user/message`` 事件回来（前端据此把自己那条待投递的气泡翻成已投递）。它不参与
+    队列语义（去重/删除仍按位置走），因此进程内唯一即可。
+    """
+    id: str
+    text: str
+
+
+def new_message(text: str) -> InboxMessage:
+    return InboxMessage(id=uuid.uuid4().hex[:12], text=text)
+
+
 class ReactLoopInbox:
     """待投递的运行中输入：两条 list（next-turn / next-step），认领即取走。"""
 
     def __init__(self) -> None:
-        self._queues: dict[str, list[str]] = {NEXT_TURN: [], NEXT_STEP: []}
+        self._queues: dict[str, list[InboxMessage]] = {NEXT_TURN: [], NEXT_STEP: []}
 
     # ── 只读视图 ──
 
@@ -45,7 +63,9 @@ class ReactLoopInbox:
 
     # ── 写入 ──
 
-    def splice(self, target: str, start: int, delete_count: int, inserted: list[str]) -> list[str]:
+    def splice(
+        self, target: str, start: int, delete_count: int, inserted: list[InboxMessage],
+    ) -> list[InboxMessage]:
         """标准 splice 语义（负索引 / 越界收敛），返回被移除的消息 —— 队列唯一的写原语。
 
         其余写操作都在它之上表达（append / claim / clear），语义与 A 的 ReactLoopInbox
@@ -59,11 +79,11 @@ class ReactLoopInbox:
         queue[offset:offset + count] = list(inserted)
         return removed
 
-    def append(self, target: str, text: str) -> None:
+    def append(self, target: str, message: InboxMessage) -> None:
         """投递一条输入到指定队列尾部（受理即入队，尚未成为 LLM 可见的事实）。"""
-        self.splice(target, len(self._queue(target)), 0, [text])
+        self.splice(target, len(self._queue(target)), 0, [message])
 
-    def claim(self, target: str, turn: int) -> list[str]:
+    def claim(self, target: str, turn: int) -> list[InboxMessage]:
         """认领一批输入：**清空全部 next-step**；``target=next-turn`` 时再取队首 1 条 next-turn。
 
         顺序 = next-step 在前、next-turn 在后（照搬 A）：next-step 里的 steer 是更早投
@@ -88,7 +108,7 @@ class ReactLoopInbox:
 
     # ── 内部 ──
 
-    def _queue(self, target: str) -> list[str]:
+    def _queue(self, target: str) -> list[InboxMessage]:
         try:
             return self._queues[target]
         except KeyError:

@@ -1,7 +1,8 @@
 import asyncio
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from backend.api.faq import router as faq_router
 from backend.api.auth import router as auth_router
@@ -14,6 +15,14 @@ from backend.api.mcp import router as mcp_router
 from backend.api.tools import router as tools_router
 from backend.api.workflow import router as workflow_router
 from backend.api.workspace import router as workspace_router
+from backend.gateway.errors import (
+    AgentBusy,
+    AgentNotFound,
+    GatewayError,
+    InvalidGatewayContext,
+    NoActiveRun,
+    SessionNotFound,
+)
 
 app = FastAPI(title="agent-low-code-platform")
 app.add_middleware(
@@ -34,6 +43,27 @@ app.include_router(mcp_router)
 app.include_router(tools_router)
 app.include_router(workflow_router)
 app.include_router(workspace_router)
+
+#: Gateway 领域错误 → HTTP 状态（通道层的唯一映射表；错误本身携带稳定 code，见 gateway/errors.py）
+#: 409 的两种情况分开：AgentBusy = 该会话已在跑（改投运行中输入 /chat/steer）；
+#: NoActiveRun = 没有在跑的轮次（改用 /chat/stream 发新消息）—— 客户端的动作不同，别合并。
+_GATEWAY_STATUS = {
+    InvalidGatewayContext: 400,
+    AgentNotFound: 404,
+    SessionNotFound: 404,
+    AgentBusy: 409,
+    NoActiveRun: 409,
+}
+
+
+@app.exception_handler(GatewayError)
+async def _gateway_error_handler(request: Request, exc: GatewayError) -> JSONResponse:
+    """Gateway 只抛领域错误，状态码由这里定 —— 各端点不必各写一份 try/except。"""
+    return JSONResponse(
+        status_code=_GATEWAY_STATUS.get(type(exc), 500),
+        content={"detail": exc.message, "code": exc.code},
+    )
+
 
 @app.on_event("startup")
 async def startup():
