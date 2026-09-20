@@ -45,6 +45,7 @@ from backend.agents.runtime.loop.inbox import (  # noqa: E402
     NEXT_TURN,
     ReactLoopInbox,
 )
+from backend.agents.runtime.loop.registry import RunConflict, RunRegistry  # noqa: E402
 from backend.agents.runtime.session import (  # noqa: E402
     ASSISTANT_MESSAGE,
     LLM_ERROR,
@@ -58,6 +59,7 @@ from backend.agents.runtime.session import (  # noqa: E402
     Session,
     SessionToolRecorder,
 )
+from backend.agents.runtime.session.projections import TrajectoryProjection  # noqa: E402
 from backend.tool_system.registry.descriptor import PARALLEL  # noqa: E402
 from backend.tool_system.runtime.scheduler import (  # noqa: E402
     ABORTED_STARTED_MESSAGE,
@@ -1137,6 +1139,69 @@ def test_assistant_stream_merges_fragments_and_records_chunk_events():
     assert stream.finish_reason == "tool_calls"
     # 推理过程只广播、不混入正文
     assert [(e.data["kind"], e.data["delta"]) for e in session.log] == [("thinking", "想"), ("text", "先查")]
+
+
+def test_steer_returns_id_and_the_claimed_event_carries_it():
+    """投递返回 id；认领时它随 user/message 事件回来（前端靠它把「待投递」翻成「已投递」）"""
+    first = _answer("", finish_reason="tool_calls", tool_calls=[
+        {"id": "c1", "type": "function", "function": {"name": "echo", "arguments": "{}"}},
+    ])
+    _install([first, _answer("按新方向做完了")])
+    loop, session = _loop(tool_schemas=[_TOOL_SCHEMA])
+    steered: dict = {}
+
+    _with_fake_tools(loop, session, runtime=_FakeRuntime(on_call=lambda: steered.update(
+        msg_id=loop.steer("换个方向"),
+    )))
+    assert _run(loop) == "按新方向做完了"
+
+    assert steered["msg_id"]
+    claimed = [e.data for e in session.log if e.type == USER_MESSAGE]
+    assert [m["content"] for m in claimed] == ["问题", "换个方向"]
+    assert claimed[1]["msg_id"] == steered["msg_id"]
+    assert claimed[0]["msg_id"]        # 开启输入也有 id（只是投影不为它回帧，见下）
+
+
+def test_projection_echoes_runtime_input_only():
+    """回帧规则：本轮的**第二条及以后**的 user/message 才回帧 —— 第一条是用户刚发的问题，
+    前端已经乐观上屏过，再回一帧就是重影（§5.1 决策 A：认领时回帧）"""
+    first = _answer("", finish_reason="tool_calls", tool_calls=[
+        {"id": "c1", "type": "function", "function": {"name": "echo", "arguments": "{}"}},
+    ])
+    _install([first, _answer("好")])
+    loop, session = _loop(tool_schemas=[_TOOL_SCHEMA])
+    steered: dict = {}
+    _with_fake_tools(loop, session, runtime=_FakeRuntime(on_call=lambda: steered.update(
+        msg_id=loop.steer("换个方向"),
+    )))
+    _run(loop)
+
+    projection = TrajectoryProjection()
+    frames = [f for ev in session.log for f in projection.handle(ev) if f.get("type") == "user"]
+
+    assert [f["content"] for f in frames] == ["换个方向"]      # 开启输入不回帧
+    assert frames[0]["msg_id"] == steered["msg_id"]
+
+
+def test_run_registry_single_flight():
+    """同 session 单飞（§4）：占用即冲突，注销后可复用（注销幂等）"""
+    registry = RunRegistry()
+    handle = object()
+    registry.register("s1", handle)
+    assert registry.get("s1") is handle
+    assert registry.get("s2") is None
+
+    try:
+        registry.register("s1", object())
+    except RunConflict:
+        pass
+    else:
+        raise AssertionError("同 session 第二次登记必须冲突（同 session 单飞）")
+
+    registry.unregister("s1")
+    assert registry.get("s1") is None
+    registry.unregister("s1")                                  # 幂等
+    registry.register("s1", handle)                            # 上一轮结束后可以再来
 
 
 def test_usage_event_carries_canonical_token_fields():

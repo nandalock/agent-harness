@@ -10,6 +10,7 @@ from backend.gateway.errors import (
     AgentNotFound,
     GatewayError,
     InvalidGatewayContext,
+    NoActiveRun,
     SessionNotFound,
 )
 from backend.gateway.service import AgentGateway
@@ -34,4 +35,5 @@ __all__ = [
     "AgentNotFound",
     "SessionNotFound",
     "AgentBusy",
+    "NoActiveRun",
 ]

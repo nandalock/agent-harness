@@ -19,10 +19,12 @@ import logging
 from collections.abc import Callable
 
 from backend.agents.base import BaseAgent, AgentReply
+from backend.agents.runtime.loop import RunConflict, get_run_registry
 from backend.agents.runtime.loop.events import EventSink
+from backend.agents.runtime.loop.inbox import NEXT_STEP, NEXT_TURN
 from backend.agents.runtime.session import SessionEvent
 from backend.gateway.context import RequestContext
-from backend.gateway.errors import AgentNotFound, InvalidGatewayContext
+from backend.gateway.errors import AgentBusy, AgentNotFound, InvalidGatewayContext, NoActiveRun
 
 logger = logging.getLogger(__name__)
 
@@ -66,15 +68,38 @@ class AgentGateway:
 
         agent = self.resolve(rctx.agent_key)
 
-        if on_event is None and session_event_sink is None and cancel is None:
+        try:
+            if on_event is None and session_event_sink is None and cancel is None:
+                return await agent.reply(
+                    rctx.tenant_id, question,
+                    context=rctx.context, session_id=rctx.session_id,
+                )
             return await agent.reply(
                 rctx.tenant_id, question,
                 context=rctx.context, session_id=rctx.session_id,
+                on_event=on_event,
+                session_event_sink=session_event_sink,
+                cancel=cancel,
             )
-        return await agent.reply(
-            rctx.tenant_id, question,
-            context=rctx.context, session_id=rctx.session_id,
-            on_event=on_event,
-            session_event_sink=session_event_sink,
-            cancel=cancel,
-        )
+        except RunConflict as e:
+            # 同 session 单飞（run ownership）：第二个请求不该排队等，而是改投运行中输入。
+            # 领域词汇在 Gateway 层归一 —— Runtime 抛的是 loop 层的运行时错误，通道层只认
+            # gateway/errors 的 code。
+            raise AgentBusy(str(e)) from e
+
+    def steer(self, rctx: RequestContext, text: str, target: str = NEXT_STEP) -> str:
+        """把一条输入投给该会话正在跑的那一轮，返回受理 id（msg_id）。
+
+        ``target`` 决定它落在哪条队列（语义见 loop/inbox.py）：
+          next-step（默认）—— 当前轮的下一步就并入上下文（「方向偏了，往这边走」）
+          next-turn        —— 本轮结束后作为新的一轮开始（「等我做完这个，再看这个」）
+
+        没有正在跑的轮次 → NoActiveRun（通道层翻 409）：「下一轮」的语义由 /chat/stream 承担，
+        这一层不发明「无人接单也照样受理」的行为。Gateway 仍不执行 Agent 也不构造 Loop ——
+        它只是把「找到那一轮、投一条进去」这两次同步调用接起来。
+        """
+        session_id = rctx.session_id or ""
+        run = get_run_registry().get(session_id)
+        if run is None:
+            raise NoActiveRun(f"会话 {session_id or '(空)'} 上没有正在运行的轮次")
+        return run.followup(text) if target == NEXT_TURN else run.steer(text)

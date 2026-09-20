@@ -101,6 +101,7 @@ class TrajectoryProjection:
         self.usage: list[dict] = []
         self._seg_buf = ""                 # 当前 assistant 段的 text chunk 累积（对账用）
         self._last_msg_at = -1             # 上一个 assistant/message 的 seq（对账边界）
+        self._opening_seen = False         # 本轮的开启输入是否已过（之后的 user/message 才是运行中输入）
 
     # ── 外部接口 ──
 
@@ -109,6 +110,7 @@ class TrajectoryProjection:
         t, d = ev.type, ev.data
         if t == "turn/start":
             self.turn += 1
+            self._opening_seen = False     # 新一轮：第一条 user/message 又是开启输入
             return []
         if t == "step/start":
             self.cur_step = int(d.get("step", 1))
@@ -132,7 +134,9 @@ class TrajectoryProjection:
             return self._on_turn_end()
         if t == "llm/usage":
             return self._on_usage(d)
-        # session/seed、user/message 等：无 UI 投影
+        if t == "user/message":
+            return self._on_user_message(d)
+        # session/seed 等：无 UI 投影
         return []
 
     def finish(self) -> dict:
@@ -304,6 +308,25 @@ class TrajectoryProjection:
                 node["status"] = ST_DONE
                 out.append({"type": "traj/close", "id": node["id"]})
         return out
+
+    def _on_user_message(self, d: dict) -> list[dict]:
+        """运行中输入被**认领**了 → 回一帧，让前端把它上屏（§5.1 决策 A：认领时回帧）。
+
+        每轮的**第一条** user/message 是本轮的开启输入（用户刚在输入框里发的那个问题），
+        前端已经乐观上屏过 —— 回帧会变成重影，所以只回「运行中投进来的」那些。判据是
+        「本轮的开启输入是否已经过」而不是消息内容：投递端（steer/inject）多晚都算运行中。
+
+        ``msg_id`` 是投递时受理方拿到的 id，前端据此把自己那条「待投递」气泡翻成已投递；
+        inject（系统侧静默投递）没有前端气泡，前端按「未知 id」追加一条即可。
+        """
+        if not self._opening_seen:
+            self._opening_seen = True
+            return []
+        return [{
+            "type": "user",
+            "content": d.get("content", ""),
+            "msg_id": d.get("msg_id"),
+        }]
 
     def _on_usage(self, d: dict) -> list[dict]:
         """usage 事件 → UI 帧。

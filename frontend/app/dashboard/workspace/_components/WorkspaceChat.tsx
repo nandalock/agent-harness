@@ -39,6 +39,9 @@ interface ChatMsg {
   nodes?: TrajNode[];
   usage?: UsageRow[];
   trace?: TraceSummary;
+  // 运行中输入（steer）：受理时拿到 msg_id，认领回帧带着同一个 id 回来 → pending 翻 false
+  msgId?: string;
+  pending?: boolean;
 }
 
 interface PendingApproval {
@@ -92,6 +95,8 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
   const usageRef = useRef<UsageRow[]>([]);
   // 停止生成：当前在飞的 SSE 请求（abort 它 = 服务端取消本轮）；null = 没有在跑的轮次
   const stopRef = useRef<AbortController | null>(null);
+  // steer 撞上「本轮刚收口」（409）：把这条留到本轮收尾后再当新消息发（见 handleSend 的 finally）
+  const deferSendRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // 视口是否贴着底：决定新内容到达时跟不跟随（见下方 handleScroll）
@@ -190,7 +195,9 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
   }
 
   async function handleSend(q: string) {
-    if (!session || sending) return;
+    if (!session) return;
+    // 运行中：发送 = 并入当前轮（不另起一条 SSE 流，见 handleSteer）
+    if (sending) return handleSteer(q);
     const now = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
     setMessages(prev => [...prev, { role: 'user', content: q, time: now }]);
     atBottomRef.current = true;   // 自己发的消息：无论刚才翻到哪儿都跟到底部
@@ -259,6 +266,25 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
                 setApprovals(prev => prev.filter(p => p.approvalId !== doneId));
               }
               break;
+            case 'user': {
+              // 运行中输入被**认领**了（后端 user/message → UI 帧）：把自己那条「待投递」
+              // 翻成已投递。没有对应气泡的（inject 之类不是本页发的）补一条，别静默丢。
+              const mid = typeof ev.msg_id === 'string' ? ev.msg_id : undefined;
+              const content = typeof ev.content === 'string' ? ev.content : '';
+              setMessages(prev => {
+                const hit = mid ? prev.findIndex(m => m.role === 'user' && m.msgId === mid) : -1;
+                if (hit < 0) {
+                  return [...prev, {
+                    role: 'user', content,
+                    time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+                  }];
+                }
+                const next = [...prev];
+                next[hit] = { ...next[hit], pending: false };
+                return next;
+              });
+              break;
+            }
             case 'thinking':
               legacyThink += ev.delta;
               break;
@@ -294,6 +320,44 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
         trace: doneTrace,
       }]);
       onTurnDone();   // 模型这一轮可能落了文件：侧栏 + 文件树一起刷新
+
+      // steer 撞上「本轮刚收口」时攒下的那条：现在这一轮真的结束了，当新消息发出去
+      const deferred = deferSendRef.current;
+      if (deferred) {
+        deferSendRef.current = null;
+        handleSend(deferred);
+      }
+    }
+  }
+
+  // 运行中输入：把这条喂给**已经开着的那条 SSE 流**（POST /chat/steer 回 202 + msg_id）。
+  // 先乐观上屏成「待投递」，等那条流回一帧 type=user（同一个 msg_id）才翻成已投递 ——
+  // 「已受理」和「已进上下文」不是一回事，UI 不替后端撒谎。
+  async function handleSteer(q: string) {
+    if (!session) return;
+    const now = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    const body: any = { session_id: session.session_id ?? '', question: q };
+    if (session.conversation_id != null) body.conversation_id = session.conversation_id;
+    atBottomRef.current = true;
+    try {
+      const r = await fetch(`${API}/api/agents/${session.agent_key}/chat/steer`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...H },
+        body: JSON.stringify(body),
+      });
+      // 409 = 这一轮刚收口（我们按「发送中」投，但它已经结束了）：不留一条投不进去的
+      // 气泡，等本轮流收尾后当新消息发 —— 用户看到的仍是「我发了这句话，它在处理」。
+      if (r.status === 409) {
+        deferSendRef.current = q;
+        return;
+      }
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const { msg_id } = await r.json();
+      setMessages(prev => [...prev, { role: 'user', content: q, time: now, msgId: msg_id, pending: true }]);
+    } catch {
+      setMessages(prev => [...prev, {
+        role: 'agent', time: now,
+        content: '这条消息没能并进当前轮，请重新发送。',
+      }]);
     }
   }
 
@@ -369,8 +433,12 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
                 maxWidth: '78%', background: W.surfaceHi, color: W.text,
                 borderRadius: R.xl, padding: '10px 16px',
                 fontSize: 14, lineHeight: '22px', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                // 待投递：已受理、模型还没看到 —— 压一档透明度，别让它看起来跟已投递的一样
+                opacity: msg.pending ? 0.62 : 1,
               }}>{msg.content}</div>
-              <span className="ws-on-hover" style={{ fontSize: 12, color: W.dimmed, marginTop: 6, paddingRight: 4 }}>{msg.time}</span>
+              <span className="ws-on-hover" style={{ fontSize: 12, color: W.dimmed, marginTop: 6, paddingRight: 4 }}>
+                {msg.pending ? '待投递 · ' : ''}{msg.time}
+              </span>
             </div>
           ) : (
             <div key={i} style={{ marginBottom: TURN_GAP }}>
@@ -429,7 +497,7 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
           )}
 
           <Composer
-            disabled={!session || sending}
+            disabled={!session}   /* 发送中不禁用：那时的发送语义是「并入当前轮」（steer） */
             sending={sending}
             onStop={handleStop}
             uploading={uploading}

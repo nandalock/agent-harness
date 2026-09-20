@@ -19,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "..
 from backend.agents.runtime import agent_runtime as runtime_mod  # noqa: E402
 from backend.agents.runtime.agent_runtime import AgentRuntime  # noqa: E402
 from backend.agents.runtime.llm import openai_chat as client_mod  # noqa: E402
+from backend.agents.runtime.loop import get_run_registry  # noqa: E402
 from backend.agents.runtime.session import (  # noqa: E402
     NoopPersistence,
     get_session_title_service,
@@ -98,6 +99,23 @@ def _runtime(agent_key: str = "test_agent", **config) -> AgentRuntime:
 
 def _reply(agent: AgentRuntime, question: str = "你好", **kwargs):
     return asyncio.run(agent.reply(tenant_id=1, question=question, **kwargs))
+
+
+# ── 同 session 单飞（RunRegistry）──
+
+
+def test_run_registry_is_released_after_the_turn():
+    """一轮跑完必须注销：否则这个会话从此再也发不出消息（登记表把后续请求全判成冲突）"""
+    _install_fakes()
+    agent = _runtime()
+
+    reply = _reply(agent)
+    assert reply.session_id
+    assert get_run_registry().get(reply.session_id) is None
+
+    # 注销干净 → 同一个会话还能接着来一轮（不冲突，且继续用同一个 session）
+    again = _reply(agent, session_id=reply.session_id)
+    assert again.session_id == reply.session_id
 
 
 # ── 主链路 ──
