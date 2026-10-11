@@ -1,11 +1,12 @@
 <div align="center">
 
-# 🤖 Agent Low-Code Platform
+# 🤖 Agent Harness
 
-**A low-code multi-agent platform for building intelligent customer-service bots.**
+**An agent runtime platform for controlled tool execution, durable sessions, and human approval.**
 
-Design multi-agent workflows on a visual canvas, plug in RAG knowledge bases, semantic caching,
-long-term memory and MCP tools — no code required.
+Run agents with a managed execution loop, concurrent tool scheduling, session recovery,
+and permission approval. Build visual workflows and connect FAQ RAG for customer-service
+and knowledge-assistant scenarios.
 
 ![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
@@ -128,7 +129,7 @@ flowchart LR
 ## 📁 Project Structure
 
 ```
-agent-low-code-platform/
+agent-harness/
 ├── backend/
 │   ├── agents/            # Agent implementations + runtime
 │   │   ├── runtime/       #   AgentRuntime · AgentLoop

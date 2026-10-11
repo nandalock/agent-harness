@@ -4,7 +4,7 @@ from mcp.server.fastmcp import FastMCP
 from backend.core.connection import get_conn
 
 logger = logging.getLogger(__name__)
-mcp = FastMCP("agent-low-code-platform-mcp")
+mcp = FastMCP("agent-harness-mcp")
 
 
 # ═══ 订单域 ═══

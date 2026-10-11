@@ -24,7 +24,7 @@ from backend.gateway.errors import (
     SessionNotFound,
 )
 
-app = FastAPI(title="agent-low-code-platform")
+app = FastAPI(title="Agent Harness")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:4000"],

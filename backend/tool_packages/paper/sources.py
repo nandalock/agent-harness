@@ -13,7 +13,7 @@ from pypdf import PdfReader
 logger = logging.getLogger(__name__)
 
 ARXIV_API = "http://export.arxiv.org/api/query"
-USER_AGENT = "agent-low-code-platform/0.1 (paper-mcp; contact: dev@localhost)"
+USER_AGENT = "agent-harness/0.1 (paper-mcp; contact: dev@localhost)"
 
 # 单块目标字符数（中文 1 字 ≈ 1 token，英文 4 字符 ≈ 1 token，取保守值）
 CHUNK_CHARS = 24000

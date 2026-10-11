@@ -1,0 +1,78 @@
+{
+  "scope": "simulated I/O; real ToolScheduler; no LLM/network/DB/Docker work",
+  "measured_at": "2026-10-11T15:56:02.220462+08:00",
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26100-SP0",
+    "packages": {
+      "mcp": "1.30.0",
+      "aiohttp": "3.14.5",
+      "psycopg2-binary": "2.9.13"
+    },
+    "git_commit": "97e2b31726881438faff304c94dcb1d2c1fe0885",
+    "scheduler_sha256": "b89bfbc62a132629724a080cc036861874262999b352f75fca26db0be5d5c712"
+  },
+  "workload": {
+    "calls_per_batch": 12,
+    "simulated_io_seconds_per_call": 0.1,
+    "measured_rounds_per_mode": 5,
+    "warmup_rounds_per_mode": 1,
+    "serial_workers": 1,
+    "default_parallel_workers": 4,
+    "exclusive_tools": 0,
+    "timer_excludes_fixture_setup": true
+  },
+  "samples": {
+    "serial": [
+      {
+        "seconds": 1.317075,
+        "peak_active": 1
+      },
+      {
+        "seconds": 1.329065,
+        "peak_active": 1
+      },
+      {
+        "seconds": 1.373304,
+        "peak_active": 1
+      },
+      {
+        "seconds": 1.343503,
+        "peak_active": 1
+      },
+      {
+        "seconds": 1.311125,
+        "peak_active": 1
+      }
+    ],
+    "default_parallel": [
+      {
+        "seconds": 0.332219,
+        "peak_active": 4
+      },
+      {
+        "seconds": 0.351082,
+        "peak_active": 4
+      },
+      {
+        "seconds": 0.348442,
+        "peak_active": 4
+      },
+      {
+        "seconds": 0.345351,
+        "peak_active": 4
+      },
+      {
+        "seconds": 0.331592,
+        "peak_active": 4
+      }
+    ]
+  },
+  "summary": {
+    "serial_median_seconds": 1.329065,
+    "default_parallel_median_seconds": 0.345351,
+    "duration_reduction_percent": 74.015,
+    "speedup": 3.848,
+    "result_order_and_concurrency_checks_passed": true
+  }
+}
