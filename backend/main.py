@@ -23,6 +23,9 @@ from backend.gateway.errors import (
     NoActiveRun,
     SessionNotFound,
 )
+from backend.agents.runtime.session.checkpoint import CheckpointError
+from backend.agents.runtime.session.recovery import RecoveryError
+from backend.agents.runtime.loop.registry import RunConflict
 
 app = FastAPI(title="Agent Harness")
 app.add_middleware(
@@ -63,6 +66,21 @@ async def _gateway_error_handler(request: Request, exc: GatewayError) -> JSONRes
         status_code=_GATEWAY_STATUS.get(type(exc), 500),
         content={"detail": exc.message, "code": exc.code},
     )
+
+
+@app.exception_handler(CheckpointError)
+async def _checkpoint_error_handler(request: Request, exc: CheckpointError):
+    return JSONResponse(status_code=503, content={"detail": str(exc), "code": exc.code})
+
+
+@app.exception_handler(RecoveryError)
+async def _recovery_error_handler(request: Request, exc: RecoveryError):
+    return JSONResponse(status_code=409, content={"detail": str(exc), "code": exc.code})
+
+
+@app.exception_handler(RunConflict)
+async def _session_write_conflict_handler(request: Request, exc: RunConflict):
+    return JSONResponse(status_code=409, content={"detail": "会话正在执行，请结束后再修改设置", "code": "session/agent-busy"})
 
 
 @app.on_event("startup")

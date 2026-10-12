@@ -14,22 +14,33 @@ services:
 
   db:
     image: pgvector/pgvector:pg16
+    restart: unless-stopped
     environment:
       POSTGRES_DB: saas
       POSTGRES_USER: saas
       POSTGRES_PASSWORD: saas
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saas -d saas"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
 
   backend:
-    build: ./backend
+    restart: unless-stopped
+    build:
+      context: ./backend
+      args:
+        PRELOAD_RERANKER: ${PRELOAD_RERANKER:-false}
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
     volumes:
       - .:/app
       - npm_cache:/root/.npm
       - uv_cache:/root/.cache/uv
+      - hf_cache:/root/.cache/huggingface
       # 沙箱：SandboxExecutor 用 docker CLI 起临时容器（docs/sandbox-design.md §7）。
       # 安全：socket 等价于宿主机 root，只应暴露给后端进程本身；模型参数无法影响
       # docker 参数（DockerProvider 内部构造，且有注入断言）。
@@ -99,10 +110,13 @@ services:
       # excludedportrange protocol=tcp），Docker 绑定时报 WSAEACCES 起不来。
       # 需要在宿主调试 MCP：docker compose exec backend curl localhost:9001/mcp
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   frontend:
+    restart: unless-stopped
     build: ./frontend
     # 宿主端口不能用 3000 系：Windows 的 Hyper-V/WSL 保留端口段
     # （netsh int ipv4 show excludedportrange protocol=tcp）在这台机器上连成
@@ -126,7 +140,13 @@ services:
 
   redis:
     image: redis/redis-stack:7.4.0-v2
+    restart: unless-stopped
     container_name: redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
     ports:
       - "6379:6379"
       - "8001:8001"
@@ -135,6 +155,7 @@ services:
 
   redisinsight:
     image: redis/redisinsight:latest
+    restart: unless-stopped
     container_name: redisinsight
     ports:
       - "5540:5540"
@@ -147,5 +168,6 @@ volumes:
   pgdata:
   npm_cache:
   uv_cache:
+  hf_cache:
   redis-data:
   redisinsight-data:

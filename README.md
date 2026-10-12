@@ -68,16 +68,22 @@ and knowledge-assistant scenarios.
 
 ## 🚀 Quick Start
 
-> **Prerequisite:** a running [Ollama](https://ollama.com/) instance with the `bge-m3`
-> embedding model pulled (`ollama pull bge-m3`).
+> FAQ semantic retrieval uses a running [Ollama](https://ollama.com/) instance with
+> the `bge-m3` embedding model (`ollama pull bge-m3`). Configure an agent's model
+> endpoint and API key in the dashboard before starting an LLM conversation.
 
 ```bash
 # 1. Start the whole stack (DB + Redis + Backend + Frontend)
-docker compose up --build
+docker compose up -d --build
 
 # 2. Open the dashboard
 open http://localhost:4000
 ```
+
+The reranker downloads on its first RAG request and persists in the `hf_cache`
+volume. To preload it while building, set `PRELOAD_RERANKER=true` in the root
+`.env` file and rebuild the backend. Database and Redis health checks gate
+backend startup.
 
 | Service      | URL                    |
 | ------------ | ---------------------- |

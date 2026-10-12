@@ -15,6 +15,7 @@
 // 每轮 done → onTurnDone()：页面据此刷新侧栏会话列表与右栏文件树。
 
 import { useEffect, useRef, useState } from 'react';
+import RecoveryBanner from '@/app/agents/_components/RecoveryBanner';
 import { PanelRight, ShieldAlert } from 'lucide-react';
 import { W, R, WS, CHAT_COLUMN } from '../theme';
 import { useTrajectoryBatch } from '@/app/agents/_components/useTrajectoryBatch';
@@ -88,6 +89,7 @@ function HeaderDot({ active }: { active: boolean }) {
 export default function WorkspaceChat({ session, onTurnDone, uploading, uploadError, onUpload, sandboxMode, onModeChange, rightOpen, onToggleRight, pendingQuestion, onPendingQuestionConsumed }: Props) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [sending, setSending] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState('');
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const { nodes: trajNodes, nodesRef, enqueue, forceFlush, reset } = useTrajectoryBatch();
@@ -194,7 +196,7 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
     stopRef.current?.abort();
   }
 
-  async function handleSend(q: string) {
+  async function handleSend(q: string, resumeFrom?: number) {
     if (!session) return;
     // 运行中：发送 = 并入当前轮（不另起一条 SSE 流，见 handleSteer）
     if (sending) return handleSteer(q);
@@ -202,10 +204,12 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
     setMessages(prev => [...prev, { role: 'user', content: q, time: now }]);
     atBottomRef.current = true;   // 自己发的消息：无论刚才翻到哪儿都跟到底部
     setSending(true);
+    setRecoveryNotice('');
     setLiveUsage([]); usageRef.current = [];
     reset();
     setApprovals([]);
     let finalAnswer = '';
+    let completed = false;
     let doneTrace: TraceSummary | undefined;
     let legacyThink = '';
     let legacyAns = '';
@@ -219,7 +223,9 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
       const body: any = { question: q };
       if (session.conversation_id != null) body.conversation_id = session.conversation_id;
       if (session.session_id != null) body.session_id = session.session_id;
-      const r = await fetch(`${API}/api/agents/${session.agent_key}/chat/stream`, {
+      if (resumeFrom != null) body.source_turn_start_seq = resumeFrom;
+      const endpoint = resumeFrom != null ? 'chat/resume/stream' : 'chat/stream';
+      const r = await fetch(`${API}/api/agents/${session.agent_key}/${endpoint}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...H },
         body: JSON.stringify(body), signal: controller.signal,
       });
@@ -292,17 +298,25 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
             case 'answer':
               legacyAns += ev.delta;
               break;
+            case 'error':
+              finalAnswer = ev.message || '任务执行失败，请稍后重试';
+              break;
+            case 'recovery':
+              setRecoveryNotice(ev.message || '已恢复上次进度。');
+              break;
             case 'done':
+              completed = true;
               if (ev.answer) finalAnswer = ev.answer;
               doneTrace = ev.trace;
               break;
           }
         }
       }
+      if (!completed && !finalAnswer) finalAnswer = '连接中断，已保存的进度可以继续。';
     } catch {
       stopped = controller.signal.aborted;
       // 主动停止不是失败：不说「请求失败」，已收到的正文照常留在气泡里
-      if (!stopped) finalAnswer = '请求失败，请稍后重试。';
+      if (!stopped && !finalAnswer) finalAnswer = '请求失败，请稍后重试。';
     } finally {
       if (stopRef.current === controller) stopRef.current = null;
       forceFlush();
@@ -396,6 +410,10 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
           <PanelRight size={16} />
         </button>
       </header>
+
+      <RecoveryBanner api={API} tenantId={Number(H['X-Tenant-ID'])} sessionId={session?.session_id ?? null} busy={sending}
+        onContinue={source => { void handleSend('继续上次任务', source); }} />
+      {sending && recoveryNotice && <div role="status" style={{ padding: '8px 16px', fontSize: 13, color: W.tertiary }}>{recoveryNotice}</div>}
 
       {/* 内容轴：消息列与输入卡共用同一根居中轴，输入卡靠 seat 的 padding 差外扩 32px */}
       <div style={{

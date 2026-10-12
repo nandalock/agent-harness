@@ -73,6 +73,7 @@ def interrupted_turn_closers(events: list[SessionEvent]) -> list[SessionEvent]:
     """
     open_turn = False          # turn/start 见过、还没见到 turn/end
     open_step: int | None = None
+    semantic_checkpoints = False
     # tool_call_id → {call_seq, tool}；dict 保序 = 模型给出的调用顺序
     pending: dict[str, dict] = {}
 
@@ -80,6 +81,7 @@ def interrupted_turn_closers(events: list[SessionEvent]) -> list[SessionEvent]:
         t, d = ev.type, ev.data
         if t == TURN_START:
             open_turn, open_step = True, None
+            semantic_checkpoints = d.get("durability_policy") == "semantic-v1"
             pending.clear()
         elif t == TURN_END:
             open_turn, open_step = False, None
@@ -123,9 +125,11 @@ def interrupted_turn_closers(events: list[SessionEvent]) -> list[SessionEvent]:
 
     for call_id, entry in pending.items():
         started = entry["call_seq"] is not None
+        unknown = started or not semantic_checkpoints
         result = {
-            "error": _OUTCOME_UNKNOWN_TEXT if started else _NOT_STARTED_TEXT,
-            "code": TOOL_OUTCOME_UNKNOWN if started else TOOL_NOT_STARTED,
+            "error": (_OUTCOME_UNKNOWN_TEXT if started else
+                      "上次运行中断，历史日志没有执行前保存保证，无法确认该操作是否执行。请先核实实际状态，不要盲目重试。") if unknown else _NOT_STARTED_TEXT,
+            "code": TOOL_OUTCOME_UNKNOWN if unknown else TOOL_NOT_STARTED,
         }
         _emit(
             TOOL_RESULT,

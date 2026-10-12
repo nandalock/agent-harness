@@ -16,7 +16,7 @@ agent 每次都从注册表现查，不缓存业务对象（DSH: resolve from re
 """
 import asyncio
 import logging
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from backend.agents.base import BaseAgent, AgentReply
 from backend.agents.runtime.loop import RunConflict, get_run_registry
@@ -52,6 +52,8 @@ class AgentGateway:
         on_event: EventSink | None = None,
         session_event_sink: Callable[[SessionEvent], None] | None = None,
         cancel: asyncio.Event | None = None,
+        resume_from: int | None = None,
+        on_session_ready: Callable[[str], Awaitable[None]] | None = None,
     ) -> AgentReply:
         """运行入口：身份校验 → 解析目标 → 调 AgentRuntime.reply()。
 
@@ -67,12 +69,22 @@ class AgentGateway:
             raise InvalidGatewayContext("RequestContext.tenant_id 缺失")
 
         agent = self.resolve(rctx.agent_key)
+        from backend.agents.runtime.agent_runtime import AgentRuntime
+        supports_recovery = getattr(agent.reply, "__func__", None) is AgentRuntime.reply
+        if resume_from is not None and not supports_recovery:
+            raise InvalidGatewayContext("此智能体未使用可恢复执行循环")
+        extra = {}
+        if supports_recovery:
+            if resume_from is not None:
+                extra["resume_from"] = resume_from
+            if on_session_ready is not None:
+                extra["on_session_ready"] = on_session_ready
 
         try:
             if on_event is None and session_event_sink is None and cancel is None:
                 return await agent.reply(
                     rctx.tenant_id, question,
-                    context=rctx.context, session_id=rctx.session_id,
+                    context=rctx.context, session_id=rctx.session_id, **extra,
                 )
             return await agent.reply(
                 rctx.tenant_id, question,
@@ -80,6 +92,7 @@ class AgentGateway:
                 on_event=on_event,
                 session_event_sink=session_event_sink,
                 cancel=cancel,
+                **extra,
             )
         except RunConflict as e:
             # 同 session 单飞（run ownership）：第二个请求不该排队等，而是改投运行中输入。

@@ -63,6 +63,7 @@ class _FakeSession:
 def _install_fakes():
     """拦截 LLM HTTP 调用（patch 点是**适配器**：唯一 import get_http_session 的地方）"""
     captured.clear()
+    runtime_mod.get_agent_config = lambda key: {}
     fake = _async_return(_FakeSession())
     client_mod.get_http_session = fake
     set_session_persistence(NoopPersistence())

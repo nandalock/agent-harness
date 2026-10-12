@@ -29,6 +29,8 @@ ASSISTANT_CHUNK = "assistant/chunk"      # 流式过程事件（data: kind=think
 ASSISTANT_MESSAGE = "assistant/message"  # 完整 assistant message（含 tool_calls）
 TOOL_CALL = "tool/call"
 TOOL_RESULT = "tool/result"
+REQUEST_HEADER = "request/header"
+TASK_INPUT = "task/input"
 TOOL_PROGRESS = "tool/progress"  # 长耗时 Tool 的阶段进度（data: tool + tool_call_id + stage + seconds），
                                  # 过程事件（log-only），不进 surface / 不参与 derive_messages
 LLM_USAGE = "llm/usage"   # 每次 LLM 调用的 usage（provider 返回；data: step + prompt/cache token 统计），

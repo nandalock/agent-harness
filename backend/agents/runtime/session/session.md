@@ -143,28 +143,39 @@ session = Session.from_events(header, events)   # 纯内存，不涉及存储
 - 丢弃是**既不入 log 也不入 surface**——留着只会在每次 flush 时把死事件重新写库
 - 冷恢复是唯一收口点：进程重启后 SessionStore 热区为空，存量会话必走此路径
 
-紧接着还有一步**语义修复**（`repair.py` 的 `interrupted_turn_closers` → `append_recovered`）：
-持久化只保证日志**物理**合法，上一轮若被中断（进程没了），库里可能留下没有 `turn/end`
-的 turn、或永远等不到结果的 `tool_calls`。装配层（`AgentRuntime._repair_interrupted_tail`）
-补合成 `tool/result`（结论如实写「结果未知 / 未执行」，不假装成功）、`step/end`、
-`turn/end`，seq 续在末尾、**time 复用中断那一刻**（用恢复时的钟会把陈年崩溃渲染成巨大 latency）。
-补记的事件随下一次 flush 落库，`stop_reason=interrupted`（与 `cancelled` 区分：前者是进程没了，后者是有人让它停）。
+写入准备统一由 `recovery.prepare_session` 完成：取得会话所有权、重新读取数据库历史、修复中断尾巴、严格提交修复事件，再发布可执行 Session。只读轨迹查询不写修复事件，也不把冷读对象放进执行缓存。修复追加缺失的 `tool/result`、`step/end`、`turn/end(interrupted)`，序号续接、时间沿用最后真实事件。
 
-### 持久化边界
+新轮次记录 `durability_policy=semantic-v1`。有调用记录却没有结果时补 `TOOL_OUTCOME_UNKNOWN`；新策略轮次没有开始记录时补 `TOOL_NOT_STARTED`。旧日志没有工具前保存保证，因此缺少开始记录也按未知结果处理。修复器不执行工具。
 
+### 持久化检查点
+
+```text
+取得 PostgreSQL advisory 写入锁
+  → 读取并修复会话，提交修复事件
+  → 注册并绑定 Session，发送 session/ready
+  → 保存输入与 request/header，再调用模型
+  → 保存 assistant 请求与 tool/call，再执行顶层工具
+  → 保存已按序提交的结果与 step/end，再进入下一步
+  → 保存 turn/end，排空并释放所有权，发送 done
 ```
-turn 完成（AgentRuntime.reply 收尾）
-  → session.events
-  → persistence.append_events(session_id, events)   # 进 pending，不承诺落盘
-  → persistence.flush(session_id)                   # pending → durable，一个事务
-  → 发出 done 事件
-```
 
-`append_events` 与 `flush` 分开是刻意的：一次 flush 是一个事务（全成功或全失败），失败时
-pending 保留、下次幂等重放。**AgentLoop 不感知任何存储**——事件由 Session 收全，Runtime
-一次性交给 Persistence。
+`SessionCheckpoint` 通过后台线程执行阻塞数据库操作，并按 Session 串行等待提交。只提交确认游标之后的新事件。检查点失败抛 `CheckpointError`，阻止后续模型/工具调用，停止原有等待中的检查点；失败不转换成成功 done。取消等待检查点时先排空写入，工具正文尚未进入的调用报告 `ABORTED_BEFORE_DISPATCH`。
 
-`done` 在 flush **之后**发，所以客户端收到 done ≈ 本 turn 已 durable（flush 失败仅记日志）。
+PostgreSQL 每会话线程锁保护 pending 和数据库事务；advisory lock 跨进程保护恢复与执行。相同序号不同内容会使事务失败，不静默丢弃。后台标题保存遵守相同的写入串行规则；运行开始前取消过期的标题生成。手动改名和沙箱模式修改取得自己的写入所有权，运行中返回忙碌。
+
+`NoopPersistence.durable=False` 和关闭 Session 的临时模式不声明崩溃恢复能力。
+
+### 继续中断任务
+
+`GET /api/agents/sessions/{session_id}/recovery` 读取已提交状态并验证租户归属，不改变日志。存在活跃写入所有者时报告 running；没有活跃所有者的开放轮次报告 interrupted。仅中断、取消或持久化失败的轮次可继续。
+
+`POST /api/agents/{agent_key}/chat/resume/stream` 接收 conversation_id、session_id、source_turn_start_seq。取得写权后重新验证状态及智能体归属，关闭旧轮次，使用已保存历史和继续指令开启新轮次。新 turn/start 的 resumed_from 与继续输入在首个检查点一同提交；同一来源的重复请求不重复执行。task/input 保存经筛选的上游上下文；恢复使用当前模型凭据和工具配置。
+
+工作区和 Agent 测试页展示“继续任务”。未知工具结果提示模型先检查实际状态；只读或幂等操作可以按需要重试。服务重启后由用户发起继续，不自动执行；SSE 断开仍触发取消收尾。Supervisor 的 MemorySaver 不属于该执行链路。
+
+验证：Session/repair/title/checkpoint、AgentLoop、Runtime prompt 和 ToolScheduler 的相关测试共 155 项通过，包含 9 项真实 PostgreSQL 集成测试及 3 个子进程强杀位置。前端生产构建通过。模型与工具行为使用测试替身，不调用真实模型服务。
+
+PostgreSQL 测试需显式设置 `CHECKPOINT_TEST_DSN` 指向测试服务器，每个用例创建并清理独立 schema。可运行 `python -m pytest backend/agents/runtime/session/tests backend/agents/runtime/tests/test_agent_runtime_prompt.py backend/agents/runtime/tests/test_agent_loop.py backend/tool_system/runtime/test_scheduler.py -q`；测试环境需要 pytest、项目运行依赖和可用的 PostgreSQL。
 
 ### 两张表（`core/schema.py`）
 
@@ -206,7 +217,7 @@ UNIQUE(session_id, seq)
 
 | 约束 | 作用 |
 |---|---|
-| `UNIQUE(session_id, seq)` | 兜底并发/幂等——配合 `INSERT ... ON CONFLICT DO NOTHING`，重复 flush 天然安全；跨进程写同一会话时拒绝冲突（本实现不引入分布式锁） |
+| `UNIQUE(session_id, seq)` | 相同序号不同内容拒绝事务；跨进程写入由 advisory lock 排他保护 |
 | `ON DELETE CASCADE` | 删 header 连带删该会话全部事件（⚠️ 别拿它当删单条事件的手段） |
 
 **本表是原始事实，不是投影**：投影（trace / trajectory / 沙箱模式）每次读时现算，不落库

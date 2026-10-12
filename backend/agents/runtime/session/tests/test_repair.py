@@ -50,7 +50,7 @@ class _Builder:
         return self
 
     def turn_start(self) -> "_Builder":
-        return self.add(TURN_START, {"agent": "a", "limits": {"max_steps": 8}})
+        return self.add(TURN_START, {"agent": "a", "limits": {"max_steps": 8}, "durability_policy": "semantic-v1"})
 
     def step_start(self, step: int = 1) -> "_Builder":
         return self.add(STEP_START, {"step": step, "total": 8})

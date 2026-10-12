@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { T, S, inputField, labelField, btnPrimary } from '@/app/theme';
 import { PanelLeftClose, PanelLeftOpen, Brain, ChevronDown, ChevronRight } from 'lucide-react';
+import RecoveryBanner from '../_components/RecoveryBanner';
 import ToolBinding from '../_components/ToolBinding';
 import CachePolicyEditor, { type CachePolicyData } from '../_components/CachePolicyEditor';
 import TrajectoryTimeline from '../_components/TrajectoryTimeline';
@@ -154,6 +155,7 @@ export default function AgentDetailPage() {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [recoveryNotice, setRecoveryNotice] = useState('');
   // 初值恒为 null：localStorage 读取放在 mount effect 里（SSR 首帧无本地存储，
   // 直接读会 hydation mismatch —— select 的 value 与 option 集合必须服务端/客户端一致）
   const [conversationId, setConversationId] = useState<number | null>(null);
@@ -239,6 +241,7 @@ export default function AgentDetailPage() {
   }, [agentKey]);
 
   useEffect(() => {
+    if (sending) return;
     if (!conversationId) { setLoadingHistory(false); return; }
     let cancelled = false;
     (async () => {
@@ -250,6 +253,7 @@ export default function AgentDetailPage() {
         const convR = await fetch(`${API}/api/chat/conversations/${conversationId}`, { headers: { 'X-Tenant-ID': String(TENANT_ID) } });
         const conv = convR.ok ? await convR.json() : null;
         const sid: string | null = conv?.session_id || null;
+        if (!cancelled) setSessionId(sid);
         const msgsR = await fetch(`${API}/api/chat/conversations/${conversationId}/messages`, { headers: { 'X-Tenant-ID': String(TENANT_ID) } });
         const data = await msgsR.json();
         let snap: TrajectorySnapshot | null = null;
@@ -330,16 +334,17 @@ export default function AgentDetailPage() {
     return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
   }
 
-  async function handleSend() {
-    if (!input.trim() || sending) return;
-    const q = input;
+  async function handleSend(resumeFrom?: number) {
+    if ((resumeFrom == null && !input.trim()) || sending) return;
+    const q = resumeFrom != null ? '继续上次任务' : input;
     const now = new Date().toLocaleTimeString('zh-CN', { hour:'2-digit', minute:'2-digit' });
     setMessages(prev => [...prev, { role:'user', content:q, time:now }]);
-    setInput(''); setSending(true);
+    setInput(''); setSending(true); setRecoveryNotice('');
     setLiveUsage([]); usageRef.current = [];
     reset();  // 清空上个 turn 的 trajectory nodes（flush 尾部滞留 + reducer reset）
     setApprovals([]);  // 上个 turn 若留下卡片（后端已被取消）不清会一直挂着
     let finalAnswer = '';
+    let completed = false;
     let doneTrace: TraceSummary | undefined;  // done.trace：本轮执行摘要（TraceProjection 产物）
     let legacyThink = '';   // session=None 遗留路径：thinking 降级累积（无轨迹时兜底显示）
     let legacyAns = '';     // 遗留路径 answer/text 降级累积
@@ -347,7 +352,9 @@ export default function AgentDetailPage() {
       const body: any = { question: q, visitor_id: VISITOR_ID };
       if (conversationId) body.conversation_id = conversationId;
       if (sessionId) body.session_id = sessionId;  // 多轮：回传 AgentRuntime Session id 续上历史
-      const r = await fetch(`${API}/api/agents/${agentKey}/chat/stream`, { method:'POST', headers:{'Content-Type':'application/json','X-Tenant-ID':String(TENANT_ID)}, body:JSON.stringify(body) });
+      if (resumeFrom != null) body.source_turn_start_seq = resumeFrom;
+      const endpoint = resumeFrom != null ? 'chat/resume/stream' : 'chat/stream';
+      const r = await fetch(`${API}/api/agents/${agentKey}/${endpoint}`, { method:'POST', headers:{'Content-Type':'application/json','X-Tenant-ID':String(TENANT_ID)}, body:JSON.stringify(body) });
       if (!r.ok || !r.body) throw new Error(`HTTP ${r.status}`);
       // 解析 SSE 事件流（data: JSON 空行分隔）：
       //   traj/* → rAF 批处理（高频 delta 不进 React 同步路径）；usage → 低频 state；
@@ -404,7 +411,15 @@ export default function AgentDetailPage() {
             case 'answer':
               legacyAns += ev.delta;
               break;
+            case 'error':
+              finalAnswer = ev.message || '任务执行失败，请稍后重试';
+              break;
+            case 'recovery':
+              setRecoveryNotice(ev.message || '已恢复上次进度。');
+              break;
             case 'done':
+              completed = true;
+            case 'session/ready':
               if (ev.answer) finalAnswer = ev.answer;
               doneTrace = ev.trace;  // 执行摘要（后端 TraceProjection 产物，随 done 回传）
               // session/conversation id 持久到 localStorage：重启浏览器自动续最近一场
@@ -419,8 +434,9 @@ export default function AgentDetailPage() {
           }
         }
       }
+      if (!completed && !finalAnswer) finalAnswer = '连接中断，已保存的进度可以继续。';
     } catch {
-      finalAnswer = '请求失败，请稍后重试。';
+      if (!finalAnswer) finalAnswer = '请求失败，请稍后重试。';
     } finally {
       forceFlush();  // 尾部滞留事件立即应用（done 后不再有 delta，收口一致性）
       setSending(false);
@@ -580,6 +596,9 @@ export default function AgentDetailPage() {
           <button onClick={handleNewChat} style={{ padding:'5px 14px', borderRadius:6, border:`1px solid ${T.border}`, background:T.surface, color:T.text, fontSize:12, cursor:'pointer' }}>新建会话</button>
         </div>
 
+        <RecoveryBanner api={API} tenantId={TENANT_ID} sessionId={sessionId} busy={sending}
+          onContinue={source => { void handleSend(source); }} />
+        {sending && recoveryNotice && <div role="status" style={{ padding: '8px 16px', fontSize: 13, color: T.secondary }}>{recoveryNotice}</div>}
         <div style={{ flex:1, minHeight:0, padding:S.xl, overflow:'auto' }}>
           {loadingHistory && <div style={{ textAlign:'center', color:T.secondary, marginTop:S.huge, fontSize:14 }}>加载历史消息...</div>}
           {!loadingHistory && messages.length===0 && <div style={{ textAlign:'center', color:T.secondary, marginTop:S.huge, fontSize:14 }}>输入消息，测试智能体</div>}
@@ -659,7 +678,7 @@ export default function AgentDetailPage() {
             <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key==='Enter'&&handleSend()}
               placeholder="输入消息测试 Agent..."
               style={{ flex:1, minWidth:0, padding:'10px 14px', background:T.surface, border:`1px solid ${T.border}`, borderRadius:6, fontSize:14, color:T.text, outline:'none', boxSizing:'border-box', fontFamily:'inherit' }} />
-            <button onClick={handleSend} disabled={!input.trim()||sending} style={{...btnPrimary, padding:'10px 22px', fontSize:14, opacity:!input.trim()||sending?0.4:1 }}>发送</button>
+            <button onClick={() => { void handleSend(); }} disabled={!input.trim()||sending} style={{...btnPrimary, padding:'10px 22px', fontSize:14, opacity:!input.trim()||sending?0.4:1 }}>发送</button>
           </div>
         </div>
       </div>

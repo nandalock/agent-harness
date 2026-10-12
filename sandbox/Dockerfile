@@ -8,12 +8,15 @@
 #   - 依赖装进**镜像**，不是放宽 --read-only（只读根文件系统的边界不动）
 #
 # 改这里之后要重建：docker compose build sandbox-image
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 
 # 沙箱内工具。curl 是模型最常用的取数手段（HTTP 抓取 / 探活），git 用于拉
 # 仓库；ca-certificates 是 curl https 的前提，缺了会报证书错误而不是网络错误，
 # 很难从模型侧诊断。
-RUN apt-get update \
+ARG DEBIAN_MIRROR=https://mirrors.tuna.tsinghua.edu.cn
+RUN sed -i "s|http://deb.debian.org|${DEBIAN_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
+    && printf 'Acquire::Retries "3";\n' > /etc/apt/apt.conf.d/80-retries \
+    && apt-get update \
     && apt-get install -y --no-install-recommends \
         curl ca-certificates git \
     && rm -rf /var/lib/apt/lists/*

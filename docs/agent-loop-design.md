@@ -261,3 +261,11 @@ router / paper 三个仍在裸发 HTTP 的调用方。
 模型的下一次思考里读到被 steer 的内容（「用户要求停止，用一句话总结…」→ 照做）；浏览器里
 「运行中可输入 → 发一句 → 待投递 → 认领后翻已投递」全程可见；没有在跑的轮次 → 409；
 同 session 第二个请求 → 409 `session/agent-busy`。
+
+## 持久化检查点与中断恢复
+
+AgentRuntime 在构造 Loop 前取得 Session 写入所有权，并完成数据库历史恢复和中断修复。Loop 注入 SessionCheckpoint，在请求模型前、工具正文前、步骤结束后等待事件提交；Runtime 在最终事件提交和所有权释放后发送 done。检查点通过单独的严格接口执行，不复用本文件中“异常后继续”的观察 listener 和 request_error 策略。
+
+CheckpointError 从步骤与 driver 传播至 Runtime/Gateway，记录 persistence_error，停止后续派发和自动唤醒。工具调度器保留并发与有序提交；保存失败、等待保存期间取消以及工具已经进入执行的取消，分别保留真实执行状态。
+
+恢复关闭中断旧轮次，新轮次通过 turn/start.resumed_from 关联来源。未知结果由模型结合工具语义先核实，恢复器不自动重复执行工具。状态查询、继续 API、旧日志兼容及验证命令见 [Session 文档](../backend/agents/runtime/session/session.md)。

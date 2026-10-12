@@ -14,14 +14,16 @@
   list()                       — 列出 durable session_id
 
 append / flush 分开是刻意为之:Agent Event → SessionStore(Session) → append_events 收进
-pending → flush 显式落库。turn 完成是 Persistence 的持久化边界(由 AgentRuntime 触发,
-AgentLoop 不感知任何存储)。
+pending → flush 显式落库。运行主链路由 SessionCheckpoint 在模型/工具执行前、
+步骤和轮次结束后严格等待提交；Loop 仅依赖检查点接口，不依赖具体数据库。
 
 NoopPersistence 保留为默认实现 / 测试替身;生产装配见 PostgresSessionPersistence
 (persistence/postgres.py),由 main.py startup 注入,Session / SessionStore / AgentLoop 均不感知具体实现。
 """
 import abc
 import logging
+import threading
+from contextlib import contextmanager
 
 from backend.agents.runtime.session.events import SessionEvent, SessionHeader
 
@@ -29,17 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 def flush_session_events(persistence: "SessionPersistence", session) -> None:
-    """持久化边界（尽力而为）：Session 事件 → append_events(pending) → flush(durable)。
+    """辅助事件尽力保存；执行主链路必须使用严格的 SessionCheckpoint。
 
-    触发点 = turn 完成（AgentRuntime.reply 收尾），以及**标题生成在 turn 之后落地时**
-    （title_service：自动标题不阻塞主回复，所以它的事件常常晚于 turn 末那次 flush，
-    必须自己再补一次，否则会一直躺在 pending 里等下一次对话）。一次 flush 一个事务
-    （全部成功或全部失败）；失败仅记 error 不打断对话 —— 答案已生成，不让持久化
-    故障影响用户体验；pending 保留在 Persistence 内，下次 flush 幂等重放
-    （``ON CONFLICT (session_id, seq) DO NOTHING``，不产生重复行）。
-
-    放在 persistence 模块而不是 AgentRuntime：它纯粹是「怎么落库」，与谁触发无关；
-    标题服务也要用同一份逻辑（复制一份出来迟早在去重/重试上漂移）。
+    后台标题使用此入口。失败保留缓冲并记日志，不给模型/工具放行，
+    也不代表用户任务已经持久化完成。
     """
     try:
         persistence.append_events(session.header.id, session.events)
@@ -53,6 +48,30 @@ def flush_session_events(persistence: "SessionPersistence", session) -> None:
 
 class SessionPersistence(abc.ABC):
     """Event Log 持久化接口。实现方保证 load 返回的事件按 seq 有序。"""
+
+    durable = False
+
+    @contextmanager
+    def write_owner(self, session_id: str):
+        """Process-local exclusion for memory-only providers and test doubles."""
+        from backend.agents.runtime.loop.registry import RunConflict
+        with _owner_guard:
+            identity = (id(self), session_id)
+            if identity in _owners:
+                raise RunConflict(session_id)
+            _owners.add(identity)
+        try:
+            yield
+        finally:
+            with _owner_guard:
+                _owners.discard(identity)
+
+    def is_busy(self, session_id: str) -> bool:
+        with _owner_guard:
+            return (id(self), session_id) in _owners
+
+    def reset_pending(self, session_id: str) -> None:
+        """Discard unacknowledged in-memory writes when reopening durable history."""
 
     @abc.abstractmethod
     def create(self, session_id: str, header: SessionHeader) -> None:
@@ -121,6 +140,8 @@ class NoopPersistence(SessionPersistence):
 # main.py startup 调用 set_session_persistence(PostgresSessionPersistence()) 启用持久化;
 # 测试可注入替身。
 
+_owner_guard = threading.Lock()
+_owners: set[tuple[int, str]] = set()
 _persistence: SessionPersistence = NoopPersistence()
 
 

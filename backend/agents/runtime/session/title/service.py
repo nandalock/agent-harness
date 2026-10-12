@@ -26,7 +26,7 @@
 ``revision += 1`` 并 cancel 掉在飞的任务；任务落地前再校验一次「我还是当前那一次
 吗」，不是就丢弃 —— 用户改名、下一条消息、会话重建都会让在飞的任务作废。
 
-**为什么 LLM 标题要自己 flush**：``_flush_session_events`` 的触发点是 turn 完成，
+**为什么 LLM 标题要自己 flush**：运行主链路检查点可能已完成，
 而自动标题（刻意）跑在 turn 之后，它那条事件常常晚于那次 flush。不补一次 flush
 就只会躺在 persistence 的 pending 里，等下一次对话才顺带落库 —— 而「重启后端标题
 仍在」要求它尽快 durable。
@@ -209,19 +209,26 @@ class SessionTitleService:
         from backend.agents.runtime.session.session import Session
         from backend.agents.runtime.session.store import get_session_store
 
-        store = get_session_store()
-        session = store.get(session_id)
-        if session is None:
-            loaded = get_session_persistence().load(session_id)
-            if loaded is None:
-                raise LookupError(session_id)
-            header, events = loaded
-            session = Session.from_events(header, events)
+        from backend.agents.runtime.session.checkpoint import CheckpointError
+        persistence = get_session_persistence()
+        with persistence.write_owner(session_id):
+            store = get_session_store()
+            loaded = persistence.load(session_id) if persistence.durable else None
+            session = Session.from_events(*loaded) if loaded else store.get(session_id)
+            if session is None:
+                loaded = persistence.load(session_id)
+                if loaded is None:
+                    raise LookupError(session_id)
+                session = Session.from_events(*loaded)
+            persistence.reset_pending(session_id)
+            result = self.rename(session, title)
+            try:
+                persistence.append_events(session_id, session.events)
+                persistence.flush(session_id)
+            except Exception as exc:
+                raise CheckpointError(session_id, "title") from exc
             store.put(session)
-        result = self.rename(session, title)
-        # 改名是**用户动作**，必须立刻 durable —— 否则「重启后端标题仍在」不成立
-        flush_session_events(get_session_persistence(), session)
-        return result
+            return result
 
     # ── 写：异步 LLM 升级（不阻塞主回复）──
 
@@ -276,6 +283,10 @@ class SessionTitleService:
         """执行并接受**当前那一次** provider 生成（过期的结果一律丢弃）。"""
         title = await self._generate(messages, config)
         if not title:
+            return
+        from backend.agents.runtime.session.store import get_session_store
+        current_session = get_session_store().get(session.header.id)
+        if current_session is not None and current_session is not session:
             return
         if not self._current(session, work, revision):
             logger.debug(f"Session [{session.header.id}] LLM 标题过期，丢弃")

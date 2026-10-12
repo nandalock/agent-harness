@@ -13,7 +13,7 @@
 import asyncio
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 
 from backend.agents.base import BaseAgent, AgentReply
 from backend.agents.config_service import get_agent_definition, get_agent_config
@@ -28,13 +28,13 @@ from backend.agents.runtime.loop.events import EventSink
 from backend.agents.runtime.session import (
     Session,
     SessionEvent,
-    interrupted_turn_closers,
-    flush_session_events,
     get_session_persistence,
-    get_session_store,
     get_session_title_service,
 )
 from backend.agents.runtime.session.projections import TraceProjection
+from backend.agents.runtime.session.checkpoint import SessionCheckpoint
+from backend.agents.runtime.session.recovery import prepare_session, CONTINUE_TASK, saved_task_context
+from backend.agents.runtime.session.events import TURN_START, TASK_INPUT
 from backend.agents.runtime.system_prompt import (
     AssembleContext,
     assemble,
@@ -70,65 +70,55 @@ class AgentRuntime(BaseAgent):
         session_id: str | None = None,
         session_event_sink: Callable[[SessionEvent], None] | None = None,
         cancel: asyncio.Event | None = None,
+        resume_from: int | None = None,
+        on_session_ready: Callable[[str], Awaitable[None]] | None = None,
+    ) -> AgentReply:
+        config = self._cfg()
+        context = saved_task_context(context)
+        enabled = bool(config.get("session_enabled", True))
+        async with prepare_session(
+            get_session_persistence(), session_id, enabled=enabled,
+            agent_key=self.key, resume_from=resume_from,
+        ) as (session, checkpoint, recovery):
+            if enabled:
+                if on_session_ready:
+                    await on_session_ready(session.header.id)
+                if on_event:
+                    await on_event({"type": "session/ready", "session_id": session.header.id})
+            if recovery is not None:
+                question = CONTINUE_TASK
+                if context is None:
+                    for event in session.events:
+                        if event.seq <= resume_from:
+                            continue
+                        if event.type == TURN_START:
+                            break
+                        if event.type == TASK_INPUT:
+                            context = event.data.get("context")
+                            break
+                if on_event:
+                    await on_event({
+                        "type": "recovery", "session_id": session.header.id,
+                        "source_turn_start_seq": resume_from,
+                        "message": "已恢复上次进度，我会先确认中断时的操作是否完成，再继续任务。",
+                    })
+            reply = await self._reply_prepared(
+                tenant_id, question, config=config, session=session,
+                checkpoint=checkpoint, context=context, on_event=on_event,
+                session_event_sink=session_event_sink, cancel=cancel,
+                resumed_from=resume_from,
+            )
+        if on_event:
+            await on_event({"type": "done", "answer": reply.answer, "tier": reply.tier,
+                            "trace": reply.trace, "session_id": reply.session_id})
+        return reply
+
+    async def _reply_prepared(
+        self, tenant_id, question, *, config, session, checkpoint: SessionCheckpoint,
+        context=None, on_event=None, session_event_sink=None, cancel=None, resumed_from=None,
     ) -> AgentReply:
         t0 = time.perf_counter()
-        config = self._cfg()
-
-        # Session 开关（默认开）：
-        # 开 → Session 生命周期走 SessionStore + Persistence（见下三段式）；
-        # 关 → 创建「临时 Session」（不注册 SessionStore / 不落库 / 不返回 session_id）：
-        #      Session 仍是 AgentLoop 的唯一执行事实源与 LLM 消息派生源（AgentLoop 必填），
-        #      TraceProjection 照常工作；临时事件随 Session 丢弃，无外部副作用。
-        #
-        # 多轮 Session 三段式取 Session（SessionStore 只查内存热区，冷恢复编排在本层）：
-        #   A. session_id + SessionStore.get() 命中 → 直接继续（进程内热 Session，跨请求保持上下文）
-        #   B. session_id + Store miss + Persistence 命中 → load Event Log → from_events() replay
-        #      → put 回 Store（lazy restore：按需从 PostgreSQL 恢复，启动不预载全部历史）
-        #   C. session_id 无（首轮）或完全不存在（进程与 DB 均无）→ create() 新建。
-        #      C 的「未知 session_id 被静默续接」正是要避免的失忆场景：命中 C 时打 warning
-        #      日志（可观察），并把新 session_id 随 reply/done 回传，客户端应更新本地 id。
-        # AgentRuntime 是无状态执行器：Session 生命周期归 SessionStore，Runtime 只取用不持有。
-        # Persistence 是独立 capability（默认 Noop，main.py startup 装配 Postgres）：
-        #   新建后先固化 header（含 cwd），turn 完成是 flush 持久化边界。
-        persistence = get_session_persistence()
         session_enabled = bool(config.get("session_enabled", True))
-        session: Session | None = None
-        if session_enabled:
-            store = get_session_store()
-            if session_id:
-                session = store.get(session_id)
-                if session is None:
-                    loaded = persistence.load(session_id)
-                    if loaded is not None:
-                        header, events = loaded
-                        session = Session.from_events(header, events)
-                        # 崩溃修复：持久化只保证日志**物理**合法，语义闭合是这层的事 ——
-                        # 上一轮若被中断（进程没了），补合成 tool/result、step/end、turn/end，
-                        # 否则这轮派生的消息序非法（assistant.tool_calls 没有配对的 tool 消息）。
-                        repaired = self._repair_interrupted_tail(session, session_id)
-                        store.put(session)
-                        repair_note = f"，补记 {repaired} 条合成事件（上次运行中断）" if repaired else ""
-                        logger.info(
-                            f"AgentRuntime [{self.key}] 冷恢复 Session {session_id}: "
-                            f"replay {len(events)} events（Event Log → from_events）{repair_note}"
-                        )
-                    else:
-                        logger.warning(
-                            f"AgentRuntime [{self.key}] session_id={session_id} 在 SessionStore "
-                            f"与持久化存储中均不存在，将创建新 Session —— 旧上下文无法继续，"
-                            f"客户端请改用本次返回的新 session_id"
-                        )
-            if session is None:
-                session = store.create()
-                # 新会话先固化 header（含 cwd）：沙箱策略链与工作区读取都靠它解析，
-                # 进程中途崩溃时会话仍可被找回。
-                try:
-                    persistence.create(session.header.id, session.header)
-                except Exception:
-                    logger.exception(f"AgentRuntime [{self.key}] Session header 注册失败: {session.header.id}")
-        else:
-            session = Session()
-
         # 组装 system prompt（每轮一次）：
         #   ① SystemPrompt.assemble 求值全部贡献（工具 schema + 使用指导、身份、角色、
         #      上游上下文），段在前、动态上下文在尾部 —— 尾部变化不断前部的前缀缓存
@@ -166,6 +156,8 @@ class AgentRuntime(BaseAgent):
             # provider 声明的默认重试策略（对齐 A：策略归 provider、执行归循环）。
             # 装配方要换策略，传自己的 LoopHooks 进来即可 —— 这里只兜「没人给」的情况。
             hooks=LoopHooks(request_error=llm.retry_policy),
+            checkpoint=checkpoint, resumed_from=resumed_from,
+            task_context=saved_task_context(context),
         )
 
         # 同 session 单飞 + 活动句柄登记（docs/agent-loop-design.md §4）：本会话已经有一轮在跑
@@ -191,29 +183,13 @@ class AgentRuntime(BaseAgent):
             if attached_sink:
                 session.remove_listener(session_event_sink)
 
-            # 会话标题（会话级事实，不是「本 turn 的产出」）：turn 末**同步**补一条
-            # fallback（首条合格人类消息的前导词）——纯函数，无 IO 无模型，不会拖慢
-            # 收尾；已钉住（用户改过名）或已有标题时它是 no-op。见 session/title/service.py。
-            # 放在 flush **之前**：这条事件就跟本 turn 的其它事件一起落库，不需要额外
-            # 一次事务。LLM 版标题晚点自己补 flush（它刻意跑在主链路之外）。
-            #
-            # 这两步在 finally 里：**取消也是「一轮的结束」**——硬取消（task.cancel()）
-            # 会让异常穿过下面的代码，若不在这里落库，被取消的 turn 就只活在内存里。
-            # turn/end 已经写好（Loop 的 finally 保证），这里只负责让它 durable。
-            if session_enabled:
-                get_session_title_service().settle(session)
-
-                # turn 完成 = 持久化边界（仅正式 Session）：本 turn 的 Event Log
-                # （turn/start → user → steps → turn/end）经 append_events + flush 落库
-                # （一次 flush = 一个事务）。AgentLoop 不感知任何存储 —— 事件由 Session 收全，
-                # 此处一次性交给 Persistence。done 事件在 flush 之后发出，客户端收到 done ≈
-                # 本 turn 事件已 durable（flush 失败仅记日志，语义见 flush_session_events）。
-                flush_session_events(persistence, session)
-
-            # 注销放在最外层 finally 的最后：注销之后这一轮就不该再接投递了，而上面的
-            # settle / flush 还在往同一份 Event Log 追加事实 —— 让出语义边界，别让第二个
-            # 请求在这期间接手同一个 Session（交错写就是 §4 记的那个漏洞）。
-            get_run_registry().unregister(session.header.id)
+            try:
+                if session_enabled:
+                    get_session_title_service().settle(session)
+                    if not checkpoint.failed:
+                        await checkpoint.flush("turn_end")
+            finally:
+                get_run_registry().unregister(session.header.id)
 
         if session_enabled:
             # 排一次 LLM 标题升级：**不在本函数里 await**（schedule 不返回 awaitable），
@@ -245,34 +221,7 @@ class AgentRuntime(BaseAgent):
         # session_id 返回给客户端：首轮为新建 Session 的 id，后续轮次客户端原样带回；
         # 临时 Session（session_enabled=False）不返回 id。
         sid = session.header.id if session_enabled else None
-        if on_event:
-            await on_event({"type": "done", "answer": answer, "tier": tier, "trace": trace, "session_id": sid})
         return AgentReply(answer=answer, tier=tier, trace=trace, session_id=sid)
-
-    def _repair_interrupted_tail(self, session: Session, session_id: str) -> int:
-        """冷恢复的语义修复：补齐未闭合的尾巴，返回补记的事件数（对齐 DSH session/repair.ts）。
-
-        为什么需要它：事件在 **turn 末**批量 flush，但 flush 不止一个触发点（后台标题生成、
-        同会话的另一轮都可能在某一轮进行中把它的前缀落库）—— 此刻进程挂掉，库里就留下一个
-        没有 turn/end 的 turn，或一个永远等不到 tool/result 的 tool_calls。重放这样的日志
-        会派生非法消息序，trace 也收不了口。
-
-        补记的事件**按中断点的时间戳**写回 Event Log（见 repair.py），下一次 flush 一起落库；
-        修复失败不能拖垮冷恢复 —— 记 exception 后放行（那本就是个坏日志，比连会话都打不开强）。
-        """
-        try:
-            closers = interrupted_turn_closers(session.events)
-            if not closers:
-                return 0
-            session.append_recovered(closers)
-            logger.warning(
-                f"AgentRuntime [{self.key}] Session {session_id} 上次运行被中断，"
-                f"补记 {len(closers)} 条合成事件（{closers[-1].data.get('stop_reason')}）"
-            )
-            return len(closers)
-        except Exception:
-            logger.exception(f"AgentRuntime [{self.key}] Session {session_id} 崩溃修复失败（按原样继续）")
-            return 0
 
     async def _drive(self, loop: AgentLoop, question: str, cancel: asyncio.Event | None) -> str:
         """事件驱动的三段式：**投递 → 等 driver 收敛 → 取答案**（Loop 没有一次性入口）。

@@ -4,14 +4,13 @@ import json
 
 from fastapi import APIRouter, Body, Header, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.agents import list_agents, get_agent, register
 from backend.agents.base import AgentReply
 from backend.agents.runtime import AgentRuntime
 from backend.agents.runtime.session import (
     Session,
-    flush_session_events,
     get_session_persistence,
     get_session_store,
 )
@@ -33,6 +32,8 @@ from backend.core.connection import get_conn
 from backend.services.chat import service as chat_service
 from backend.agents.runtime.loop import NEXT_STEP, NEXT_TURN
 from backend.gateway import AgentNotFound, NoActiveRun, RequestContext, get_gateway
+from backend.agents.runtime.session.checkpoint import CheckpointError
+from backend.agents.runtime.session.recovery import CONTINUE_TASK, recovery_status, prepare_session
 
 router = APIRouter(prefix="/api/agents", tags=["Agents"])
 
@@ -42,6 +43,13 @@ class ChatRequest(BaseModel):
     conversation_id: int | None = None
     visitor_id: str | None = None
     session_id: str | None = None  # AgentRuntime 多轮 Session id：首轮不传（新建），后续传回（恢复）
+    resume_from: int | None = Field(default=None, gt=0)
+
+
+class ResumeRequest(BaseModel):
+    conversation_id: int
+    session_id: str
+    source_turn_start_seq: int = Field(gt=0)
 
 
 class SteerRequest(BaseModel):
@@ -278,11 +286,12 @@ def _session_for_conversation(tenant_id: int, conversation_id: int | None, reque
     每次 chat 完成后本层把 reply.session_id 写回映射（save_conversation_session_id），
     保证 conversation ↔ session 关联持续存在。映射属 chat 域，Runtime 不感知 conversation。
     """
-    if requested:
-        return requested
     if conversation_id is None:
         return None
-    return chat_service.get_conversation_session_id(tenant_id, conversation_id)
+    mapped = chat_service.get_conversation_session_id(tenant_id, conversation_id)
+    if requested and requested != mapped:
+        raise HTTPException(409, "会话与执行记录不一致，请刷新后重试")
+    return mapped
 
 
 def _resolve_conversation(agent_key: str, body: ChatRequest, tenant_id: int):
@@ -291,6 +300,8 @@ def _resolve_conversation(agent_key: str, body: ChatRequest, tenant_id: int):
         conv = chat_service.get_conversation(tenant_id, body.conversation_id)
         if conv is None:
             raise HTTPException(404, "会话不存在")
+        if conv.channel != f"agent:{agent_key}":
+            raise HTTPException(409, "该会话不属于当前智能体")
     else:
         conv = chat_service.create_conversation(
             tenant_id,
@@ -301,6 +312,19 @@ def _resolve_conversation(agent_key: str, body: ChatRequest, tenant_id: int):
             ),
         )
     return conv
+
+
+def _session_ready_callback(tenant_id, conversation_id, *, resume=False):
+    async def ready(session_id):
+        await asyncio.to_thread(
+            chat_service.save_conversation_session_id, tenant_id, conversation_id, session_id,
+        )
+        if resume:
+            await asyncio.to_thread(
+                chat_service.create_message, tenant_id, conversation_id,
+                chat_service.MessageCreate(role="customer", content=CONTINUE_TASK),
+            )
+    return ready
 
 
 @router.post("/{agent_key}/chat")
@@ -320,10 +344,11 @@ async def agent_chat(
     conv = _resolve_conversation(agent_key, body, x_tenant_id)
 
     # 2. 写入用户消息
-    chat_service.create_message(
-        x_tenant_id, conv.id,
-        chat_service.MessageCreate(role="customer", content=body.question),
-    )
+    if body.resume_from is None:
+        chat_service.create_message(
+            x_tenant_id, conv.id,
+            chat_service.MessageCreate(role="customer", content=body.question),
+        )
 
     # 3. 统一经 Gateway 驱动 AgentRuntime（身份解析/会话映射/上下文装配在 Gateway 内；
     #    session_id 透传：多轮 Session 由 AgentRuntime + SessionStore 管理。
@@ -336,6 +361,8 @@ async def agent_chat(
             visitor_id=body.visitor_id,
         ),
         body.question,
+        resume_from=body.resume_from,
+        on_session_ready=_session_ready_callback(x_tenant_id, conv.id, resume=body.resume_from is not None),
     )
 
     # 4. 写回 conversation → session 映射（本次 chat 使用的 Session，供历史会话冷恢复）
@@ -386,10 +413,11 @@ async def agent_chat_stream(
         raise HTTPException(404, str(e))
 
     conv = _resolve_conversation(agent_key, body, x_tenant_id)
-    chat_service.create_message(
-        x_tenant_id, conv.id,
-        chat_service.MessageCreate(role="customer", content=body.question),
-    )
+    if body.resume_from is None:
+        chat_service.create_message(
+            x_tenant_id, conv.id,
+            chat_service.MessageCreate(role="customer", content=body.question),
+        )
 
     # 统一经 Gateway 驱动 AgentRuntime；SSE 帧格式/事件翻译仍在本层（Gateway 不感知 HTTP）
     rctx = RequestContext(
@@ -417,12 +445,21 @@ async def agent_chat_stream(
         # Agent 在下一个检查点收口成 stop_reason=cancelled 的**正常结束**（不是异常），
         # 于是下面的 flush / 消息落库照常执行：停下来的一轮也留得下事实。
         cancel = asyncio.Event()
-        task = asyncio.create_task(
-            gateway.chat(
-                rctx, body.question,
-                on_event=on_event, session_event_sink=on_session_event, cancel=cancel,
-            ),
-        )
+        async def run_agent():
+            try:
+                return await gateway.chat(
+                    rctx, body.question,
+                    on_event=on_event, session_event_sink=on_session_event, cancel=cancel,
+                    resume_from=body.resume_from,
+                    on_session_ready=_session_ready_callback(x_tenant_id, conv.id, resume=body.resume_from is not None),
+                )
+            except Exception as exc:
+                code = getattr(exc, "code", "agent/error")
+                message = str(exc) if code != "agent/error" else "任务执行失败，请稍后重试"
+                await on_event({"type": "error", "code": code, "message": message})
+                return None
+
+        task = asyncio.create_task(run_agent())
 
         def _persist(reply) -> None:
             """落库 agent 回复：写回 conversation → session 映射 + 消息（thinking 进 metadata）"""
@@ -458,10 +495,10 @@ async def agent_chat_stream(
                     thinking_parts.append(ev.get("delta", ""))
                 # 会话 id 随 done 事件回传：前端据此恢复历史消息（conv_id 属于 API 层概念，
                 # AgentRuntime 不感知 conversation — 分层保持 Runtime 无状态）
-                if ev.get("type") == "done":
+                if ev.get("type") in ("done", "session/ready"):
                     ev = {**ev, "conversation_id": conv.id}
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
-                if ev.get("type") == "done":
+                if ev.get("type") in ("done", "error"):
                     break
         finally:
             # 生成器被关闭（客户端断开 / 前端 abort fetch）= 取消本轮：**同步** set 信号。
@@ -499,6 +536,18 @@ async def agent_chat_stream(
         event_gen(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/{agent_key}/chat/resume/stream")
+async def agent_resume_stream(agent_key: str, body: ResumeRequest,
+                              x_tenant_id: int = Header(alias="X-Tenant-ID")):
+    """Continue a specific interrupted turn; ownership and deduplication are checked by Runtime."""
+    return await agent_chat_stream(
+        agent_key,
+        ChatRequest(question=CONTINUE_TASK, conversation_id=body.conversation_id,
+                    session_id=body.session_id, resume_from=body.source_turn_start_seq),
+        x_tenant_id,
     )
 
 
@@ -598,8 +647,28 @@ def _session_or_404(session_id: str) -> Session:
         raise HTTPException(404, "session not found")
     header, events = loaded
     session = Session.from_events(header, events)
-    store.put(session)
     return session
+
+
+@router.get("/sessions/{session_id}/recovery")
+async def agent_session_recovery(session_id: str, x_tenant_id: int = Header(alias="X-Tenant-ID")):
+    """Read durable recovery state without publishing or repairing a Session."""
+    def owned():
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM conversations WHERE tenant_id = %s AND session_id = %s",
+                            (x_tenant_id, session_id))
+                return cur.fetchone() is not None
+    if not await asyncio.to_thread(owned):
+        raise HTTPException(404, "会话不存在")
+    persistence = get_session_persistence()
+    if not persistence.durable:
+        return {"session_id": session_id, "status": "temporary", "can_resume": False}
+    loaded = await asyncio.to_thread(persistence.load, session_id)
+    if loaded is None:
+        raise HTTPException(404, "执行记录不存在")
+    busy = await asyncio.to_thread(persistence.is_busy, session_id)
+    return {"session_id": session_id, **recovery_status(loaded[1], busy=busy)}
 
 
 @router.get("/sessions/{session_id}/trajectory")
@@ -657,9 +726,11 @@ async def agent_set_sandbox_mode(session_id: str, body: SandboxModeBody) -> dict
         mode = validate_mode(body.mode)
     except ValueError as e:
         raise HTTPException(400, str(e))
-    session = _session_or_404(session_id)
-    session.append(SANDBOX_MODE, {"mode": mode})
-    flush_session_events(get_session_persistence(), session)
+    _session_or_404(session_id)
+    async with prepare_session(get_session_persistence(), session_id, enabled=True,
+                               agent_key="") as (session, checkpoint, _):
+        session.append(SANDBOX_MODE, {"mode": mode})
+        await checkpoint.flush("sandbox_mode")
     return {"session_id": session_id, "override": mode}
 
 

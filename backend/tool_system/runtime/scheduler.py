@@ -29,7 +29,7 @@
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Callable, Protocol, runtime_checkable
+from typing import Awaitable, Callable, Protocol, runtime_checkable
 
 from backend.tool_system.context import ToolContext
 from backend.tool_system.registry.descriptor import EXCLUSIVE
@@ -56,7 +56,7 @@ SKIP_MESSAGES = {
 
 #: 取消补记的合成错误文本（未启动 / 已启动被中断，两种事实分开表述）
 ABORTED_MESSAGE = "工具调用已取消（未执行）"
-ABORTED_STARTED_MESSAGE = "工具调用已取消（执行中被中断）"
+ABORTED_STARTED_MESSAGE = "工具调用执行中被中断，结果未知；可能有副作用的操作请先核实状态，不要盲目重试"
 
 
 @dataclass(frozen=True)
@@ -99,7 +99,8 @@ def _aborted_outcome(plan: PlannedCall, *, started: bool) -> ToolCallOutcome:
     return ToolCallOutcome(
         tool_call_id=plan.tool_call_id,
         tool_name=plan.tool_name,
-        result={"error": ABORTED_STARTED_MESSAGE if started else ABORTED_MESSAGE},
+        result={"error": ABORTED_STARTED_MESSAGE if started else ABORTED_MESSAGE,
+                "code": "TOOL_OUTCOME_UNKNOWN" if started else "ABORTED_BEFORE_DISPATCH"},
         skipped=True,
     )
 
@@ -155,6 +156,7 @@ class ToolScheduler:
         runtime: ToolRuntime | None = None,
         max_parallel_tools: int = DEFAULT_MAX_PARALLEL_TOOLS,
         mode_resolver: Callable[[str], str] | None = None,
+        before_dispatch: Callable[[PlannedCall], Awaitable[None]] | None = None,
     ):
         """
         Args:
@@ -165,12 +167,15 @@ class ToolScheduler:
             max_parallel_tools: 并发池上限（>=1）；独占调用不受它约束（独占即单跑）。
             mode_resolver: ``tool_name → execution_mode``；缺省查 Registry。
                 在每次派发前查询（而非预计算）—— 前面的执行可能改变注册表。
+            before_dispatch: 正文前的异步确认；异常向调度调用方传播，不转换成普通工具错误。
         """
         self._recorder = recorder
         self._context_factory = context_factory
         self._runtime = runtime
         self._max_parallel = max(1, max_parallel_tools)
         self._mode_resolver = mode_resolver or _registry_mode_resolver
+        self._before_dispatch = before_dispatch
+        self._entered: set[str] = set()
 
     async def execute_tool_calls(self, plans: list[PlannedCall]) -> list[ToolCallOutcome]:
         """执行一批调用并有序提交，返回与 ``plans`` 等长的结果列表。
@@ -192,6 +197,7 @@ class ToolScheduler:
         """
         if not plans:
             return []
+        self._entered.clear()
 
         slots: list[ToolCallOutcome | None] = [None] * len(plans)
         in_flight: dict[int, asyncio.Task] = {}
@@ -253,7 +259,8 @@ class ToolScheduler:
                     list(in_flight.values()), return_when=asyncio.FIRST_COMPLETED,
                 )
                 for index in [i for i, t in in_flight.items() if t in done]:
-                    slots[index] = in_flight.pop(index).result()
+                    slots[index] = in_flight[index].result()
+                    in_flight.pop(index)
                 commit_ready()
         except BaseException:
             # 失败/取消：**先补全事实、再 await 排空**。顺序不能反 —— 若先 await
@@ -263,7 +270,10 @@ class ToolScheduler:
                 task.cancel()
             for index in sorted(in_flight):
                 task = in_flight[index]
-                slots[index] = _settled_outcome(plans[index], task)
+                if plans[index].tool_call_id not in self._entered:
+                    slots[index] = _aborted_outcome(plans[index], started=False)
+                else:
+                    slots[index] = _settled_outcome(plans[index], task)
                 commit_ready()
             for index, plan in enumerate(plans):
                 if slots[index] is None:
@@ -300,6 +310,9 @@ class ToolScheduler:
         Executor 经 ``context.event_sink`` 发出，本层不感知、不拼装。
         """
         context = self._context_factory(plan.tool_call_id)
+        if self._before_dispatch is not None:
+            await self._before_dispatch(plan)
+        self._entered.add(plan.tool_call_id)
         try:
             result = await self._runtime_or_default().execute(plan.tool_name, plan.args, context)
         except Exception as e:

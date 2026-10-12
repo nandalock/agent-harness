@@ -85,6 +85,9 @@ from backend.tool_system.runtime.scheduler import (
     ToolScheduler,
 )
 
+from backend.agents.runtime.session.checkpoint import CheckpointError, SessionCheckpoint
+from backend.agents.runtime.session.events import REQUEST_HEADER, TASK_INPUT
+
 logger = logging.getLogger(__name__)
 
 # 相同 tool + 相同参数连续调用达到该次数后停止（前两次重复允许，第三次触发）
@@ -207,6 +210,9 @@ class AgentLoop:
         session: Session,
         hooks: LoopHooks | None = None,
         fallback_reply: str = "",
+        checkpoint: SessionCheckpoint | None = None,
+        resumed_from: int | None = None,
+        task_context: dict | None = None,
     ):
         #: ``key`` 是 agent 的**业务标识**（paper_agent 这种），不是凭据 —— 它只进日志、
         #: turn/start 事件与 ToolContext（对齐 A 的 ``agent.ts`` 用 ``this.id`` 做同一件事）。
@@ -233,11 +239,15 @@ class AgentLoop:
         self._request_error: RequestErrorHook | None = None if hooks is None else hooks.request_error
         # Session 必填：Event Log 是唯一事实源，Loop 只 append。
         self.session = session
+        self._checkpoint = checkpoint
+        self._resumed_from = resumed_from
+        self._task_context = task_context
         # Tool 调度器：执行的顺序 / 并发 / 成对落库 / 有序提交归它，Loop 只产出调用计划
         self._scheduler = ToolScheduler(
             recorder=SessionToolRecorder(session),
             context_factory=self._tool_context,
             max_parallel_tools=llm_params.get("max_parallel_tools", DEFAULT_MAX_PARALLEL_TOOLS),
+            before_dispatch=self._before_tool if checkpoint and checkpoint.enabled else None,
         )
         # 待投递输入（followup / steer / inject 的落点）与 driver 的相位机。
         # 轮次号从 Event Log 续（同会话多轮 / 冷恢复都不重号）：本 Loop 实例不持有轮次事实。
@@ -252,6 +262,11 @@ class AgentLoop:
         self._answer_floor = session.seq
 
     # ── 投递：三个动作（同步、不被等待）──
+
+    async def _before_tool(self, call) -> None:
+        await self._checkpoint.before_tool(call)
+        if self._running().abort.is_set():
+            raise asyncio.CancelledError()
 
     def followup(self, text: str) -> str:
         """投递到 next-turn：本轮结束后作为**新的一轮**开始（空闲时立即开轮）。"""
@@ -366,6 +381,8 @@ class AgentLoop:
         except asyncio.CancelledError:
             logger.info(f"AgentLoop [{self.key}] driver 被硬取消")
             raise
+        except CheckpointError:
+            raise
         except Exception as e:  # noqa: BLE001 —— driver 边界：坏掉的轮次不该逃逸到调用方
             logger.exception(f"AgentLoop [{self.key}] driver 异常: {e}")
         finally:
@@ -373,7 +390,7 @@ class AgentLoop:
                 phase = self._phase
                 self._phase = _Idle(last_turn=phase.turn)
                 # 收敛前闩住的唤醒在这里重放（投递落在「已取消 / 正在收尾」的轮次里）
-                if phase.wake_requested and self._inbox.has_pending:
+                if phase.wake_requested and self._inbox.has_pending and not (self._checkpoint and self._checkpoint.failed):
                     self.wake_driver()
 
     def _running(self) -> _Running:
@@ -420,6 +437,8 @@ class AgentLoop:
                     self.session.append(TURN_START, {
                         "agent": self.key,
                         "turn": turn,
+                        "durability_policy": "semantic-v1" if self._checkpoint and self._checkpoint.enabled else "memory",
+                        **({"resumed_from": self._resumed_from} if self._resumed_from is not None else {}),
                         # 轮级运行限制入 turn/start 事件（log-only）：TraceProjection 从中投影
                         "limits": {
                             "max_steps": state.max_steps,
@@ -428,6 +447,9 @@ class AgentLoop:
                         },
                     })
                     phase.turn = turn
+                    self._resumed_from = None
+                    if self._task_context is not None:
+                        self.session.append(TASK_INPUT, {"context": self._task_context})
                     opened = True
                 for message in claimed:
                     # 认领即落事实（surface）：本步与后续所有轮次都从 Event Log 派生到它。
@@ -460,6 +482,8 @@ class AgentLoop:
                             state.final_answer = outcome.final_answer
                 finally:
                     self.session.append(STEP_END, {"step": step})
+                    if self._checkpoint and not self._checkpoint.failed:
+                        await self._checkpoint.flush("after_step")
                 target = NEXT_STEP
         except RunCancelled:
             # 协作取消：正常收口后返回，不抛 —— 取消的 turn 也要走完持久化与 done 事件。
@@ -471,6 +495,9 @@ class AgentLoop:
             # 任务状态必须正确）。这条路拿不到半截正文（随被取消的协程一起消失）。
             state.stop_reason = "cancelled"
             logger.info(f"AgentLoop [{self.key}] 本轮被硬取消（task.cancel）")
+            raise
+        except CheckpointError:
+            state.stop_reason = "persistence_error"
             raise
         except Exception as e:
             # 兜底：step 体内的意外异常（LLM 失败已在 step 内收口）—— 记 traceback 再收口，
@@ -553,6 +580,15 @@ class AgentLoop:
         """
         step = self._running().step - 1     # 0-based：事件与日志口径是 1-based（同旧 _run_step）
         request = self._build_request(state)
+        if self._checkpoint and self._checkpoint.enabled:
+            self.session.append(REQUEST_HEADER, {
+                "agent": self.key, "model": request.model,
+                "temperature": request.temperature, "max_tokens": request.max_tokens,
+                "tools": request.tools, "system_prompt": self.system_prompt,
+            })
+            await self._checkpoint.flush("before_model")
+            if state.cancel.is_set():
+                raise RunCancelled()
         logger.info(
             f"AgentLoop [{self.key}] step {step + 1}/{state.max_steps}, "
             f"本轮新输入={len(decision.messages)}, "
