@@ -515,6 +515,8 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
           )}
 
           <Composer
+            agentKey={session?.agent_key}
+            sessionId={session?.session_id}
             disabled={!session}   /* 发送中不禁用：那时的发送语义是「并入当前轮」（steer） */
             sending={sending}
             onStop={handleStop}

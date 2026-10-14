@@ -136,6 +136,16 @@ class AgentRuntime(BaseAgent):
         ))
         system_prompt = render_system_prompt(assembly)
         tool_schemas = [t.to_openai() for t in assembly.tools]
+        from backend.skills.registry import get_skill_registry
+        from backend.skills.runtime import SkillPreStep, scope_for
+        from backend.skills.tool import skill_descriptor
+        skill_scope = scope_for(tenant_id, self.key, [t["function"]["name"] for t in tool_schemas], config)
+        catalog = await asyncio.to_thread(get_skill_registry().list, skill_scope)
+        if any(s.model_invocable and not s.unavailable_reason(skill_scope) for s in catalog):
+            from backend.tool_system.registry.registry import _to_openai_function
+            if "skill" not in skill_scope.tool_names:
+                tool_schemas.append(_to_openai_function(skill_descriptor().schema))
+                skill_scope = scope_for(tenant_id, self.key, [t["function"]["name"] for t in tool_schemas], config)
 
         # 准备运行环境，创建并驱动 AgentLoop（执行循环在 Loop 内部；Session 与
         # 组装好的 system prompt 由 Runtime 注入）。
@@ -155,7 +165,7 @@ class AgentRuntime(BaseAgent):
             session=session,
             # provider 声明的默认重试策略（对齐 A：策略归 provider、执行归循环）。
             # 装配方要换策略，传自己的 LoopHooks 进来即可 —— 这里只兜「没人给」的情况。
-            hooks=LoopHooks(request_error=llm.retry_policy),
+            hooks=LoopHooks(request_error=llm.retry_policy, pre_step=SkillPreStep(skill_scope)),
             checkpoint=checkpoint, resumed_from=resumed_from,
             task_context=saved_task_context(context),
         )

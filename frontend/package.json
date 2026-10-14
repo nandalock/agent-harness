@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "test:skills": "playwright test -c playwright.skills.config.ts",
     "dev": "next dev -p 4000",
     "build": "next build",
     "start": "next start -p 4000"
@@ -22,6 +23,7 @@
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "typescript": "^5"
+    "typescript": "^5",
+    "@playwright/test": "^1.64.0"
   }
 }

@@ -26,8 +26,15 @@ A 用 Cordis 的 waterfall 洋葱模型做拦截（``agent.ts`` 发事件，``ll
 """
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from backend.agents.runtime.llm.errors import LlmError
+
+if TYPE_CHECKING:
+    from backend.agents.runtime.session import Session
+    from backend.agents.runtime.loop.inbox import InboxMessage
+
+PreStepHook = Callable[["Session", list["InboxMessage"]], Awaitable[list[dict]]]
 
 
 @dataclass(frozen=True)
@@ -54,12 +61,12 @@ RequestErrorHook = Callable[[LlmError, int], Awaitable[RetryDecision | None]]
 class LoopHooks:
     """一次 AgentLoop 运行的拦截点集合；字段为 None = 该点走现行为。
 
-    §6.2 一共定了四个点（``pre_step`` / ``request`` / ``request_error`` /
-    ``turn_stopping``）。本轮只落地 ``request_error`` —— 重试策略是它的第一个
-    内置消费者（§6.4 第 3 条）。其余三点的契约已定、实现排后，届时在此处加字段，
-    AgentLoop 的构造签名不用再动。
+    已实现 ``request_error`` 和 ``pre_step``；后者只返回待注入的用户角色上下文，
+    Session 作为只读视图传入，事实统一由 Loop 写入。
     """
 
     #: 重试策略外置点。None = AgentLoop 用内置默认策略（llm_retry.make_retry_policy，
     #: 即改造前的现行为：RETRYABLE_CODES + max_llm_retries），行为零变化。
     request_error: RequestErrorHook | None = None
+    # 认领输入并记录用户消息后、构造模型请求前调用；Loop 记录返回的注入消息。
+    pre_step: PreStepHook | None = None

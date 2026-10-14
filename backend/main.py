@@ -15,6 +15,7 @@ from backend.api.mcp import router as mcp_router
 from backend.api.tools import router as tools_router
 from backend.api.workflow import router as workflow_router
 from backend.api.workspace import router as workspace_router
+from backend.api.skills import router as skills_router
 from backend.gateway.errors import (
     AgentBusy,
     AgentNotFound,
@@ -46,6 +47,7 @@ app.include_router(mcp_router)
 app.include_router(tools_router)
 app.include_router(workflow_router)
 app.include_router(workspace_router)
+app.include_router(skills_router)
 
 #: Gateway 领域错误 → HTTP 状态（通道层的唯一映射表；错误本身携带稳定 code，见 gateway/errors.py）
 #: 409 的两种情况分开：AgentBusy = 该会话已在跑（改投运行中输入 /chat/steer）；
@@ -151,8 +153,20 @@ async def startup():
     paper_task = asyncio.create_task(uvicorn.Server(paper_config).serve())
     await asyncio.sleep(0.3)  # 等论文 MCP server 就绪
 
+    rt_id = None
+    import os
+    if os.environ.get("OVERLEAF_RT_ENABLED", "false").lower() == "true":
+        from backend.tool_packages.overleaf_rt.integration import ensure_server
+        rt_id = ensure_server()
+
     try:
         await init_registry()
+        from backend.skills.tool import skill_descriptor
+        from backend.tool_system.registry.registry import get_registry
+        get_registry().register_builtin(skill_descriptor())
+        if rt_id is not None:
+            from backend.tool_packages.overleaf_rt.integration import configure_tools
+            configure_tools(get_registry(), rt_id)
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"ToolRegistry 初始化失败（不影响服务启动）: {e}")
@@ -212,5 +226,7 @@ async def startup():
 
 @app.on_event("shutdown")
 async def shutdown():
+    from backend.tool_system.adapters.stdio_pool import close_stdio_sessions
+    await close_stdio_sessions()
     from backend.core.http import close_http_session
     await close_http_session()

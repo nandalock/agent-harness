@@ -102,6 +102,11 @@ services:
       PAPER_LLM_BASE_URL: ${PAPER_LLM_BASE_URL:-}
       PAPER_LLM_API_KEY: ${PAPER_LLM_API_KEY:-}
       PAPER_LLM_MODEL: ${PAPER_LLM_MODEL:-}
+      OVERLEAF_RT_ENABLED: ${OVERLEAF_RT_ENABLED:-true}
+      OVERLEAF_RT_URL: ${OVERLEAF_RT_URL:-https://www.overleaf.com}
+      OVERLEAF_RT_SESSION_COOKIE: ${OVERLEAF_RT_SESSION_COOKIE:-}
+      OVERLEAF_RT_CREDENTIALS_FILE: /root/.cache/overleaf-mcp/rt-credentials.json
+      SKILL_SOURCES: ${SKILL_SOURCES:-[]}
     ports:
       - "8000:8000"
       # 9001/9002（MCP server）不映射到宿主：它们由本容器内的 uvicorn 起（main.py），

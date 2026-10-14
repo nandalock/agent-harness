@@ -237,6 +237,7 @@ class AgentLoop:
             llm_params.get("max_llm_retries", DEFAULT_MAX_LLM_RETRIES),
         )
         self._request_error: RequestErrorHook | None = None if hooks is None else hooks.request_error
+        self._pre_step = None if hooks is None else hooks.pre_step
         # Session 必填：Event Log 是唯一事实源，Loop 只 append。
         self.session = session
         self._checkpoint = checkpoint
@@ -278,9 +279,9 @@ class AgentLoop:
 
     def inject(self, text: str) -> str:
         """投递到 next-step 但**不唤醒**：只在已有轮次运行时才可能被认领（系统侧静默投递）。"""
-        return self._send(text, NEXT_STEP, wake=False)
+        return self._send(text, NEXT_STEP, wake=False, source="system")
 
-    def _send(self, text: str, target: str, *, wake: bool, abort: asyncio.Event | None = None) -> str:
+    def _send(self, text: str, target: str, *, wake: bool, abort: asyncio.Event | None = None, source: str = "user") -> str:
         """投递一条输入，返回它的 id（认领时随 user/message 事件回来）。
 
         ``abort`` 只作用于这次唤醒开出来的那一轮（见 run() 的兼容入参）。
@@ -290,7 +291,7 @@ class AgentLoop:
             # 已被取消的活动兑现不了这次唤醒：输入落到下一轮，并在本轮收敛后重放唤醒（照搬 A）
             target = NEXT_TURN
             phase.wake_requested = True
-        message = new_message(text)
+        message = new_message(text, source=source)
         self._inbox.append(target, message)
         if wake:
             self.wake_driver(abort)
@@ -456,6 +457,7 @@ class AgentLoop:
                     # msg_id 是投递时给的：UI 据此把「已受理（待投递）」翻成「已投递」。
                     self.session.append(USER_MESSAGE, {
                         "content": message.text, "msg_id": message.id,
+                        "source": {"kind": message.source},
                     })
 
                 # 取消检查点（step 间隙）：在开新 step 之前响应 —— 不为一个注定被取消的
@@ -471,6 +473,23 @@ class AgentLoop:
                     turn_ends = "max_steps"   # 步数用尽：本轮收口（余下的输入留给下一轮）
                     break
 
+                if self._pre_step is not None:
+                    try:
+                        injections = await self._run_cancellable(
+                            asyncio.wait_for(self._pre_step(self.session, claimed),
+                                             timeout=max(0, state.deadline - time.perf_counter())),
+                            phase.abort,
+                        )
+                    except asyncio.TimeoutError:
+                        state.stop_reason = "max_wall_time"
+                        break
+                    except (RunCancelled, asyncio.CancelledError):
+                        raise
+                    except Exception:
+                        logger.exception("执行前钩子失败，保留已认领输入并继续默认路径")
+                        injections = []
+                    for injection in injections:
+                        self.session.append(USER_MESSAGE, injection)
                 self.session.append(STEP_START, {"step": step, "total": state.max_steps})
                 phase.step = step
                 try:
@@ -950,6 +969,8 @@ class AgentLoop:
             session_id=self.session.header.id,
             tool_call_id=tool_call_id,
             agent_id=self.key,
+            tenant_id=self.tenant_id,
+            visible_tool_names=frozenset(t["function"]["name"] for t in self.tool_schemas),
             event_sink=SessionToolEventSink(self.session, tool_call_id, forward=self.on_event),
             sandbox_policy=self._sandbox_policy(),
             approval=self._approval_channel(),

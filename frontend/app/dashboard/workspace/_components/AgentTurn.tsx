@@ -23,6 +23,7 @@ import {
   formatToolArgs, formatDuration, formatTokens, formatSandbox, stopReasonLabel,
 } from '@/lib/trajectory';
 import Markdown from './Markdown';
+import SkillRow from '@/components/SkillRow';
 
 // ── 状态色 ──
 // success 刻意不上色：每个成功的工具都点一个绿点会糊成一片，安静才是默认态。
@@ -349,7 +350,8 @@ export default function AgentTurn({ nodes, content, usage, trace, legacyThinking
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: content ? 14 : 0 }}>
           {processNodes.map(n => n.kind === 'think'
             ? <ThinkRow key={n.id} node={n} running={running && n.status === 'open'} />
-            : <ToolRow key={n.id} node={n} />)}
+            : n.kind === 'skill' ? <SkillRow key={n.id} node={n} />
+              : <ToolRow key={n.id} node={n} />)}
         </div>
       ) : legacyThinking ? (
         <div style={{ marginBottom: content ? 14 : 0 }}>

@@ -135,7 +135,7 @@ class TrajectoryProjection:
         if t == "llm/usage":
             return self._on_usage(d)
         if t == "user/message":
-            return self._on_user_message(d)
+            return self._on_user_message(d, ev.seq)
         # session/seed 等：无 UI 投影
         return []
 
@@ -309,7 +309,7 @@ class TrajectoryProjection:
                 out.append({"type": "traj/close", "id": node["id"]})
         return out
 
-    def _on_user_message(self, d: dict) -> list[dict]:
+    def _on_user_message(self, d: dict, seq: int) -> list[dict]:
         """运行中输入被**认领**了 → 回一帧，让前端把它上屏（§5.1 决策 A：认领时回帧）。
 
         每轮的**第一条** user/message 是本轮的开启输入（用户刚在输入框里发的那个问题），
@@ -319,6 +319,15 @@ class TrajectoryProjection:
         ``msg_id`` 是投递时受理方拿到的 id，前端据此把自己那条「待投递」气泡翻成已投递；
         inject（系统侧静默投递）没有前端气泡，前端按「未知 id」追加一条即可。
         """
+        source = d.get("source", {})
+        if source.get("kind") == "skill-catalog":
+            return []
+        if source.get("kind") == "skill-invocation":
+            node = {"id": f"t{self.turn}.skill.{seq}", "kind": "skill", "turn": self.turn,
+                    "step": self.cur_step, "name": source["name"],
+                    "arguments": _cap(source.get("arguments", ""), 200),
+                    "status": source.get("status", "loaded")}
+            return self._open(node, "traj/open")
         if not self._opening_seen:
             self._opening_seen = True
             return []

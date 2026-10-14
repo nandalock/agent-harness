@@ -1,7 +1,7 @@
 # Agent Loop 设计（第三阶段：运行中输入 + 循环拦截点）
 
 > 状态：**§2–§5 全部落地**（循环本体 §8 · LLM 出口 §9 · RunRegistry 与投递端点 §10）；
-> 未做：§3 的持久化队列、§6.2 的三个拦截点
+> 已落地：`pre_step` 的上下文注入；未做：§3 的持久化队列、`request` / `turn_stopping` 拦截点
 > 参考：DeepSeek Harness `dsh-agent-loop`（`inbox.ts` 双队列 · `agent.ts` 四个 waterfall）· `dsh-agent`（事件契约）
 > 关联代码：`backend/agents/runtime/loop/agent_loop.py` · `agent_runtime.py` · `backend/api/agents.py`
 > 前置：Phase 1（健壮性：finish_reason / 重试 / 闭合）· Phase 2（取消通道）已落地
@@ -204,7 +204,7 @@ agent_loop.py，解耦只做了一半。对齐 A 的 `RequestErrorAction`（`{ki
 | 未做 | 现状 / 影响 |
 |---|---|
 | §3 的**持久化**队列（`steer/queued` + `project_pending_input`） | 队列只在内存：进程重启丢待投递输入。**端点已经开了，所以这个边界现在对用户可见** —— 重启时正在跑的轮次本来也会断，用户重发即可；真要扛住得把队列落进 Event Log |
-| §6.2 的 `pre_step` / `request` / `turn_stopping` | 未实现；`_StepDecision` 就是 `pre_step` 的落点 |
+| §6.2 的 `request` / `turn_stopping` | 未实现；`pre_step` 已在认领用户输入后调用，返回的上下文由 Loop 记录到 Session；失败沿用默认路径，取消正常穿透 |
 
 ## 9. 已落地：LLM 出口抽层（循环不再认识 wire）
 

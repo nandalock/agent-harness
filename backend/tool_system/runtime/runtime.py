@@ -38,10 +38,12 @@ class ToolRuntime:
         executors: dict[str, ToolExecutor] | None = None,
     ):
         self._registry = registry or get_registry()
+        from backend.skills.tool import SkillExecutor
         # type → executor。新增执行器在此注册即可（Registry / API / Event Log 无需改动）。
         self._executors: dict[str, ToolExecutor] = executors or {
             "mcp": MCPExecutor(),
             "sandbox": SandboxExecutor(),
+            "skill": SkillExecutor(),
         }
 
     async def execute(

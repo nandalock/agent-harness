@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir "${TORCH_WHEEL_URL}" --index-url https://download
 RUN pip install --no-cache-dir \
     fastapi uvicorn pyjwt psycopg2-binary pydantic python-multipart \
     websockets aiohttp requests sentence-transformers \
-    langchain-core langchain-openai langgraph 'mcp<2' redis numpy pypdf
+    langchain-core langchain-openai langgraph 'mcp<2' redis numpy pypdf 'PyYAML>=6,<7' python-dotenv
 
 # RAG downloads the reranker on first use; deployment can opt into preloading.
 ARG PRELOAD_RERANKER=false
@@ -42,6 +42,8 @@ ARG DOCKER_CLI_VERSION=27.3.1
 RUN curl --retry 3 --retry-delay 2 -fsSL "https://mirrors.aliyun.com/docker-ce/linux/static/stable/x86_64/docker-${DOCKER_CLI_VERSION}.tgz" \
     | tar -xz --strip-components=1 -C /usr/local/bin docker/docker && \
     docker --version
+
+RUN npm install --global overleaf-mcp-rt@2.2.0
 
 COPY . ./backend
 

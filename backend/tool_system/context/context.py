@@ -39,3 +39,5 @@ class ToolContext:
     # None = 当前部署没有裁决方 → 需要审批的能力（如沙箱升权）fail-closed 到拒绝。
     # 本层只携带、不解释；使用方（沙箱执行器）自己决定要不要用。
     approval: "ApprovalChannel | None" = None
+    tenant_id: int | None = None
+    visible_tool_names: frozenset[str] | None = None

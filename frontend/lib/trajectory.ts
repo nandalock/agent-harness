@@ -51,7 +51,17 @@ export interface TrajAnswerNode {
   text: string;
 }
 
-export type TrajNode = TrajThinkNode | TrajToolNode | TrajAnswerNode;
+export interface TrajSkillNode {
+  id: string;
+  kind: 'skill';
+  status: 'loaded' | 'error';
+  turn: number;
+  step: number;
+  name: string;
+  arguments: string;
+}
+
+export type TrajNode = TrajThinkNode | TrajToolNode | TrajAnswerNode | TrajSkillNode;
 
 export interface UsageRow {
   step?: number | null;
@@ -141,7 +151,7 @@ export function applyTrajEvent(nodes: TrajNode[], ev: TrajWireEvent): TrajNode[]
     case 'traj/close':
       // 后端只对 think/answer close（tool 终态走 cancelled/success update）
       return mutate(nodes, ev.id, n => {
-        if (n.kind === 'tool') return n;
+        if (n.kind === 'tool' || n.kind === 'skill') return n;
         return { ...n, status: 'done' as const };
       });
     case 'answer-final': {

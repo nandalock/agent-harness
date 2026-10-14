@@ -17,7 +17,8 @@
 // （steer）—— 看着 Agent 跑偏就直接说，不必等它跑完再重来。目标队列固定 next-step；
 // 「本轮结束后再做」那种语义（next-turn）等有真实需求再加开关。
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { SlashSkillMenu, useSkillCatalog, type SkillEntry } from '@/components/SlashSkills';
 import { Plus, ArrowUp, Square, Loader2, ShieldCheck, ChevronDown, Check } from 'lucide-react';
 import { W, R, WS } from '../theme';
 import { SANDBOX_MODE_LABELS } from './useWorkspace';
@@ -32,6 +33,8 @@ interface Props {
   onUpload: (files: File[]) => void;
   sandboxMode: string;        // effective
   onModeChange: (mode: string) => void;
+  agentKey?: string;
+  sessionId?: string | null;
 }
 
 const MODES = ['read-only', 'workspace-write', 'danger-full-access'];
@@ -43,11 +46,25 @@ const MODE_HINTS: Record<string, string> = {
   'danger-full-access': '不限制，可读写挂载进来的任意目录',
 };
 
-export default function Composer({ disabled, sending, uploading, uploadError, onSend, onStop, onUpload, sandboxMode, onModeChange }: Props) {
+export default function Composer({ disabled, sending, uploading, uploadError, onSend, onStop, onUpload, sandboxMode, onModeChange, agentKey, sessionId }: Props) {
   const [text, setText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [modeOpen, setModeOpen] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const catalog = useSkillCatalog(agentKey, sessionId);
+  const [selected, setSelected] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+  const query = /^\/([a-z0-9:-]*)$/.exec(text)?.[1];
+  const menuOpen = !disabled && query !== undefined && !dismissed;
+  const candidates = catalog.entries.filter(entry => entry.name.toLowerCase().includes(query || ''));
+  const activeSkill = catalog.entries.find(entry => text.startsWith(`/${entry.name} `));
+  useEffect(() => { setSelected(0); setDismissed(false); }, [query, agentKey, sessionId]);
+  function pickSkill(entry: SkillEntry) {
+    if (entry.unavailable_reason) return;
+    setText(`/${entry.name} `);
+    inputRef.current?.focus();
+  }
 
   function submit() {
     const t = text.trim();
@@ -82,11 +99,28 @@ export default function Composer({ disabled, sending, uploading, uploadError, on
           paddingTop: WS.sm,
         }}>
 
+        {menuOpen && <SlashSkillMenu entries={candidates} selected={selected} loading={catalog.loading} error={catalog.error}
+          onPick={pickSkill} onRetry={catalog.refresh} background={W.overlay} color={W.text} muted={W.dimmed} />}
         {/* 文本区 */}
         <textarea
+          ref={inputRef}
+          aria-label="消息输入"
           value={text}
           onChange={e => setText(e.target.value)}
           onKeyDown={e => {
+            if (e.nativeEvent.isComposing) return;
+            if (menuOpen) {
+              if (e.key === 'Escape') { e.preventDefault(); setDismissed(true); return; }
+              if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && candidates.length) {
+                e.preventDefault();
+                setSelected(value => (value + (e.key === 'ArrowDown' ? 1 : -1) + candidates.length) % candidates.length);
+                return;
+              }
+              const candidate = candidates[selected];
+              if ((e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) && candidate && !candidate.unavailable_reason) {
+                e.preventDefault(); pickSkill(candidate); return;
+              }
+            }
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
           }}
           placeholder={
@@ -101,6 +135,9 @@ export default function Composer({ disabled, sending, uploading, uploadError, on
             color: W.text, fontSize: 14, lineHeight: '24px', fontFamily: 'inherit',
             maxHeight: 336, padding: '4px 12px 0 14px',
           }} />
+        {activeSkill?.argument_hint && <div style={{ padding: '2px 14px', color: W.dimmed, fontSize: 12 }}>
+          参数：{activeSkill.argument_hint}
+        </div>}
 
         {/* 工具栏 */}
         <div style={{ display: 'flex', alignItems: 'center', gap: WS.md, padding: '2px 8px 6px 8px' }}>

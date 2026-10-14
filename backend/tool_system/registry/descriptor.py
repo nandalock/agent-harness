@@ -76,6 +76,7 @@ class ToolDescriptor:
     # system prompt 供模型阅读（见 agents/runtime/system_prompt/tool.py）。
     # 留空表示由提示词层按工具名提供（平台内置工具的指导在 platform_sections）。
     usage_guidance: str | None = None
+    session_connection: bool = False  # 有状态 stdio 服务按租户、会话和配置复用连接。
 
     def __post_init__(self) -> None:
         # 执行模式影响调度安全性，拼错不能静默降级 —— 构造即校验

@@ -94,27 +94,32 @@ class MCPExecutor(ToolExecutor):
         """
         progress_fn = self._progress_query(descriptor.name) if self._has_sink(context) else None
         if progress_fn is None:
-            return await self._call(descriptor, args)
+            return await self._call(descriptor, args, context)
 
         start = time.perf_counter()
-        task = asyncio.create_task(self._call(descriptor, args))
+        task = asyncio.create_task(self._call(descriptor, args, context))
         last_stage = ""
-        while not task.done():
-            await asyncio.sleep(PROGRESS_POLL_INTERVAL)
-            try:
-                stage = progress_fn(args) or ""
-            except Exception:
-                stage = ""
-            if stage and stage != last_stage:
-                last_stage = stage
-                await self._emit_progress(context, descriptor.name, stage, round(time.perf_counter() - start))
-        return task.result()
+        try:
+            while not task.done():
+                await asyncio.sleep(PROGRESS_POLL_INTERVAL)
+                try:
+                    stage = progress_fn(args) or ""
+                except Exception:
+                    stage = ""
+                if stage and stage != last_stage:
+                    last_stage = stage
+                    await self._emit_progress(context, descriptor.name, stage, round(time.perf_counter() - start))
+            return task.result()
+        finally:
+            if not task.done():
+                task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
 
-    async def _call(self, descriptor: ToolDescriptor, args: dict) -> dict:
+    async def _call(self, descriptor: ToolDescriptor, args: dict, context: ToolContext | None = None) -> dict:
         if descriptor.transport == "http":
             rows = await self._call_http(descriptor, args)
         else:
-            rows = await self._call_stdio(descriptor, args)
+            rows = await self._call_stdio(descriptor, args, context)
         return {"tool": descriptor.name, "rows": rows, "count": len(rows)}
 
     @staticmethod
@@ -125,9 +130,12 @@ class MCPExecutor(ToolExecutor):
         return await client.call(descriptor.name, args)
 
     @staticmethod
-    async def _call_stdio(descriptor: ToolDescriptor, args: dict) -> list[dict]:
+    async def _call_stdio(descriptor: ToolDescriptor, args: dict, context: ToolContext | None = None) -> list[dict]:
         """STDIO：每次调用创建临时连接，调完即断（子进程生命周期归本次调用）"""
         cfg = descriptor.server
+        if descriptor.session_connection and context is not None:
+            from backend.tool_system.adapters.stdio_pool import call_stdio_session
+            return await call_stdio_session(cfg, context, descriptor.name, args)
         client = McpClient(
             transport="stdio",
             command=cfg.get("command", ""),

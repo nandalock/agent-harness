@@ -41,6 +41,7 @@ class ToolRegistry:
         # 工具执行模式（可选扩展点）：tool_name → "parallel" | "exclusive"；
         # 未声明的用描述自带值（默认 parallel）
         self._execution_modes: dict[str, str] = {}
+        self._session_connections: set[str] = set()
         self._ready = False
 
     # ── 来源注册 ──
@@ -105,6 +106,13 @@ class ToolRegistry:
     def get_tool_timeout(self, tool_name: str) -> float | None:
         return self._tool_timeouts.get(tool_name)
 
+    def register_session_connection(self, tool_name: str) -> None:
+        """声明需要保留进程状态的 stdio 工具；工具重新发现后继续生效。"""
+        self._session_connections.add(tool_name)
+        descriptor = self._by_name.get(tool_name)
+        if descriptor is not None:
+            self._by_name[tool_name] = replace(descriptor, session_connection=True)
+
     # ── 工具执行模式（领域扩展点） ──
 
     def register_execution_mode(self, tool_name: str, mode: str) -> None:
@@ -161,6 +169,8 @@ class ToolRegistry:
         m = self._execution_modes.get(d.name)
         if m is not None and m != d.execution_mode:
             d = replace(d, execution_mode=m)
+        if d.name in self._session_connections and not d.session_connection:
+            d = replace(d, session_connection=True)
         return d
 
     # ── 读取面 ──

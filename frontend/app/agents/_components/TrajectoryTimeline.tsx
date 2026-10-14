@@ -1,4 +1,5 @@
 'use client';
+import SkillRow from '@/components/SkillRow';
 
 // TrajectoryTimeline — Agent Trajectory 纵向时间线（DeepSeek Harness Conversation 思想）
 //
@@ -190,7 +191,8 @@ export default function TrajectoryTimeline({
       <div style={{ display: 'flex', flexDirection: 'column', marginBottom: S.sm, minWidth: 0, width: '100%' }}>
         {rows.map(n => n.kind === 'think'
           ? <ThinkRow key={n.id} node={n} running={running} />
-          : <ToolRow key={n.id} node={n} />)}
+          : n.kind === 'skill' ? <SkillRow key={n.id} node={n} />
+            : <ToolRow key={n.id} node={n} />)}
         {usage && usage.length > 0 && <UsageLine rows={usage} />}
       </div>
     </>

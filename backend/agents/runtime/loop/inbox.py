@@ -37,10 +37,11 @@ class InboxMessage:
     """
     id: str
     text: str
+    source: str = "user"
 
 
-def new_message(text: str) -> InboxMessage:
-    return InboxMessage(id=uuid.uuid4().hex[:12], text=text)
+def new_message(text: str, source: str = "user") -> InboxMessage:
+    return InboxMessage(id=uuid.uuid4().hex[:12], text=text, source=source)
 
 
 class ReactLoopInbox:
