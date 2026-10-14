@@ -36,4 +36,3 @@ class SkillExecutor(ToolExecutor):
         except SkillError as exc:
             return {"error": str(exc)}
         return {"tool": descriptor.name, "rows": [row], "count": 1}
-

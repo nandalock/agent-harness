@@ -183,4 +183,3 @@ def get_skill_registry() -> SkillRegistry:
     if _registry is None:
         _registry = SkillRegistry(default_sources())
     return _registry
-

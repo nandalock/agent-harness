@@ -23,4 +23,3 @@ def configure_tools(registry, server_id):
             registry.register_tool_timeout(descriptor.name, 300)
             registry.register_execution_mode(descriptor.name, "exclusive")
             registry.register_session_connection(descriptor.name)
-

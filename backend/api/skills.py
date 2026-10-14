@@ -39,4 +39,3 @@ async def list_skills(agent_key: str, session_id: str | None = None,
     except SkillError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"skills": [e for e in entries if e["user_invocable"]]}
-

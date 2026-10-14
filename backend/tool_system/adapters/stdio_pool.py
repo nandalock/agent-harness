@@ -86,4 +86,3 @@ async def close_stdio_sessions():
     sessions = list(_sessions.values())
     _sessions.clear()
     await asyncio.gather(*(session.close() for session in sessions))
-
