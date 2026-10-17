@@ -1,4 +1,4 @@
-"""当前智能体可见的用户技能目录；文件来源只能由服务器配置。"""
+"""当前租户、当前智能体可见的用户技能目录，包含聊天安装的技能。"""
 import asyncio
 
 from fastapi import APIRouter, Header, HTTPException
@@ -33,6 +33,11 @@ async def list_skills(agent_key: str, session_id: str | None = None,
         return {"skills": []}
     config = await asyncio.to_thread(agent._cfg)
     names = await asyncio.to_thread(get_registry().get_bindings, agent_key)
+    from backend.skills.installer import install_enabled
+    if install_enabled(config):
+        names = [*names, "skill_install"]
+    else:
+        names = [name for name in names if name != "skill_install"]
     try:
         scope = scope_for(x_tenant_id, agent_key, names, config)
         entries = await asyncio.to_thread(catalog_entries, get_skill_registry(), scope)

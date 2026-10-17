@@ -1,4 +1,4 @@
-"""从显式配置的目录发现技能；模型参数不能选择文件路径或租户。"""
+"""从配置目录和当前作用域的安装目录发现技能；模型不能选择磁盘路径或租户。"""
 import hashlib
 import json
 import logging
@@ -112,8 +112,9 @@ def _load(path: Path, source: SkillSource) -> Skill:
 class SkillRegistry:
     """共享源按租户和智能体过滤，正文每次加载时重新读取。"""
 
-    def __init__(self, sources: list[SkillSource]):
+    def __init__(self, sources: list[SkillSource], *, include_installed: bool = False):
         self.sources = tuple(sources)
+        self.include_installed = include_installed
         for source in self.sources:
             if not NAME.fullmatch(source.name) or source.kind not in ("skill", "command"):
                 raise SkillError("技能来源名称或类型无效")
@@ -122,7 +123,13 @@ class SkillRegistry:
         if not scope.enabled:
             return []
         skills = {}
-        for source in self.sources:
+        sources = list(self.sources)
+        if self.include_installed:
+            from backend.skills.installer import installed_source
+            installed = installed_source(scope)
+            if installed.root.is_dir():
+                sources.append(installed)
+        for source in sources:
             if not source.visible(scope):
                 continue
             if not source.root.is_dir():
@@ -149,6 +156,7 @@ class SkillRegistry:
 def default_sources() -> list[SkillSource]:
     root = Path(__file__).resolve().parents[1] / "skill_packages/overleaf_rt"
     sources = [
+        SkillSource("platform", Path(__file__).resolve().parents[1] / "skill_packages/platform"),
         SkillSource("overleaf-rt", root / "skills", requirements={
             "overleaf-setup": ("overleaf_list_hosts", "overleaf_list_projects"),
             "overleaf-editing": ("overleaf_read_doc", "overleaf_edit_doc"),
@@ -161,6 +169,8 @@ def default_sources() -> list[SkillSource]:
         }),
     ]
     for source in json.loads(os.environ.get("SKILL_SOURCES", "[]")):
+        if source.get("name") in ("installed", "platform"):
+            raise SkillError("installed 和 platform 是平台保留的技能来源名称")
         # 自定义目录必须声明归属，避免共享服务器的个人技能跨租户出现。
         if not source.get("tenant_ids"):
             raise SkillError("自定义技能来源必须声明 tenant_ids")
@@ -181,5 +191,5 @@ _registry: SkillRegistry | None = None
 def get_skill_registry() -> SkillRegistry:
     global _registry
     if _registry is None:
-        _registry = SkillRegistry(default_sources())
+        _registry = SkillRegistry(default_sources(), include_installed=True)
     return _registry

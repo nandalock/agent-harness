@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 export interface SkillEntry {
   key: string;
@@ -38,7 +38,8 @@ export function useSkillCatalog(agentKey?: string, sessionId?: string | null, te
     });
     return () => controller.abort();
   }, [agentKey, sessionId, tenantId, revision]);
-  return { entries, loading, error, refresh: () => setRevision(value => value + 1) };
+  const refresh = useCallback(() => setRevision(value => value + 1), []);
+  return { entries, loading, error, refresh };
 }
 
 export function SlashSkillMenu({ entries, selected, loading, error, onPick, onRetry,

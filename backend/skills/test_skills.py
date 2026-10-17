@@ -159,7 +159,7 @@ class SkillsTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(command.model_invocable)
         self.assertIsNone(command.unavailable_reason(scope))
         self.assertIn("login --url <URL>", render_skill(command, "https://www.overleaf.com"))
-        self.assertEqual(len(registry.list(scope)), 6)
+        self.assertEqual(len(registry.list(scope)), 7)
 
 
 if __name__ == "__main__":

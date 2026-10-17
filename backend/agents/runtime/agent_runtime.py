@@ -138,11 +138,19 @@ class AgentRuntime(BaseAgent):
         tool_schemas = [t.to_openai() for t in assembly.tools]
         from backend.skills.registry import get_skill_registry
         from backend.skills.runtime import SkillPreStep, scope_for
-        from backend.skills.tool import skill_descriptor
+        from backend.skills.tool import skill_descriptor, skill_install_descriptor
+        from backend.skills.installer import install_enabled
+        from backend.tool_system.registry.registry import _to_openai_function
+        # 安装入口不依赖预先绑定工具，才能在空目录中完成第一次安装。
+        # 关闭入口时也过滤历史绑定，执行器会再次检查当前配置。
+        if install_enabled(config):
+            if not any(t["function"]["name"] == "skill_install" for t in tool_schemas):
+                tool_schemas.append(_to_openai_function(skill_install_descriptor().schema))
+        else:
+            tool_schemas = [t for t in tool_schemas if t["function"]["name"] != "skill_install"]
         skill_scope = scope_for(tenant_id, self.key, [t["function"]["name"] for t in tool_schemas], config)
         catalog = await asyncio.to_thread(get_skill_registry().list, skill_scope)
         if any(s.model_invocable and not s.unavailable_reason(skill_scope) for s in catalog):
-            from backend.tool_system.registry.registry import _to_openai_function
             if "skill" not in skill_scope.tool_names:
                 tool_schemas.append(_to_openai_function(skill_descriptor().schema))
                 skill_scope = scope_for(tenant_id, self.key, [t["function"]["name"] for t in tool_schemas], config)

@@ -68,3 +68,25 @@ test('missing tool bindings remain visible with an explanation and cannot be pic
   await expect(page.getByRole('listbox', { name: '技能与命令' })).toHaveCount(0);
   expect(prompts).toEqual([]);
 });
+
+test('reopening the slash menu discovers a skill installed during chat', async ({ page }) => {
+  const prompts = await mockApi(page);
+  let requests = 0;
+  await page.route('http://localhost:8000/api/agents/assistant/skills*', async route => {
+    requests++;
+    const entry = prompts.length
+      ? { key: 'installed:demo', name: 'demo', description: '刚安装的技能' }
+      : { key: 'platform:skill-installer', name: 'skill-installer', description: '安装外部技能' };
+    await route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: {
+      skills: [{ ...entry, kind: 'skill', argument_hint: '', unavailable_reason: null }],
+    } });
+  });
+  await page.goto('/dashboard/workspace');
+  const input = page.getByRole('textbox', { name: '消息输入' });
+  await input.fill('/skill-installer demo');
+  await input.press('Enter');
+  await expect.poll(() => prompts).toEqual(['/skill-installer demo']);
+  await input.fill('/demo');
+  await expect(page.getByRole('option', { name: /demo/ })).toBeVisible();
+  expect(requests).toBeGreaterThan(1);
+});

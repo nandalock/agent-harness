@@ -57,6 +57,8 @@ export default function Composer({ disabled, sending, uploading, uploadError, on
   const [dismissed, setDismissed] = useState(false);
   const query = /^\/([a-z0-9:-]*)$/.exec(text)?.[1];
   const menuOpen = !disabled && query !== undefined && !dismissed;
+  // 聊天中可安装新技能；每次重新打开菜单时读取当前目录。
+  useEffect(() => { if (menuOpen) catalog.refresh(); }, [menuOpen, catalog.refresh]);
   const candidates = catalog.entries.filter(entry => entry.name.toLowerCase().includes(query || ''));
   const activeSkill = catalog.entries.find(entry => text.startsWith(`/${entry.name} `));
   useEffect(() => { setSelected(0); setDismissed(false); }, [query, agentKey, sessionId]);

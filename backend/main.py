@@ -161,9 +161,10 @@ async def startup():
 
     try:
         await init_registry()
-        from backend.skills.tool import skill_descriptor
+        from backend.skills.tool import skill_descriptor, skill_install_descriptor
         from backend.tool_system.registry.registry import get_registry
         get_registry().register_builtin(skill_descriptor())
+        get_registry().register_builtin(skill_install_descriptor())
         if rt_id is not None:
             from backend.tool_packages.overleaf_rt.integration import configure_tools
             configure_tools(get_registry(), rt_id)

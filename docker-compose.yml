@@ -41,6 +41,7 @@ services:
       - npm_cache:/root/.npm
       - uv_cache:/root/.cache/uv
       - hf_cache:/root/.cache/huggingface
+      - skill_data:/var/lib/agent/skills
       # 沙箱：SandboxExecutor 用 docker CLI 起临时容器（docs/sandbox-design.md §7）。
       # 安全：socket 等价于宿主机 root，只应暴露给后端进程本身；模型参数无法影响
       # docker 参数（DockerProvider 内部构造，且有注入断言）。
@@ -107,6 +108,7 @@ services:
       OVERLEAF_RT_SESSION_COOKIE: ${OVERLEAF_RT_SESSION_COOKIE:-}
       OVERLEAF_RT_CREDENTIALS_FILE: /root/.cache/overleaf-mcp/rt-credentials.json
       SKILL_SOURCES: ${SKILL_SOURCES:-[]}
+      SKILL_INSTALL_ROOT: /var/lib/agent/skills
     ports:
       - "8000:8000"
       # 9001/9002（MCP server）不映射到宿主：它们由本容器内的 uvicorn 起（main.py），
@@ -174,5 +176,6 @@ volumes:
   npm_cache:
   uv_cache:
   hf_cache:
+  skill_data:
   redis-data:
   redisinsight-data:

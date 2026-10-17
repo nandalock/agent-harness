@@ -7,7 +7,7 @@ import re
 
 from backend.skills.registry import Skill, SkillError, SkillRegistry, SkillScope, get_skill_registry
 
-SLASH = re.compile(r"^/([a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?)(?=\s|$)")
+SLASH = re.compile(r"^(?:/|\$(?=skill-installer(?:\s|$)))([a-z0-9]+(?:-[a-z0-9]+)*(?::[a-z0-9]+(?:-[a-z0-9]+)*)?)(?=\s|$)")
 
 
 def scope_for(tenant_id, agent_key, tool_names, config):

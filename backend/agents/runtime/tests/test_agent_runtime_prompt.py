@@ -91,6 +91,7 @@ def _runtime(agent_key: str = "test_agent", **config) -> AgentRuntime:
             # 「Event loop is closed」。fallback 标题照常补（纯函数、无 IO），
             # 标题本身的逻辑在 session/tests/test_title.py 里单独测。
             "session_title_enabled": False,
+            "skills_enabled": False,
             **config,
         },
     }
@@ -197,6 +198,23 @@ def test_tools_come_from_assembly():
     _reply(agent)
     assert "tools" not in captured[0]
     assert captured[0]["model"] == "m"
+
+
+def test_chat_installer_is_available_without_manual_tool_bindings():
+    _install_fakes()
+    _reply(_runtime(skills_enabled=True), "$skill-installer")
+    names = [tool["function"]["name"] for tool in captured[0]["tools"]]
+    assert "skill_install" in names and "skill" in names
+    content = "\n".join(message.get("content", "") for message in captured[0]["messages"])
+    assert "使用平台提供的 `skill_install` 工具" in content
+
+
+def test_disabled_installer_and_skill_whitelist_do_not_advertise_install_tool():
+    for config in ({"skill_install_enabled": False}, {"enabled_skills": []}):
+        _install_fakes()
+        _reply(_runtime(skills_enabled=True, **config))
+        names = [tool["function"]["name"] for tool in captured[0].get("tools", [])]
+        assert "skill_install" not in names
 
 
 def test_broken_variable_fails_loudly():
