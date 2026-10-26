@@ -33,6 +33,7 @@ class DebugRunRequest(BaseModel):
     system_prompt: str = ""
     user_id: str = "debug_user"
     llm_override: Optional[dict] = None
+    agent_key: Optional[str] = None
 
 
 # ── Existing endpoints ──
@@ -123,11 +124,13 @@ async def debug_run_memory(
         if not raw_messages:
             return {"ok": False, "error": "没有消息", "result": None}
 
-        # 2. Create LLM (reuse supervisor config)
-        definition = get_agent_definition("supervisor") or {}
+        # 2. Use the explicitly selected agent or caller-provided LLM settings.
+        definition = (get_agent_definition(body.agent_key) or {}) if body.agent_key else {}
         base = definition.get("config", {})
-        config = {**base, **(get_agent_config("supervisor") or {})}
+        config = {**base, **((get_agent_config(body.agent_key) or {}) if body.agent_key else {})}
         overrides = body.llm_override or {}
+        if not (overrides.get("api_key") or config.get("api_key")):
+            raise HTTPException(400, "请选择已配置模型的 Agent，或传入 llm_override")
         llm = ChatOpenAI(
             model=overrides.get("model") or config.get("model") or "deepseek-chat",
             api_key=overrides.get("api_key") or config.get("api_key") or "sk-xxx",

@@ -8,6 +8,22 @@ def register(agent: BaseAgent):
     _agents[agent.key] = agent
 
 
+def create_agent(definition: dict) -> BaseAgent:
+    """Build any user-defined agent without a registry of business identities."""
+    from backend.agents.runtime import AgentRuntime
+    from backend.agents.router.router_runtime import RouterRuntime
+    runtime = RouterRuntime if definition.get("agent_type") == "router" else AgentRuntime
+    return runtime(key=definition["agent_key"], definition=definition)
+
+
+def load_configured_agents() -> None:
+    from backend.agents.config_service import list_agent_definitions
+    agents = [create_agent(definition) for definition in list_agent_definitions()]
+    _agents.clear()
+    for agent in agents:
+        register(agent)
+
+
 def list_agents() -> list[dict]:
     from backend.agents.router.router_runtime import RouterRuntime
     result = []

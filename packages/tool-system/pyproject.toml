@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-tool-system"
+version = "0.1.0"
+description = "Host-independent native tool descriptor, registry, scheduler and runtime"
+readme = "README.md"
+requires-python = ">=3.12"
+
+[project.optional-dependencies]
+dev = ["build>=1", "mypy>=1.10"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agent_platform_tool_system = ["py.typed"]
+
+[tool.mypy]
+# Lifted from previously untyped backend modules; basic checking for now.
+python_version = "3.12"
+files = ["src"]
+check_untyped_defs = true

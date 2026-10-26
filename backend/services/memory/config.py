@@ -1,6 +1,6 @@
 """记忆模块配置 — 默认值 + DB 读写
 
-模仿 FaqAgent 的 template + config_service 模式：
+采用默认模板与数据库配置覆盖：
   - TEMPLATE 提供默认值
   - get_config / save_config 读写 DB（key="memory"）
 """

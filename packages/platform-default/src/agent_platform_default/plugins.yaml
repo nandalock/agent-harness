@@ -1,0 +1,12 @@
+# A composition lists plugin instances, never individual tools.
+# Services determine startup order through requires/provides.
+version: 1
+plugins:
+  - id: tools
+    name: agent-platform.tools-default
+  - id: mcp-manager
+    name: agent-platform.mcp-manager
+  - id: skill-tools
+    name: agent-platform.skill-tools
+  - id: sandbox-tools
+    name: agent-platform.sandbox-tools

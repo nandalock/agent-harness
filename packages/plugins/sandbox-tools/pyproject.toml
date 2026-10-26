@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-sandbox-tools"
+version = "0.1.0"
+description = "Sandbox bash/python tools as an Agent Platform plugin"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-sandbox>=0.1,<0.2",
+    "agent-platform-tool-system>=0.1,<0.2",
+]
+
+[project.optional-dependencies]
+dev = ["build>=1", "mypy>=1.10"]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.sandbox-tools" = "agent_platform_sandbox_tools:SandboxToolsPlugin"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agent_platform_sandbox_tools = ["py.typed"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+
+[tool.uv.sources]
+agent-platform-plugin-sdk = { path = "../../plugin-sdk", editable = true }
+agent-platform-sandbox = { path = "../../sandbox", editable = true }
+agent-platform-tool-system = { path = "../../tool-system", editable = true }

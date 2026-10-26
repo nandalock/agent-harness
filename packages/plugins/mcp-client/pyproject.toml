@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-mcp-client"
+version = "0.1.0"
+description = "MCP server tools as an Agent Platform plugin"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "mcp>=1.30,<2",
+]
+
+[project.optional-dependencies]
+dev = ["build>=1", "mypy>=1.10"]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.mcp-client" = "agent_platform_mcp_client:McpClientPlugin"
+"agent-platform.mcp-manager" = "agent_platform_mcp_client:McpManagerPlugin"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agent_platform_mcp_client = ["py.typed"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+
+[tool.uv.sources]
+agent-platform-plugin-sdk = { path = "../../plugin-sdk", editable = true }

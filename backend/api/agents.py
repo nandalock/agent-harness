@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.agents import list_agents, get_agent, register
+from backend.agents import list_agents, get_agent, register, create_agent
 from backend.agents.base import AgentReply
 from backend.agents.runtime import AgentRuntime
 from backend.agents.runtime.session import (
@@ -117,7 +117,7 @@ def agent_create(body: dict = Body(...)) -> dict:
                 "api_key": body.get("api_key", ""),
                 "base_url": body.get("base_url", ""),
                 "system_prompt_extra": "",
-                "fallback_agent": "human_handoff",
+                "fallback_agent": "",
             },
             "routable_agents": [],
         }
@@ -138,7 +138,7 @@ def agent_create(body: dict = Body(...)) -> dict:
                    VALUES (%s, %s, %s, %s::jsonb, %s, %s::jsonb)
                    ON CONFLICT (agent_key) DO UPDATE
                    SET name = EXCLUDED.name, description = EXCLUDED.description,
-                       config = EXCLUDED.config, agent_type = EXCLUDED.agent_type,
+                       config = EXCLUDED.config, agent_type = EXCLUDED.agent_type, status = 'active',
                        cache_policy = COALESCE(agent_definitions.cache_policy, EXCLUDED.cache_policy)
                    RETURNING agent_key, name, description, config, status, agent_type""",
                 (key, name, desc, json.dumps(config), agent_type, json.dumps(_default_cache_policy(key))),
@@ -148,10 +148,7 @@ def agent_create(body: dict = Body(...)) -> dict:
     definition = {"agent_key": row["agent_key"], "name": row["name"], "description": row["description"],
                   "config": dict(row["config"]), "status": row["status"], "agent_type": row.get("agent_type", "agent"),
                   "cache_policy": row.get("cache_policy") or _default_cache_policy(key)}
-    if agent_type == "router":
-        register(RouterRuntime(key=key, definition=definition))
-    else:
-        register(AgentRuntime(key=key, definition=definition))
+    register(create_agent(definition))
     return {"ok": True, "agent": {"key": key, "name": name, "desc": desc, "status": row["status"], "agent_type": agent_type}}
 
 
@@ -701,8 +698,8 @@ async def agent_session_sandbox_mode(session_id: str) -> dict:
     于是显示「标准模式」而沙箱实际只读——档位名骗人。两个消费方共用同一个
     函数（见 sandbox/runtime.py）。
     """
-    from backend.tool_system.sandbox.policy import FALLBACK_MODE
-    from backend.tool_system.sandbox.runtime import session_default_mode
+    from agent_platform_sandbox.policy import FALLBACK_MODE
+    from agent_platform_sandbox.runtime import session_default_mode
     session = _session_or_404(session_id)
     override = project_sandbox_mode(session.events)
     cfg_default = session_default_mode(session.header.cwd)
@@ -721,7 +718,7 @@ async def agent_set_sandbox_mode(session_id: str, body: SandboxModeBody) -> dict
     词汇封闭性在写入侧校验（非法值 400）。覆盖不持久化到任何配置存储——
     它就是日志里的一条事件，冷恢复后由投影重新折叠出同一值。
     """
-    from backend.tool_system.sandbox.policy import validate_mode
+    from agent_platform_sandbox.policy import validate_mode
     try:
         mode = validate_mode(body.mode)
     except ValueError as e:

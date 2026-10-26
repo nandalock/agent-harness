@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 #
 # 内置沙箱工具（bash/python）的指导写在各自的 ToolDescriptor 上（注册处直接可见）。
 # 但平台自有的 MCP 工具没有这样的注册点——它们的 schema 由 FastMCP 从函数签名与
-# docstring 自动派生（tool_packages/builtin/server.py），描述符在
+# docstring 自动派生（packages/tools/builtin-mcp），描述符在
 # MCPToolProvider 里统一构造，无从附加。于是按工具名在这里登记。
 #
 # 解析优先级（见 _platform_tool_provider）：描述符自带 > 本表 > 无指导。
@@ -156,17 +156,9 @@ async def _platform_tool_provider(ctx: AssembleContext) -> ToolProviderResult:
     Registry 未装配时返回空（与重构前 AgentRuntime 的 try/except RuntimeError
     同行为）：装配顺序不该决定对话能否进行。
     """
-    from backend.tool_system.registry.registry import (
-        _to_openai_function,
-        get_registry,
-    )
-    from backend.tool_system.sandbox.runtime import mounts_note
-
-    try:
-        registry = get_registry()
-    except RuntimeError:
-        logger.warning("ToolRegistry 未装配，本次组装不提供工具")
-        return ToolProviderResult()
+    from agent_platform_tool_system.registry import _to_openai_function
+    from agent_platform_sandbox.runtime import mounts_note
+    from agent_platform_tool_host import get_unified_tools_optional
 
     # 会话工作区在**宿主**上的路径，写进沙箱工具描述（理由见 mounts_note 的
     # docstring：Docker Desktop 的挂载表只报盘符根，模型自己推不出来）。
@@ -174,18 +166,26 @@ async def _platform_tool_provider(ctx: AssembleContext) -> ToolProviderResult:
     # header.cwd，在那之前只报容器内路径，不编一个猜的。
     workspace_host = ctx.session.header.cwd if ctx.session else None
 
-    descriptors = await registry.get_descriptors_for(ctx.agent_key)
+    unified = get_unified_tools_optional()
+    if unified is None:
+        logger.warning("单轨工具运行时未装配，本次组装不提供工具")
+        return ToolProviderResult()
+
+    # 单轨：注册表与可见工具都来自插件侧 tools.v1。
+    descriptors = await unified.descriptors_for_agent(
+        ctx.tenant_id, ctx.agent_key
+    )
     schemas: list[ToolSchema] = []
     guidance: dict[str, str] = {}
     for d in descriptors:
-        fn = _to_openai_function(d.schema)["function"]
-        if d.sandbox is not None:
-            # 挂载说明只在这里拼：注册发生在启动时、没有会话，两条轴虽说是部署
-            # 事实，工作区那条却随会话变。按 d.sandbox 判而不是按名字——
-            # 沙箱工具将来不止 bash/python。
+        fn = _to_openai_function({
+            "name": d.name,
+            "description": d.description,
+            "inputSchema": d.input_schema,
+        })["function"]
+        if unified.is_sandbox_tool(d.name):
             fn["description"] += mounts_note(workspace_host)
         schemas.append(ToolSchema(name=d.name, function=fn))
-        # 描述符自带优先（外部 MCP 工具可自行声明），平台表兜底
         text = d.usage_guidance or PLATFORM_TOOL_GUIDANCE.get(d.name)
         if text:
             guidance[d.name] = text

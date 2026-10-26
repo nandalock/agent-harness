@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Providers from './providers';
 
-export const metadata: Metadata = { title: '智能体运行平台' };
+export const metadata: Metadata = { title: 'minidsh' };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

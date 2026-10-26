@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
+  output: process.env.MINIDSH_LOCAL === 'true' ? undefined : 'standalone',
   transpilePackages: ['reactflow'],
   // 构建产物目录可切换，默认不变。
   //

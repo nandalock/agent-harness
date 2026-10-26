@@ -69,7 +69,7 @@ export default function RouterAgentPage() {
   const [l1Enabled, setL1Enabled] = useState(true);
   const [l1Rules, setL1Rules] = useState<KeywordRule[]>([]);
   const [l2, setL2] = useState({ enabled: true, model: 'bge-m3', threshold: 0.85, history_enabled: true, description_enabled: true, strategy: 'cascade', top_k: 3 });
-  const [l3, setL3] = useState({ enabled: true, model: '', api_key: '', base_url: '', system_prompt_extra: '', fallback_agent: 'human_handoff', min_confidence: 0.6 });
+  const [l3, setL3] = useState({ enabled: true, model: '', api_key: '', base_url: '', system_prompt_extra: '', fallback_agent: '', min_confidence: 0.6 });
   const [routableAgents, setRoutableAgents] = useState<RoutableAgent[]>([]);
 
   // Agent list (for target dropdowns)
@@ -470,9 +470,8 @@ export default function RouterAgentPage() {
                 <label style={labelStyle}>兜底 Agent</label>
                 <select value={l3.fallback_agent} onChange={e => setL3(p => ({ ...p, fallback_agent: e.target.value }))}
                   style={{ ...inputStyle, background: T.surface }}>
-                  <option value="human_handoff">human_handoff（转人工）</option>
-                  <option value="faqagent">faqagent（FAQ）</option>
-                  {agentList.filter(a => a.key !== 'faqagent').map(a => <option key={a.key} value={a.key}>{a.name} ({a.key})</option>)}
+                  <option value="">不设置兜底 Agent</option>
+                  {agentList.map(a => <option key={a.key} value={a.key}>{a.name} ({a.key})</option>)}
                 </select>
               </div>
 

@@ -6,11 +6,21 @@ from fastapi import APIRouter, Header, HTTPException
 from backend.agents import get_agent
 from backend.agents.runtime import AgentRuntime
 from backend.core.connection import get_conn
-from backend.skills.registry import SkillError, get_skill_registry
-from backend.skills.runtime import catalog_entries, scope_for
-from backend.tool_system.registry.registry import get_registry
+from agent_platform_skills.registry import SkillError, get_skill_registry
+from agent_platform_skills.runtime import catalog_entries, scope_for
 
 router = APIRouter(prefix="/api/agents", tags=["Skills"])
+
+
+def _bindings(agent_key: str) -> list[str]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT tool_name FROM agent_tool_bindings "
+                "WHERE agent_key = %s ORDER BY tool_name",
+                (agent_key,),
+            )
+            return [row["tool_name"] for row in cur.fetchall()]
 
 
 @router.get("/{agent_key}/skills")
@@ -32,8 +42,8 @@ async def list_skills(agent_key: str, session_id: str | None = None,
     if not isinstance(agent, AgentRuntime):
         return {"skills": []}
     config = await asyncio.to_thread(agent._cfg)
-    names = await asyncio.to_thread(get_registry().get_bindings, agent_key)
-    from backend.skills.installer import install_enabled
+    names = await asyncio.to_thread(_bindings, agent_key)
+    from agent_platform_skills.installer import install_enabled
     if install_enabled(config):
         names = [*names, "skill_install"]
     else:

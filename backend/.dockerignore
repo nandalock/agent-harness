@@ -9,4 +9,4 @@ venv
 .git
 *.log
 **/*.cookie.json
-tool_packages/paper/llm.config.json
+../packages/tools/paper-mcp/src/agent_platform_paper_mcp/llm.config.json

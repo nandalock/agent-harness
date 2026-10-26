@@ -7,13 +7,6 @@ import { MessageCircle, BookOpen, Bot, Settings, ChevronLeft, ChevronRight, Home
 import { T, S } from '@/app/theme';
 
 interface AgentItem { key:string; name:string; }
-const AGENTS: AgentItem[] = [
-  { key:'faqagent', name:'FAQ 知识检索' },
-  { key:'order_agent', name:'订单处理' },
-  { key:'ticket_agent', name:'工单售后' },
-  { key:'human_handoff', name:'人工转接' },
-  { key:'supervisor', name:'Supervisor' },
-];
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const COLLAPSED_W=64, EXPANDED_W=200;
@@ -23,9 +16,12 @@ export default function AgentsLayout({ children }:{ children:React.ReactNode }) 
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [routerAgents, setRouterAgents] = useState<AgentItem[]>([]);
+  const [agents, setAgents] = useState<AgentItem[]>([]);
   useEffect(() => { setCollapsed(localStorage.getItem('agents_sidebar_collapsed')==='true'); }, []);
   useEffect(() => {
     fetch(`${API}/api/agents`).then(r => r.json()).then(list => {
+      if (!Array.isArray(list)) return;
+      setAgents(list.filter(a => a.agent_type !== 'router'));
       const routers = (list as any[]).filter((a:any) => a.agent_type === 'router')
         .map((a:any) => ({ key: a.key, name: a.name }));
       setRouterAgents(routers);
@@ -60,7 +56,7 @@ export default function AgentsLayout({ children }:{ children:React.ReactNode }) 
 
         {/* Agent list */}
         <nav style={{ flex:1, padding:`${S.sm}px ${S.xs}px`, display:'flex', flexDirection:'column', gap:1 }}>
-          {AGENTS.map(a=>{
+          {agents.map(a=>{
             const active = isActive(a.key);
             return (
               <Link key={a.key} href={`/agents/${a.key}`} style={{

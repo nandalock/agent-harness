@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🤖 Agent Harness
+# 🤖 minidsh
 
-**支持受控工具执行、会话持久化与人工审批的智能体运行平台。**
+**支持受控工具执行、会话持久化与人工审批的minidsh。**
 
 通过统一的执行循环、并发工具调度、会话恢复与权限审批运行智能体。
 结合可视化工作流和 FAQ 检索增强生成（RAG），构建客服与知识助手等应用。
@@ -23,8 +23,8 @@
 ## ✨ 功能特性
 
 - 🎨 **可视化工作流**：在 React Flow 画布上拖放并连接智能体，一键保存和运行完整流程。
-- 🤖 **多智能体运行时**：内置 FAQ（RAG）、三级级联意图路由、监督编排与人工接管智能体，
-  也支持通过数据库定义新的智能体。
+- 🤖 **多智能体运行时**：所有智能体均由用户配置创建；通用运行时支持工具调用，
+  路由类型支持三级级联意图路由，不预置业务 Agent。
 - 🧩 **分段系统提示词**：每轮对话按已注册的内容组装提示词，涵盖身份、角色、各工具的使用指导
   与运行时上下文；配置修改立即生效，工具说明与工具实现保持一致。
 - 📚 **RAG 知识库**：结合 `pg_trgm`、Ollama 向量模型（`bge-m3`）、`pgvector`、
@@ -63,6 +63,18 @@
 
 ## 🚀 快速开始
 
+支持本地、混合和 Docker 三种部署。Python 3.12+、Node.js 20+ 环境下：
+
+```sh
+python minidsh.py setup              # 安装 .venv、插件和前端依赖，创建 .env.local
+python minidsh.py dev --mode hybrid  # 前后端本地运行，Docker 只启动数据库和 Redis
+# 已有 PostgreSQL：python minidsh.py dev
+# 本地生产：python minidsh.py build && python minidsh.py start
+```
+
+配置 `.env.local` 后也可执行 `python minidsh.py doctor` 检查环境。
+原有 `docker compose up -d --build` 保留。完整说明见[部署方式](docs/deployment.md)。
+
 > FAQ 语义检索需要运行中的 [Ollama](https://ollama.com/) 实例，并安装 `bge-m3` 向量模型
 > （`ollama pull bge-m3`）。开始模型对话前，请在控制台配置智能体的模型地址与 API 密钥。
 
@@ -73,6 +85,8 @@ docker compose up -d --build
 # 2. 打开控制台
 open http://localhost:4000
 ```
+
+插件默认零配置：`tools-default` 会自动装配。要额外加载插件，把 `plugins.yaml.example` 复制为仓库根目录的 `plugins.yaml`，重启 backend 即可；不写这个文件也能正常启动。
 
 重排模型会在首次 RAG 请求时下载，并持久化到 `hf_cache` 数据卷。
 如需在构建时预下载，请在项目根目录的 `.env` 文件中设置 `PRELOAD_RERANKER=true`，
@@ -128,30 +142,22 @@ flowchart LR
 ## 📁 项目结构
 
 ```
-agent-harness/
+minidsh/
 ├── backend/
 │   ├── agents/            # 智能体实现与运行时
 │   │   ├── runtime/       #   AgentRuntime · AgentLoop
 │   │   │   ├── session/   #   事件日志 · 对话视图 · 持久化 · 各类投影（见模块内 session.md）
 │   │   │   └── system_prompt/  # 分段注册的提示词组装（见模块内 system-prompt.md）
 │   │   ├── router/        #   三级级联意图路由（关键词 → 向量 → LLM 函数调用）
-│   │   ├── faqagent/      #   RAG 检索 + 润色
-│   │   └── supervisor/    #   编排（遗留 LangGraph 版本）
 │   ├── api/               # REST 与 WebSocket 接口
 │   │   └── workspace.py   #   会话工作区：文件浏览 / 预览 / 上传 / 预创建会话
 │   ├── core/              # 基础设施：数据库连接与表结构、JWT 认证、RAG 向量与重排模型
 │   ├── engine/            # 工作流引擎：LangGraph 构建器、处理器、状态与中间件
-│   ├── tool_system/
-│   │   ├── registry/      #   工具元数据：来源抽象 · ToolDescriptor · 统一索引
-│   │   ├── runtime/       #   执行：ToolScheduler（并发/屏障/有序提交）· Executor
-│   │   ├── sandbox/       #   沙箱：策略解析 · Docker 后端 · 路径解析 · 升权
-│   │   ├── context/       #   ToolContext（一次调用的运行时上下文）
-│   │   └── events/        #   工具生命周期事件
 │   ├── interaction/       # 通用人工审批层（沙箱升权等能力的裁决通道）
 │   ├── gateway/           # 请求入口：RequestContext 与通道分发
-│   ├── tool_packages/     # 工具实现：论文 MCP 服务与内置 MCP 服务
 │   ├── services/          # 业务服务：FAQ、对话、记忆与缓存
 │   └── integrations/      # 第三方渠道集成（闲鱼）
+├── packages/              # 插件 SDK/runtime、tools-default、mcp-client/manager、tool-host、sandbox、工具与技能包
 ├── docs/                  # 设计文档（sandbox-design.md 等）
 ├── frontend/
 │   └── app/
@@ -213,7 +219,7 @@ agent-harness/
 
 ### 📄 论文 MCP：模型配置
 
-论文 MCP（`backend/tool_packages/paper/`，端口 `:9002`）提供 `search_papers` /
+论文 MCP（`packages/tools/paper-mcp/`，端口 `:9002`）提供 `search_papers` /
 `fetch_paper_text` / `summarize_paper` / `list_papers` 四个工具。总结论文时会在
 **工具内部**调用大语言模型，因此需要配置 OpenAI 兼容网关（`/v1/chat/completions`）。
 
@@ -223,7 +229,8 @@ agent-harness/
 
 ```bash
 # 复制配置模板（模板纳入版本管理，真实配置已被 .gitignore 忽略）
-cp backend/tool_packages/paper/llm.config.example.json backend/tool_packages/paper/llm.config.json
+cp packages/tools/paper-mcp/src/agent_platform_paper_mcp/llm.config.example.json \
+   packages/tools/paper-mcp/src/agent_platform_paper_mcp/llm.config.json
 ```
 
 编辑 `llm.config.json` 中的以下三项。代码目录以绑定挂载方式接入容器，修改后即时生效，无需重启：
@@ -247,10 +254,17 @@ PAPER_LLM_MODEL=gpt-4o
 docker compose up -d backend
 ```
 
-**智能体决策层（`paper_agent`）**还需单独配置编排模型，由 `AgentRuntime` 使用，
-与论文总结层相互独立，可使用不同模型。通过 `PUT /api/agents/paper_agent/config`，
+**用户创建的论文研究智能体**还需单独配置编排模型，由 `AgentRuntime` 使用，
+与论文总结层相互独立，可使用不同模型。通过 `PUT /api/agents/{your_agent_key}/config`，
 或在控制台的智能体配置页填写 `base_url` / `api_key` / `model`。
 建议 `max_steps: 8`、`max_tokens: 3000`（默认已内置）。
+
+### 🍃 Overleaf MCP
+
+后端自动注册 `overleaf` 工具服务，提供 LaTeX 文件读写、编译、PDF 下载与版面查询。
+`overleaf-mcp-plus[compile]==0.3.1` 使用独立 Python 环境，不影响平台的 MCP SDK 版本。
+账户凭据在项目根目录 `.env` 中配置：`OVERLEAF_GIT_TOKEN` 用于 Git 文件操作，
+`OVERLEAF_SESSION` 用于项目列表、编译与下载。安装和使用见 [Overleaf MCP 文档](docs/overleaf-mcp.md)。
 
 ## 🗺️ 开发路线
 
@@ -276,12 +290,30 @@ docker compose up -d backend
 
 ### 开发说明
 
+插件公共协议位于独立包 [`packages/plugin-sdk`](packages/plugin-sdk/README.md)，YAML 加载、entry point 发现、依赖排序和生命周期管理位于 [`packages/plugin-runtime`](packages/plugin-runtime/README.md)；默认工具实现仍由后续包提供。
+
+后端启动时总是装配单轨工具运行时：插件侧的 `tools-default` 持有唯一 `tools.v1` 注册表；MCP 工具实现位于 [`packages/tools/`](packages/tools/README.md)，由 `agent-platform.mcp-client` 插件连接并注册（`agent-platform.mcp-manager` 负责运行时导入/探测/重连）；沙箱 `bash`/`python` 由 [`packages/plugins/sandbox-tools`](packages/plugins/sandbox-tools/README.md) 注册，技能 `skill`/`skill_install` 由 [`packages/plugins/skill-tools`](packages/plugins/skill-tools/README.md) 注册。AgentLoop、系统提示词和工具列表都只读这一个注册表，并只经它执行。`PLUGIN_CONFIG` 只决定额外加载哪些插件，不再决定是否启用工具服务；四个默认工具插件（tools-default、mcp-manager、skill-tools、sandbox-tools）会自动补上。Docker 镜像已内置 SDK、runtime、tools-default 和示例插件，例如：
+
+默认零配置启动，不需要设置任何插件变量：
+
+```bash
+docker compose up -d
+```
+
+`mcp_servers` 表里的 MCP server 会自动转换成 `agent-platform.mcp-client` 插件实例，不需要在 YAML 里手写；设置 `PLUGIN_MCP_AUTO=false` 可关闭自动装配。
+
+要额外加载插件时，把 `plugins.yaml.example` 复制成仓库根目录的 `plugins.yaml`（Docker 内是 `/app/plugins.yaml`），重启 backend 即可；`PLUGIN_CONFIG` 只用于把配置放到其他路径。本地开发一次安装插件栈：
+
+```bash
+pip install -r requirements-plugins.txt
+```
+
 - 后端改动后若 `--reload` 卡住，可执行 `docker compose restart backend`。
 - 测试与模块位于同一目录（`test_*.py`），自带 `main()` 运行器，容器内未安装 pytest：
 
   ```bash
   docker compose exec backend python backend/agents/runtime/system_prompt/test_system_prompt.py
-  docker compose exec backend python backend/tool_system/sandbox/test_sandbox.py
+  docker compose exec backend python backend/tests/test_sandbox.py
   ```
 
 ## 📄 许可证

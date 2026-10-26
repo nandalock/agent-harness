@@ -58,10 +58,10 @@ def rerank(question: str, candidates: list[dict], top_k: int = 3) -> list[dict]:
     if not candidates:
         return []
 
-    model = _get_model()
     pairs = [(question, c["question"]) for c in candidates]
 
     try:
+        model = _get_model()
         scores = model.predict(pairs, show_progress_bar=False)
     except Exception as e:
         logger.warning(f"Rerank 失败: {e}")

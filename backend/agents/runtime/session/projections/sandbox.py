@@ -12,7 +12,7 @@ Event Log 是唯一事实源；本模块把 ``sandbox/mode`` 事件 fold 成「�
 文件名不再带 `_projection` 后缀 —— 文件夹名已经说了这件事（见本包 ``__init__.py``）。
 """
 from backend.agents.runtime.session.events import SANDBOX_MODE, SessionEvent
-from backend.tool_system.sandbox.vocabulary import ALL_MODES
+from agent_platform_sandbox.vocabulary import ALL_MODES
 
 
 class SandboxModeProjection:

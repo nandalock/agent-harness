@@ -8,7 +8,7 @@ import { X } from 'lucide-react';
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 interface AgentInfo { key:string; name:string; desc:string; status:string; agent_type?:string; }
-const ICONS: Record<string,string> = { faqagent:'📋', router:'🧠', supervisor:'🧭', default:'🤖' };
+const ICONS: Record<string,string> = { router:'🧠', default:'🤖' };
 const TYPE_BADGE: Record<string,{label:string;bg:string;color:string}> = {
   router: {label:'路由', bg:'#F3E8FF', color:'#9333EA'},
   agent:  {label:'Agent', bg:'#E8F0FF', color:'#3370FF'},
@@ -69,6 +69,7 @@ export default function AgentsPage() {
         <button onClick={()=>{setError('');setShowModal(true);}} style={btnPrimary}>+ 新建 Agent</button>
       </div>
       {loading && <div style={{ textAlign:'center', color:T.tertiary, marginTop:S.huge }}>加载中...</div>}
+      {!loading && agents.length === 0 && <p style={{ color:T.secondary }}>还没有 Agent，点击“新建 Agent”开始配置。</p>}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:S.base }}>
         {agents.map(agent=>{
           const isRouter = agent.agent_type === 'router';

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-skills"
+version = "0.1.0"
+description = "Skill discovery, loading and installation for the Agent Platform"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["PyYAML>=6,<7", "aiohttp>=3.9"]
+
+[project.optional-dependencies]
+dev = ["build>=1", "mypy>=1.10"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agent_platform_skills = ["builtin/**/*"]
+
+[tool.mypy]
+# This package is a lift-and-shift of previously untyped backend modules.
+# Keep basic checking while annotations are added incrementally.
+python_version = "3.12"
+files = ["src"]
+check_untyped_defs = true

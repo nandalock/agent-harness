@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-default"
+version = "0.1.0"
+description = "Default plugin composition for Agent Platform"
+requires-python = ">=3.12"
+dependencies = ["agent-platform-plugin-runtime>=0.1,<0.2"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agent_platform_default = ["plugins.yaml"]

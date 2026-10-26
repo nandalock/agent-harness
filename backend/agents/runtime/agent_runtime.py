@@ -40,7 +40,7 @@ from backend.agents.runtime.system_prompt import (
     assemble,
     render_system_prompt,
 )
-from backend.tool_system.runtime.scheduler import DEFAULT_MAX_PARALLEL_TOOLS
+from agent_platform_tool_system.scheduler import DEFAULT_MAX_PARALLEL_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -136,23 +136,26 @@ class AgentRuntime(BaseAgent):
         ))
         system_prompt = render_system_prompt(assembly)
         tool_schemas = [t.to_openai() for t in assembly.tools]
-        from backend.skills.registry import get_skill_registry
-        from backend.skills.runtime import SkillPreStep, scope_for
-        from backend.skills.tool import skill_descriptor, skill_install_descriptor
-        from backend.skills.installer import install_enabled
-        from backend.tool_system.registry.registry import _to_openai_function
+        from agent_platform_skills.registry import get_skill_registry
+        from agent_platform_skills.runtime import SkillPreStep, scope_for
+        from agent_platform_skill_tools import (
+            openai_tool,
+            skill_descriptor,
+            skill_install_descriptor,
+        )
+        from agent_platform_skills.installer import install_enabled
         # 安装入口不依赖预先绑定工具，才能在空目录中完成第一次安装。
         # 关闭入口时也过滤历史绑定，执行器会再次检查当前配置。
         if install_enabled(config):
             if not any(t["function"]["name"] == "skill_install" for t in tool_schemas):
-                tool_schemas.append(_to_openai_function(skill_install_descriptor().schema))
+                tool_schemas.append(openai_tool(skill_install_descriptor()))
         else:
             tool_schemas = [t for t in tool_schemas if t["function"]["name"] != "skill_install"]
         skill_scope = scope_for(tenant_id, self.key, [t["function"]["name"] for t in tool_schemas], config)
         catalog = await asyncio.to_thread(get_skill_registry().list, skill_scope)
         if any(s.model_invocable and not s.unavailable_reason(skill_scope) for s in catalog):
             if "skill" not in skill_scope.tool_names:
-                tool_schemas.append(_to_openai_function(skill_descriptor().schema))
+                tool_schemas.append(openai_tool(skill_descriptor()))
                 skill_scope = scope_for(tenant_id, self.key, [t["function"]["name"] for t in tool_schemas], config)
 
         # 准备运行环境，创建并驱动 AgentLoop（执行循环在 Loop 内部；Session 与
@@ -302,7 +305,7 @@ class AgentRuntime(BaseAgent):
         }
 
     async def _call_llm_plain(self, messages: list[dict], config: dict) -> tuple[str, bool]:
-        """简单 LLM 调用（无 tools），FaqAgent RAG 用（非 Agent 循环，留在 Runtime）。
+        """通用非工具 LLM 调用，复用统一客户端。
 
         走的是同一个客户端：凭据、端点、失败分类、超时都归它管，这里只做「问一句、
         取一段文本」。工具与流式都不参与 —— 一次非流式 canonical 请求。

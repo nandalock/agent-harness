@@ -1,0 +1,2 @@
+# Optional CrossEncoder reranking; may download PyTorch and model weights.
+sentence-transformers>=3,<6

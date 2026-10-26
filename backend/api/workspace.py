@@ -37,7 +37,7 @@
 安全模型：工作区内容是**模型**写的，模型不可信。因此：
 
   - 所有用户传入的路径都经
-    :func:`~backend.tool_system.sandbox.workspace.resolve_workspace_member`
+    :func:`~agent_platform_sandbox.workspace.resolve_workspace_member`
     解析并做越界校验（含符号链接）；越界返回 **400 而非 500** —— 越界是
     预期内的输入，不是服务器故障。
   - 预览恒以 ``text/plain`` 内联，绝不按文件名猜 Content-Type。猜成 ``text/html``
@@ -80,8 +80,8 @@ from backend.agents.runtime.session.title import (
     title_message_of,
 )
 from backend.core.connection import get_conn
-from backend.tool_system.sandbox.errors import SandboxUnavailableError
-from backend.tool_system.sandbox.workspace import (
+from agent_platform_sandbox.errors import SandboxUnavailableError
+from agent_platform_sandbox.workspace import (
     READ_ROOTS_ENV,
     WRITE_ROOTS_ENV,
     mount_name,

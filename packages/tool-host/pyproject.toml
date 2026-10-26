@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-tool-host"
+version = "0.1.0"
+description = "Single-track bridge from a host ToolContext to tools.v1"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-tool-system>=0.1,<0.2",
+    "agent-platform-tools-default>=0.1,<0.2",
+    "pydantic>=2,<3",
+]
+
+[project.optional-dependencies]
+dev = ["build>=1", "mypy>=1.10"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agent_platform_tool_host = ["py.typed"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+check_untyped_defs = true
+
+[tool.uv.sources]
+agent-platform-plugin-sdk = { path = "../plugin-sdk", editable = true }
+agent-platform-tool-system = { path = "../tool-system", editable = true }
+agent-platform-tools-default = { path = "../plugins/tools-default", editable = true }

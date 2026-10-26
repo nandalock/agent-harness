@@ -175,7 +175,7 @@ PostgreSQL 每会话线程锁保护 pending 和数据库事务；advisory lock �
 
 验证：Session/repair/title/checkpoint、AgentLoop、Runtime prompt 和 ToolScheduler 的相关测试共 155 项通过，包含 9 项真实 PostgreSQL 集成测试及 3 个子进程强杀位置。前端生产构建通过。模型与工具行为使用测试替身，不调用真实模型服务。
 
-PostgreSQL 测试需显式设置 `CHECKPOINT_TEST_DSN` 指向测试服务器，每个用例创建并清理独立 schema。可运行 `python -m pytest backend/agents/runtime/session/tests backend/agents/runtime/tests/test_agent_runtime_prompt.py backend/agents/runtime/tests/test_agent_loop.py backend/tool_system/runtime/test_scheduler.py -q`；测试环境需要 pytest、项目运行依赖和可用的 PostgreSQL。
+PostgreSQL 测试需显式设置 `CHECKPOINT_TEST_DSN` 指向测试服务器，每个用例创建并清理独立 schema。可运行 `python -m pytest backend/agents/runtime/session/tests backend/agents/runtime/tests/test_agent_runtime_prompt.py backend/agents/runtime/tests/test_agent_loop.py backend/tests/test_scheduler.py -q`；测试环境需要 pytest、项目运行依赖和可用的 PostgreSQL。
 
 ### 两张表（`core/schema.py`）
 

@@ -97,6 +97,14 @@ export default function MemoryDebugPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<DebugResult | null>(null);
   const [activeTab, setActiveTab] = useState('compressed');
+  const [agents, setAgents] = useState<{key: string; name: string}[]>([]);
+  const [agentKey, setAgentKey] = useState('');
+
+  useEffect(() => {
+    fetch(`${API}/api/agents`).then(r => r.json()).then(list => {
+      if (Array.isArray(list)) setAgents(list);
+    }).catch(() => {});
+  }, []);
 
   // Load conversations for DB mode
   useEffect(() => {
@@ -160,6 +168,7 @@ export default function MemoryDebugPage() {
         conversation_id: conversationId,
         system_prompt: systemPrompt,
         user_id: userOverride,
+        agent_key: agentKey || null,
       };
       const r = await fetch(`${API}/api/memory/debug/run`, {
         method: 'POST',
@@ -171,7 +180,7 @@ export default function MemoryDebugPage() {
         setResult(data.result);
         setActiveTab('compressed');
       } else {
-        setError(data.error || '运行失败');
+        setError(data.detail || data.error || '运行失败');
       }
     } catch (e: unknown) {
       setError(`网络错误: ${e instanceof Error ? e.message : String(e)}`);
@@ -406,6 +415,11 @@ export default function MemoryDebugPage() {
         {/* Optional settings */}
         <div style={{ display:'flex', gap:S.base, marginTop:S.base, flexWrap:'wrap' }}>
           <div style={{ flex:1, minWidth:200 }}>
+            <div style={{ fontSize:12, color:T.secondary, marginBottom:4 }}>模型配置来源</div>
+            <select aria-label="模型配置来源" value={agentKey} onChange={e => setAgentKey(e.target.value)}>
+              <option value="">请选择已配置模型的 Agent</option>
+              {agents.map(agent => <option key={agent.key} value={agent.key}>{agent.name}</option>)}
+            </select>
             <div style={{ fontSize:12, color:T.secondary, marginBottom:4 }}>System Prompt（可选）</div>
             <input
               value={systemPrompt}

@@ -145,7 +145,13 @@ def test_approval_never_imports_a_domain_package():
         if f.name == "test_approval.py":
             continue
         text = f.read_text(encoding="utf-8")
-        for module in ("backend.tool_system", "backend.agents", "backend.api", "backend.services"):
+        for module in (
+            "agent_platform_sandbox",
+            "agent_platform_skill_tools",
+            "backend.agents",
+            "backend.api",
+            "backend.services",
+        ):
             if module in text:
                 offenders.append(f"{f.name} → {module}")
     assert not offenders, f"approval 反向依赖了业务域: {offenders}"

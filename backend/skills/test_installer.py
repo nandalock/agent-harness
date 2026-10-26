@@ -10,13 +10,35 @@ import unittest
 from unittest.mock import AsyncMock, patch
 import zipfile
 
-from backend.skills import installer
-from backend.skills.registry import SkillError, SkillRegistry, SkillScope, default_sources
-from backend.skills.runtime import SkillPreStep, load_model_skill
-from backend.skills.tool import SkillInstallExecutor, skill_descriptor, skill_install_descriptor
-from backend.tool_system.context import ToolContext
+from agent_platform_plugin_sdk import ExecutionScope, ToolContext
+from agent_platform_skill_tools import (
+    SkillInstallExecutor,
+    openai_tool,
+    skill_descriptor,
+    skill_install_descriptor,
+)
+from agent_platform_skills import installer
+from agent_platform_skills.registry import SkillError, SkillRegistry, SkillScope, default_sources
+from agent_platform_skills.runtime import SkillPreStep, load_model_skill
 
 COMMIT = "a" * 40
+
+
+class FakeAgents:
+    """agents.v1 host service used by the plugin executors."""
+
+    def __init__(self, config=None):
+        self.config = config or {}
+
+    async def get_config(self, agent_key):
+        return dict(self.config)
+
+
+def _context(tenant_id=7, agent_key="assistant", visible=("skill", "skill_install")):
+    return ToolContext(
+        scope=ExecutionScope(tenant_id=tenant_id, agent_key=agent_key),
+        visible_tool_names=frozenset(visible),
+    )
 SOURCE = "https://github.com/example/skills/tree/main/skills/demo"
 INSTRUCTIONS = "---\nname: demo\ndescription: A demo skill\n---\nRead references/guide.md and run scripts/check.py.\n"
 
@@ -155,35 +177,54 @@ class InstallerTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(entry["unavailable_reason"])
 
     async def test_executor_requires_context_and_honors_disable_and_whitelist(self):
-        executor = SkillInstallExecutor()
         descriptor = skill_install_descriptor()
-        self.assertIn("error", await executor.execute(descriptor, {"action": "install", "source": SOURCE}))
-        context = ToolContext(tenant_id=7, agent_id="assistant", visible_tool_names=self.scope.tool_names)
-        agent = type("Agent", (), {"_cfg": lambda _: {"skill_install_enabled": False}})()
-        with patch("backend.agents.get_agent", return_value=agent):
-            self.assertIn("停用", (await executor.execute(descriptor, {"action": "install", "source": SOURCE}, context))["error"])
+        executor = SkillInstallExecutor(FakeAgents())
+        missing = await executor.execute(
+            descriptor, {"action": "install", "source": SOURCE}, _context(visible=())
+        )
+        self.assertIsNotNone(missing.error)
+
+        disabled = await SkillInstallExecutor(
+            FakeAgents({"skill_install_enabled": False})
+        ).execute(
+            descriptor, {"action": "install", "source": SOURCE}, _context()
+        )
+        self.assertIn("停用", disabled.error.message)
         self.assertFalse(installer.install_enabled({"enabled_skills": []}))
         self.assertFalse(installer.install_enabled({"skills_enabled": False}))
         self.download.assert_not_awaited()
-        agent._cfg = lambda: {}
-        with patch("backend.agents.get_agent", return_value=agent):
-            result = await executor.execute(descriptor, {"action": "install", "source": SOURCE, "tenant_id": 999}, context)
-        self.assertEqual(result["rows"][0]["status"], "installed")
+
+        result = await SkillInstallExecutor(FakeAgents()).execute(
+            descriptor,
+            {"action": "install", "source": SOURCE, "tenant_id": 999},
+            _context(),
+        )
+        self.assertEqual(result.data["rows"][0]["status"], "installed")
         self.assertEqual(SkillRegistry([], include_installed=True).list(replace(self.scope, tenant_id=999)), [])
 
     async def test_chat_loop_installs_and_loads_skill_in_the_same_turn(self):
+        from agent_platform_tools_default import ToolsDefaultService
         from backend.agents.runtime.llm import LoopHooks
         from backend.agents.runtime.llm.types import LlmResponse
         from backend.agents.runtime.loop.agent_loop import AgentLoop
         from backend.agents.runtime.session import Session
-        from backend.tool_system.registry.registry import ToolRegistry, _to_openai_function
-        from backend.tool_system.runtime.runtime import ToolRuntime
+        from agent_platform_tool_system.registry import ToolRegistry
+        from agent_platform_tool_system.runtime import ToolRuntime
+        from agent_platform_tool_host import UnifiedToolsRuntime, close_unified_tools, set_unified_tools
+        from agent_platform_skill_tools import SkillExecutor
 
         descriptors = [skill_descriptor(), skill_install_descriptor()]
-        tools = ToolRegistry()
+        service = ToolsDefaultService()
+        service.register_executor("skill", SkillExecutor(FakeAgents()))
+        service.register_executor("skill_install", SkillInstallExecutor(FakeAgents()))
         for descriptor in descriptors:
-            tools.register_builtin(descriptor)
-        runtime = ToolRuntime(tools)
+            service.register_tool(descriptor)
+        native = ToolRuntime(ToolRegistry(providers=[]), executors={})
+        runtime = UnifiedToolsRuntime(
+            ToolRegistry(providers=[]), native, service, service
+        )
+        await runtime.start()
+        set_unified_tools(runtime)
         registry = SkillRegistry(default_sources(), include_installed=True)
         requests = []
 
@@ -201,15 +242,15 @@ class InstallerTests(unittest.IsolatedAsyncioTestCase):
 
         session = Session()
         loop = AgentLoop(key="assistant", llm=Llm(), model="test", tenant_id=7, session=session,
-                         tool_schemas=[_to_openai_function(d.schema) for d in descriptors],
+                         tool_schemas=[openai_tool(d) for d in descriptors],
                          hooks=LoopHooks(pre_step=SkillPreStep(self.scope, registry)),
                          llm_params={"max_steps": 5, "max_tool_calls": 5, "max_wall_time": 20,
                                      "max_parallel_tools": 1, "max_tokens": 128, "temperature": 0})
-        agent = type("Agent", (), {"_cfg": lambda _: {}})()
-        with patch("backend.agents.get_agent", return_value=agent), \
-                patch("backend.tool_system.runtime.scheduler.get_tool_runtime", return_value=runtime):
+        try:
             loop.followup("$skill-installer " + SOURCE)
             await asyncio.wait_for(loop.when_idle(), 10)
+        finally:
+            await close_unified_tools()
         self.assertEqual(len(requests), 3)
         invocations = [e for e in session.events if e.data.get("source", {}).get("kind") == "skill-invocation"]
         self.assertEqual(invocations[0].data["source"]["name"], "platform:skill-installer")
@@ -239,7 +280,7 @@ class DownloadTests(unittest.IsolatedAsyncioTestCase):
             def get(self, url, **kwargs):
                 options.append(kwargs)
                 return response
-        with patch("backend.skills.installer.get_http_session", AsyncMock(return_value=Session())):
+        with patch("agent_platform_skills.installer.get_http_session", AsyncMock(return_value=Session())):
             for status, length in ((302, None), (200, 100), (200, None)):
                 response.status, response.content_length = status, length
                 with self.subTest(status=status, length=length), self.assertRaises(SkillError):

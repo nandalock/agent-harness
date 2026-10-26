@@ -43,8 +43,24 @@ RUN curl --retry 3 --retry-delay 2 -fsSL "https://mirrors.aliyun.com/docker-ce/l
     | tar -xz --strip-components=1 -C /usr/local/bin docker/docker && \
     docker --version
 
+# Keep the upstream SDK 2 dependency separate from the backend's MCP SDK 1.
+# This late layer preserves the cached torch/model and application dependencies.
+ARG OVERLEAF_MCP_VERSION=0.3.1
+RUN apt-get update && apt-get install -y --no-install-recommends git && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* && \
+    uv venv /opt/overleaf-mcp && \
+    uv pip install --python /opt/overleaf-mcp/bin/python \
+        "overleaf-mcp-plus[compile]==${OVERLEAF_MCP_VERSION}" python-dotenv
+
 RUN npm install --global overleaf-mcp-rt@2.2.0
 
-COPY . ./backend
+# 插件 SDK / runtime / 示例插件：editable 安装指向 /app/packages，
+# docker-compose 的 .:/app 挂载可让宿主机改动直接生效。
+COPY packages ./packages
+COPY requirements-plugins.txt ./requirements-plugins.txt
+RUN pip install --no-cache-dir -r requirements-plugins.txt && \
+    pip install --no-cache-dir -e ./packages/plugin-runtime/examples/echo-plugin
+
+COPY backend ./backend
 
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]

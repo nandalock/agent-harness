@@ -74,8 +74,8 @@ from backend.agents.runtime.session import (
     SessionToolEventSink,
     SessionToolRecorder,
 )
-from backend.tool_system.context import ToolContext
-from backend.tool_system.runtime.scheduler import (
+from agent_platform_tool_system.context import ToolContext
+from agent_platform_tool_host.scheduler import (
     DEFAULT_MAX_PARALLEL_TOOLS,
     DISPATCH,
     SKIP,
@@ -999,7 +999,7 @@ class AgentLoop:
         """
         try:
             from backend.agents.runtime.session.projections import project_sandbox_mode
-            from backend.tool_system.sandbox.runtime import session_policy
+            from agent_platform_sandbox.runtime import session_policy
             header = self.session.header
             policy = session_policy(
                 header.id,

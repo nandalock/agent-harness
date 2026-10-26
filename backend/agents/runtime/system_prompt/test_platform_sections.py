@@ -22,7 +22,7 @@ from backend.agents.runtime.system_prompt import (  # noqa: E402
 from backend.agents.runtime.system_prompt.platform_sections import (  # noqa: E402
     PLATFORM_TOOL_GUIDANCE,
 )
-from backend.tool_system.sandbox.workspace import CONTAINER_WORKSPACE  # noqa: E402
+from agent_platform_sandbox.workspace import CONTAINER_WORKSPACE  # noqa: E402
 
 
 def _assemble(ctx: AssembleContext):
@@ -171,36 +171,44 @@ def test_tool_provider_without_registry_yields_nothing():
 
 
 def _sandbox_tool_descriptions(cwd: str | None) -> dict[str, str]:
-    """用假 Registry 跑一次组装，返回 {工具名: 描述}；``cwd`` 为会话工作区宿主路径。"""
+    """用假单轨运行时跑一次组装，返回 {工具名: 描述}；``cwd`` 为会话工作区宿主路径。"""
+    from agent_platform_tool_host import (
+        AgentToolDescriptor,
+        close_unified_tools,
+        set_unified_tools,
+    )
     from backend.agents.runtime.session import SessionStore
-    from backend.tool_system.registry import registry as registry_mod
-    from backend.tool_system.registry.descriptor import SandboxToolConfig, ToolDescriptor
 
-    tools = [
-        ToolDescriptor(
-            name="bash", type="sandbox", transport="", server_id=0,
-            schema={"name": "bash", "description": "执行命令", "inputSchema": {}},
-            sandbox=SandboxToolConfig(runtime="shell", image="alpine", timeout_s=1.0),
+    descriptors = [
+        AgentToolDescriptor(
+            name="bash", description="执行命令",
+            input_schema={}, usage_guidance=None, source="builtin",
         ),
-        ToolDescriptor(
-            name="search", type="mcp", transport="http", server_id=1,
-            schema={"name": "search", "description": "检索", "inputSchema": {}},
+        AgentToolDescriptor(
+            name="search", description="检索",
+            input_schema={}, usage_guidance=None, source="plugin",
         ),
     ]
 
-    class _FakeRegistry:
-        async def get_descriptors_for(self, agent_key):
-            return tools
+    class _FakeUnified:
+        async def descriptors_for_agent(self, tenant_id, agent_key):
+            return descriptors
+
+        def is_sandbox_tool(self, name):
+            return name == "bash"
+
+        async def aclose(self):
+            pass
 
     session = SessionStore().create()
     session.header.cwd = cwd
 
-    saved = registry_mod.get_registry
-    registry_mod.get_registry = lambda: _FakeRegistry()
+    set_unified_tools(_FakeUnified())
     try:
         assembly = _assemble(_ctx(session=session))
     finally:
-        registry_mod.get_registry = saved
+        import asyncio
+        asyncio.run(close_unified_tools())
     return {t.name: t.function["description"] for t in assembly.tools}
 
 

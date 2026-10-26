@@ -67,7 +67,7 @@ $skill-installer https://github.com/anthropics/skills/tree/main/skills/pdf
 
 ## Overleaf 实时服务
 
-内置四个上游技能和 `/overleaf-login`、`/overleaf-status` 两个命令，来自 `overleaf-mcp-rt` 2.2.0。原文、来源和许可证保留在 `backend/skill_packages/overleaf_rt/`。
+内置四个上游技能和 `/overleaf-login`、`/overleaf-status` 两个命令，来自 `overleaf-mcp-rt` 2.2.0。原文、来源和许可证保留在 `packages/skills/builtin/overleaf_rt/`。
 
 新后端镜像安装固定版本的 Node.js 服务。Compose 默认启用 `OVERLEAF_RT_ENABLED=true`，启动时独立登记 `overleaf-rt`；不覆盖已有 MCP 服务配置和智能体工具绑定。
 
@@ -89,7 +89,7 @@ $skill-installer https://github.com/anthropics/skills/tree/main/skills/pdf
 ## 验证
 
 ```bash
-docker compose exec -T backend python -m unittest backend.skills.test_skills backend.skills.test_installer backend.tool_system.adapters.test_stdio_pool -v
+docker compose exec -T backend python -m unittest backend.skills.test_skills backend.skills.test_installer -v
 ```
 
 前端交互测试：在 `frontend/` 运行 `npm run test:skills`。本机未安装 Playwright Chromium 时可设置 `PLAYWRIGHT_CHANNEL=msedge` 使用已安装的 Edge。

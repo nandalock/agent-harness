@@ -18,7 +18,7 @@ import json
 
 from backend.agents.runtime.session.events import TOOL_CALL, TOOL_RESULT
 from backend.agents.runtime.session.session import Session
-from backend.tool_system.runtime.scheduler import PlannedCall
+from agent_platform_tool_system.scheduler import PlannedCall
 
 
 class SessionToolRecorder:

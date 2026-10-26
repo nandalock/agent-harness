@@ -52,16 +52,20 @@ def api_save_bindings(agent_key: str, tools: list[str] = Body(...)):
 @router.get("/capabilities/sandbox")
 def api_get_sandbox_capability():
     """沙箱能力是否启用（settings.sandbox.enabled，缺省 true）。"""
-    from backend.tool_system.sandbox.runtime import is_enabled
-    return {"name": "sandbox", "enabled": is_enabled()}
+    from agent_platform_sandbox_tools import is_sandbox_enabled
+
+    return {"name": "sandbox", "enabled": is_sandbox_enabled()}
 
 
 @router.put("/capabilities/sandbox")
-def api_set_sandbox_capability(body: CapabilityBody):
-    """启停沙箱能力：立即重注册内建工具，下一轮对话即生效（无需重启）。
+async def api_set_sandbox_capability(body: CapabilityBody):
+    """启停沙箱能力：插件立即注册/注销 bash、python，下一轮对话即生效。"""
+    from agent_platform_sandbox_tools import set_sandbox_enabled
 
-    停用 = 注销 bash/python → 模型看不到；绑定记录保留，重新启用即恢复。
-    """
-    from backend.tool_system.sandbox.runtime import set_enabled
-    set_enabled(body.enabled)
+    try:
+        await set_sandbox_enabled(body.enabled)
+    except RuntimeError as exc:
+        from fastapi import HTTPException
+
+        raise HTTPException(503, str(exc)) from exc
     return {"name": "sandbox", "enabled": body.enabled}

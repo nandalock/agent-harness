@@ -23,7 +23,7 @@ export default function LoginPage() {
       <form onSubmit={handleSubmit} style={{ width:380 }}>
         <div style={{ textAlign:'center', marginBottom:S.xxl }}>
           <div style={{ width:48, height:48, borderRadius:12, background:T.accent, margin:'0 auto', marginBottom:S.base, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, color:'#fff', fontWeight:700 }}>AI</div>
-          <h1 style={{ margin:0, fontSize:22, fontWeight:600, color:T.text }}>智能体运行平台</h1>
+          <h1 style={{ margin:0, fontSize:22, fontWeight:600, color:T.text }}>minidsh</h1>
           <p style={{ margin:0, marginTop:S.xs, fontSize:14, color:T.secondary }}>登录到管理后台</p>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:S.base }}>

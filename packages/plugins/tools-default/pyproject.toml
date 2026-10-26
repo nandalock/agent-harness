@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-tools-default"
+version = "0.1.0"
+description = "Default in-process tools.v1 provider for Agent Platform plugins"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["agent-platform-plugin-sdk>=0.1,<0.2"]
+
+[project.optional-dependencies]
+dev = ["build>=1", "mypy>=1.10"]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.tools-default" = "agent_platform_tools_default:ToolsDefaultPlugin"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agent_platform_tools_default = ["py.typed"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+
+[tool.uv.sources]
+agent-platform-plugin-sdk = { path = "../../plugin-sdk", editable = true }

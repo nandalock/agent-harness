@@ -25,10 +25,10 @@ from backend.agents.runtime.session.events import (
     TOOL_PROGRESS,
 )
 from backend.agents.runtime.session.session import Session
-from backend.tool_system.events import APPROVAL_REQUEST as APPROVAL_REQUEST_EVENT
-from backend.tool_system.events import SANDBOX_ESCALATION as SANDBOX_ESCALATION_EVENT
-from backend.tool_system.events import TOOL_PROGRESS as TOOL_PROGRESS_EVENT
-from backend.tool_system.events import ToolEvent
+from agent_platform_tool_system.events import APPROVAL_REQUEST as APPROVAL_REQUEST_EVENT
+from agent_platform_tool_system.events import SANDBOX_ESCALATION as SANDBOX_ESCALATION_EVENT
+from agent_platform_tool_system.events import TOOL_PROGRESS as TOOL_PROGRESS_EVENT
+from agent_platform_tool_system.events import ToolEvent
 
 logger = logging.getLogger(__name__)
 

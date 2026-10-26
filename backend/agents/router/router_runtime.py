@@ -148,7 +148,7 @@ class RouterRuntime(BaseAgent):
 
         # 所有层都未命中（全部关闭或 L3 关闭后无兜底）
         if not agent_key:
-            fallback = config.get("l3_llm", {}).get("fallback_agent", "human_handoff")
+            fallback = config.get("l3_llm", {}).get("fallback_agent", "")
             if config.get("l3_llm", {}).get("enabled", True) is False:
                 route_level = "fallback"
             steps.append({"level": "fallback", "method": "no_match", "agent_key": fallback, "confidence": 0})
@@ -302,7 +302,7 @@ class RouterRuntime(BaseAgent):
         model = l3.get("model") or config.get("model", "").strip()
         api_key = l3.get("api_key") or config.get("api_key", "").strip()
         base_url = l3.get("base_url") or config.get("base_url", "").strip()
-        fallback = l3.get("fallback_agent", "human_handoff")
+        fallback = l3.get("fallback_agent", "")
         system_extra = l3.get("system_prompt_extra", "")
         min_confidence = l3.get("min_confidence", 0.6)
 
@@ -465,7 +465,7 @@ class RouterRuntime(BaseAgent):
             for a in routable:
                 if a.get("key") == candidate:
                     return candidate
-        return config.get("l3_llm", {}).get("fallback_agent", "human_handoff")
+        return config.get("l3_llm", {}).get("fallback_agent", "")
 
     # ── 历史持久化 ──
 

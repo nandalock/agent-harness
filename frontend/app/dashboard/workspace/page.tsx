@@ -118,8 +118,9 @@ export default function WorkspacePage() {
   }, [active]);
 
   function selectSession(s: WorkspaceSession) {
+    if (!s.agent_key) return;
     setActive({
-      agent_key: s.agent_key || 'paper_agent',
+      agent_key: s.agent_key,
       conversation_id: s.conversation_id,
       session_id: s.session_id,
       // title 恒非空（后端保证），不用再写 label 兜底；label 现在只用于提示

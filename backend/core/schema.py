@@ -457,83 +457,6 @@ SEED_CACHE_POLICIES = [
     }'::jsonb WHERE cache_policy IS NULL""",
 ]
 
-SEED_AGENTS = [
-    """INSERT INTO agent_definitions (agent_key, name, description, config)
-       VALUES ('faqagent', 'FaqAgent', '基于 pg_trgm 直接匹配 + pgvector 语义检索 + reranker 精排 + LLM RAG 润色', '{
-         "direct_threshold": 0.85,
-         "vector_top_n": 10,
-         "rerank_top_k": 3,
-         "rerank_enabled": true,
-         "system_prompt": "你是一个专业的客服助手。请根据下面的知识库内容回答用户问题。如果知识库内容不足以回答，请诚实告知并建议联系人工客服。回答要友好、简洁、准确。",
-         "fallback_reply": "抱歉，我暂时无法回答这个问题，请转接人工客服获取帮助。",
-         "api_key": "",
-         "base_url": "",
-         "model": ""
-       }'::jsonb)
-       ON CONFLICT (agent_key) DO NOTHING""",
-    """INSERT INTO agent_definitions (agent_key, name, description, config)
-       VALUES ('order_agent', 'OrderAgent', '订单查询、物流跟踪、催单、修改备注等售中流程处理', '{
-         "system_prompt": "你是一个专业的订单客服助手。你的职责是帮助用户查询订单状态、跟踪物流信息、处理催单请求、修改订单备注等。请用友好、耐心的语气回答。如果无法处理，请建议用户转接人工客服。",
-         "fallback_reply": "抱歉，我暂时无法处理您的订单请求，正在为您转接人工客服。",
-         "max_steps": 5,
-         "api_key": "",
-         "base_url": "",
-         "model": ""
-       }'::jsonb)
-       ON CONFLICT (agent_key) DO NOTHING""",
-    """INSERT INTO agent_definitions (agent_key, name, description, config)
-       VALUES ('ticket_agent', 'TicketAgent', '投诉处理、维修工单、售后查询', '{
-         "system_prompt": "你是一个专业的售后客服助手。你的职责是处理客户投诉、创建维修工单、查询工单进度、协调换货退货等。请保持耐心和同理心。如果无法解决，请建议用户转接人工客服。",
-         "fallback_reply": "抱歉，我暂时无法处理您的售后请求，正在为您转接人工客服。",
-         "max_steps": 5,
-         "api_key": "",
-         "base_url": "",
-         "model": ""
-       }'::jsonb)
-       ON CONFLICT (agent_key) DO NOTHING""",
-    """INSERT INTO agent_definitions (agent_key, name, description, config)
-       VALUES ('supervisor', 'Supervisor', '中央编排 Agent，三级意图路由 + LangGraph 多 Agent 协作', '{
-         "system_prompt": "你是一个智能客服系统的 Supervisor。分析用户意图，路由到对应子 Agent，汇总结果。",
-         "routable_agents": [
-           {"key": "faqagent", "name": "FAQ 知识检索", "desc": "售前咨询 | 员工服务 — 知识库匹配 + LLM RAG"},
-           {"key": "order_agent", "name": "订单查询", "desc": "售中订单 — 催单、改备注、查物流"},
-           {"key": "ticket_agent", "name": "工单处理", "desc": "售后工单 — 退货、投诉、维修"},
-           {"key": "human_handoff", "name": "转人工", "desc": "兜底 — 无法处理时转人工客服"}
-         ],
-         "fallback_reply": "抱歉，我暂时无法处理您的请求，正在为您转接人工客服。",
-         "l1_keywords": {
-           "faqagent": ["怎么", "如何", "是什么", "能不能", "几点", "在哪里", "有没有", "退款", "退货", "七天无理由", "怎么退", "退到哪里", "上班", "加班", "请假", "工资", "报销", "制度", "政策", "多少钱", "起投", "最低", "收益", "风险", "利率", "年化", "开户", "多久", "你好", "在吗", "hi", "hello"],
-           "order_agent": ["快递", "物流", "发货", "运单号", "到哪了", "还没到", "什么时候到", "查一下单号", "催单", "改地址", "修改备注", "订单状态", "取消订单"],
-           "ticket_agent": ["投诉", "工单", "催一下", "处理进度", "还没处理", "帮我催", "问题没解决", "维修", "换货", "质量", "坏了"],
-           "human_handoff": ["转人工", "人工客服", "找真人", "找客服", "机器人没用", "听不懂", "叫人来", "投诉客服"]
-         },
-         "api_key": "",
-         "base_url": "",
-         "model": ""
-       }'::jsonb)
-       ON CONFLICT (agent_key) DO NOTHING""",
-    """INSERT INTO agent_definitions (agent_key, name, description, config)
-       VALUES ('human_handoff', '人工转接', '无法自动处理时转接人工客服，支持排队通知和安抚话术', '{
-         "handoff_message": "已为您转接人工客服，请稍候...",
-         "queue_message": "当前排队人数较多，预计等待 {wait_minutes} 分钟，人工客服将尽快为您服务。",
-         "api_key": "",
-         "base_url": "",
-         "model": ""
-       }'::jsonb)
-       ON CONFLICT (agent_key) DO NOTHING""",
-    """INSERT INTO agent_definitions (agent_key, name, description, config)
-       VALUES ('paper_agent', 'PaperAgent', '学术论文研究助手 — arxiv 搜索 + PDF 全文总结成 markdown', '{
-         "system_prompt": "你是学术论文研究助手。帮助用户查找 arXiv 论文并总结成 markdown。流程：先用 search_papers 搜索相关论文 → 对用户感兴趣的论文调 summarize_paper 生成结构化总结（标题/摘要/核心贡献/方法/关键结论/局限）→ 最后把总结完整输出给用户。一次可总结 1-3 篇，如果用户要多篇先问清楚优先级。",
-         "fallback_reply": "抱歉，论文服务暂不可用，请稍后再试。",
-         "max_steps": 8,
-         "max_tokens": 3000,
-         "temperature": 0.3,
-         "api_key": "",
-         "base_url": "",
-         "model": ""
-       }'::jsonb)
-       ON CONFLICT (agent_key) DO NOTHING""",
-]
 
 
 def init_db():
@@ -556,8 +479,8 @@ def init_db():
             for seed_sql in SEED_SERVERS:
                 cur.execute(seed_sql)
 
-            for seed_sql in SEED_AGENTS:
-                cur.execute(seed_sql)
+            from backend.core.legacy_agents import retire_examples
+            retire_examples(cur)
 
             for seed_sql in SEED_CACHE_POLICIES:
                 cur.execute(seed_sql)

@@ -60,8 +60,8 @@ from backend.agents.runtime.session import (  # noqa: E402
     SessionToolRecorder,
 )
 from backend.agents.runtime.session.projections import TrajectoryProjection  # noqa: E402
-from backend.tool_system.registry.descriptor import PARALLEL  # noqa: E402
-from backend.tool_system.runtime.scheduler import (  # noqa: E402
+from agent_platform_tool_system.descriptor import PARALLEL  # noqa: E402
+from agent_platform_tool_host.scheduler import (  # noqa: E402
     ABORTED_STARTED_MESSAGE,
     ToolScheduler,
 )

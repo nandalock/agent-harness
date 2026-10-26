@@ -28,13 +28,6 @@ const MODEL_BASE_URLS: Record<string, string> = {
   'gpt-4o': 'https://api.openai.com',
 };
 
-const AGENT_DEFAULTS: Record<string, { model: string; base_url: string }> = {
-  faqagent:     { model: 'deepseek-chat', base_url: 'https://api.deepseek.com' },
-  order_agent:  { model: 'deepseek-chat', base_url: 'https://api.deepseek.com' },
-  ticket_agent: { model: 'deepseek-chat', base_url: 'https://api.deepseek.com' },
-  supervisor:   { model: 'deepseek-chat', base_url: 'https://api.deepseek.com' },
-};
-
 /** DSH ReasoningRow 移植：折叠=最新行跟读（流式）/ 首行摘要（完成），点击展开全文 */
 function ThinkingPanel({ thinking, running }: {
   thinking: string; running: boolean;
@@ -218,13 +211,12 @@ export default function AgentDetailPage() {
   useEffect(() => {
     fetch(`${API}/api/agents/${agentKey}/config`).then(r => r.json()).then(d => {
       if (d.config) {
-        const def = AGENT_DEFAULTS[agentKey];
         setConfig({
           system_prompt: d.config.system_prompt ?? '',
           fallback_reply: d.config.fallback_reply ?? '',
           api_key: d.config.api_key ?? '',
-          base_url: d.config.base_url || def?.base_url || '',
-          model: d.config.model || def?.model || '',
+          base_url: d.config.base_url || '',
+          model: d.config.model || '',
           max_steps: d.config.max_steps ?? 5,
         });
       }

@@ -27,6 +27,8 @@ interface ToolInfo {
   name: string;
   description: string;
   server_name: string;
+  plugin_id?: string;
+  plugin_name?: string;
 }
 
 interface Props { agentKey: string; }
@@ -35,6 +37,7 @@ export default function ToolBinding({ agentKey }: Props) {
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [bound, setBound] = useState<string[]>([]);
   const [sandboxOn, setSandboxOn] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   // 只记**展开**的组：默认空集 = 全部收起，且新导入的 MCP 自动是收起的
   const [open, setOpen] = useState<Set<string>>(new Set());
 
@@ -42,15 +45,24 @@ export default function ToolBinding({ agentKey }: Props) {
 
   async function fetchData() {
     try {
+      const read = async (path: string) => {
+        const response = await fetch(`${API}${path}`);
+        if (!response.ok) throw new Error(`工具配置加载失败（HTTP ${response.status}），请检查后端插件服务`);
+        return response.json();
+      };
       const [tr, br, cr] = await Promise.all([
-        fetch(`${API}/api/mcp/tools/all`).then(r => r.json()),
-        fetch(`${API}/api/tools/bindings`).then(r => r.json()),
-        fetch(`${API}/api/tools/capabilities/sandbox`).then(r => r.json()),
+        read('/api/mcp/tools/all'),
+        read('/api/tools/bindings'),
+        read('/api/tools/capabilities/sandbox'),
       ]);
+      if (!Array.isArray(tr)) throw new Error('工具列表响应格式异常，请重试');
       setTools(Array.isArray(tr) ? tr : []);
       setBound(br[agentKey] || []);
       setSandboxOn(cr?.enabled !== false);
-    } catch {}
+      setLoadError(null);
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : '工具配置加载失败，请重试');
+    }
   }
 
   // 能力开关：停用时内建工具从注册表消失 → 重新拉列表即可看到它们不见了
@@ -98,7 +110,7 @@ export default function ToolBinding({ agentKey }: Props) {
 
   // 按来源分组（内建 → "builtin"，MCP → server 名）
   const groups = tools.reduce<Record<string, ToolInfo[]>>((acc, t) => {
-    const key = t.server_name || '其他';
+    const key = t.plugin_id || t.server_name || '其他';
     (acc[key] ||= []).push(t);
     return acc;
   }, {});
@@ -135,6 +147,8 @@ export default function ToolBinding({ agentKey }: Props) {
       </label>
       <div style={{ display:'flex', flexDirection:'column', gap:S.xs }}>
         {Object.entries(groups).map(([source, list]) => {
+          const pluginName = list[0]?.plugin_name?.replace(/^agent-platform\./, '');
+          const label = pluginName ? (pluginName === source ? source : `${pluginName} · ${source}`) : source;
           const isOpen = open.has(source);
           const checkedCount = list.filter(t => bound.includes(t.name)).length;
           const allChecked = checkedCount === list.length;
@@ -155,13 +169,13 @@ export default function ToolBinding({ agentKey }: Props) {
                   ref={el => { if (el) el.indeterminate = partial; }}
                   onClick={e => e.stopPropagation()}
                   onChange={e => toggleGroup(list, e.target.checked)}
-                  title={allChecked ? `取消绑定 ${source} 的全部工具` : `绑定 ${source} 的全部工具`}
+                  title={allChecked ? `取消绑定 ${label} 的全部工具` : `绑定 ${label} 的全部工具`}
                   style={{ accentColor:T.accent, width:14, height:14, cursor:'pointer' }} />
                 <span style={{
                   flex:1, fontSize:12, fontWeight:600, color:T.text,
                   overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
                 }}>
-                  {source}
+                  {label}
                 </span>
                 <span style={{
                   fontSize:10, fontWeight: checkedCount ? 600 : 400,
@@ -193,7 +207,10 @@ export default function ToolBinding({ agentKey }: Props) {
             </div>
           );
         })}
-        {tools.length === 0 && <div style={{ fontSize:11, color:T.tertiary }}>无可用工具</div>}
+        {loadError && <div role="alert" style={{ fontSize:11 }}>
+          {loadError} <button type="button" onClick={() => fetchData()}>重试</button>
+        </div>}
+        {!loadError && tools.length === 0 && <div style={{ fontSize:11, color:T.tertiary }}>无可用工具</div>}
       </div>
     </div>
   );

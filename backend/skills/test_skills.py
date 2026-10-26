@@ -12,8 +12,8 @@ from backend.agents.runtime.loop.agent_loop import AgentLoop
 from backend.agents.runtime.loop.inbox import new_message
 from backend.agents.runtime.session import Session
 from backend.agents.runtime.session.projections import TrajectoryProjection
-from backend.skills.registry import SkillError, SkillRegistry, SkillScope, SkillSource, get_skill_registry
-from backend.skills.runtime import SkillPreStep, catalog_entries, load_model_skill, render_skill
+from agent_platform_skills.registry import SkillError, SkillRegistry, SkillScope, SkillSource, get_skill_registry
+from agent_platform_skills.runtime import SkillPreStep, catalog_entries, load_model_skill, render_skill
 
 
 class SkillsTest(unittest.IsolatedAsyncioTestCase):

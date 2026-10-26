@@ -32,7 +32,8 @@ services:
   backend:
     restart: unless-stopped
     build:
-      context: ./backend
+      context: .
+      dockerfile: backend/Dockerfile
       args:
         PRELOAD_RERANKER: ${PRELOAD_RERANKER:-false}
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
@@ -41,6 +42,7 @@ services:
       - npm_cache:/root/.npm
       - uv_cache:/root/.cache/uv
       - hf_cache:/root/.cache/huggingface
+      - overleaf_cache:/root/.cache/overleaf-mcp
       - skill_data:/var/lib/agent/skills
       # 沙箱：SandboxExecutor 用 docker CLI 起临时容器（docs/sandbox-design.md §7）。
       # 安全：socket 等价于宿主机 root，只应暴露给后端进程本身；模型参数无法影响
@@ -78,6 +80,11 @@ services:
       DATABASE_URL: postgresql://saas:saas@db:5432/saas
       JWT_SECRET: dev-secret
       OLLAMA_HOST: http://host.docker.internal:11434
+      # 插件默认零配置：tools-default 自动装配。
+      # 要额外加载插件，把 plugins.yaml.example 复制成仓库根目录的 plugins.yaml
+      # 即可（容器内 /app/plugins.yaml 会被自动发现），不需要设置这个变量。
+      # PLUGIN_CONFIG 仅用于把配置放到其他路径。
+      PLUGIN_CONFIG: ${PLUGIN_CONFIG:-}
       # 沙箱工作区根（必须是独立目录，不能是仓库根——见 §9.2）
       SANDBOX_WORKSPACE_ROOT: /srv/agent/workspaces
       # 附加**只读**挂进沙箱的宿主目录（逗号分隔，绝对路径）。沙箱容器由
@@ -103,6 +110,12 @@ services:
       PAPER_LLM_BASE_URL: ${PAPER_LLM_BASE_URL:-}
       PAPER_LLM_API_KEY: ${PAPER_LLM_API_KEY:-}
       PAPER_LLM_MODEL: ${PAPER_LLM_MODEL:-}
+      # Overleaf 凭据放在被 git 忽略的 .env，MCP 记录中不存凭据。
+      OVERLEAF_SESSION: ${OVERLEAF_SESSION:-}
+      OVERLEAF_GIT_TOKEN: ${OVERLEAF_GIT_TOKEN:-}
+      OVERLEAF_BASE_URL: ${OVERLEAF_BASE_URL:-https://www.overleaf.com}
+      OVERLEAF_GIT_HOST: ${OVERLEAF_GIT_HOST:-git.overleaf.com}
+      OVERLEAF_TEMP_DIR: /root/.cache/overleaf-mcp
       OVERLEAF_RT_ENABLED: ${OVERLEAF_RT_ENABLED:-true}
       OVERLEAF_RT_URL: ${OVERLEAF_RT_URL:-https://www.overleaf.com}
       OVERLEAF_RT_SESSION_COOKIE: ${OVERLEAF_RT_SESSION_COOKIE:-}
@@ -131,7 +144,8 @@ services:
     # （同 backend 段 9002 的注释）。4000 离保留段顶端有近 600 个端口余量——
     # 留足余量是因为这段范围**每次重启会重新分配、整体漂移**，贴着边选早晚再撞。
     # 容器内外统一用它，免得 package.json 的 dev/start 在宿主直跑时又踩同一个坑。
-    command: npx next dev -p 4000 -H 0.0.0.0
+    # 源码 bind-mount 更新后，node_modules 卷仍可能保留旧依赖；启动时按锁文件同步。
+    command: sh -c "npm ci --no-audit --no-fund && exec npm run dev -- -H 0.0.0.0"
     volumes:
       - ./frontend:/app
       - /app/node_modules
@@ -176,6 +190,7 @@ volumes:
   npm_cache:
   uv_cache:
   hf_cache:
+  overleaf_cache:
   skill_data:
   redis-data:
   redisinsight-data:

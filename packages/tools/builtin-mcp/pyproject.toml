@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-builtin-mcp"
+version = "0.1.0"
+description = "Built-in database MCP server for the Agent Platform"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["mcp>=1.30,<2", "psycopg2-binary>=2.9"]
+
+[project.optional-dependencies]
+dev = ["build>=1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

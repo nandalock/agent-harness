@@ -2,7 +2,7 @@
 
 > 状态：设计已定稿，待实现
 > 参考：DeepSeek Harness `dsh-sandbox`（seam / 词汇 / fail-closed / 分类方言）
-> 关联代码：`backend/tool_system/`、`backend/agents/runtime/session/`
+> 关联代码：`packages/sandbox/`、`packages/plugins/sandbox-tools/`、`backend/agents/runtime/session/`
 
 ## 1. 背景与威胁模型
 
@@ -38,7 +38,7 @@
 
 | 偏离 | 原因 |
 |---|---|
-| `policy.py` 做成纯函数而非服务 | `tool_system/` 不应依赖 `agents/runtime/session/` |
+| `policy.py` 做成纯函数而非服务 | `packages/sandbox/` 不应依赖 `agents/runtime/session/` |
 | 后端用 Docker 而非 bwrap/Landlock | 见 §2.1 |
 
 ### 2.1 为什么第一阶段用 Docker
@@ -94,7 +94,7 @@ DeepSeek 的 `ConfinedArgv` 只有**一个** `enforcement` 字段，它的语义
 ### 4.1 词汇
 
 ```python
-# backend/tool_system/sandbox/vocabulary.py
+# packages/sandbox/src/agent_platform_sandbox/vocabulary.py
 SandboxMode = Literal["read-only", "workspace-write", "danger-full-access"]
 ConfinedSandboxMode = Literal["read-only", "workspace-write"]  # danger-* 不走 provider
 SandboxEnforcement = Literal["full", "partial"]
@@ -117,7 +117,7 @@ class SandboxPolicy:
 ### 4.2 seam
 
 ```python
-# backend/tool_system/sandbox/provider.py
+# packages/sandbox/src/agent_platform_sandbox/provider.py
 @dataclass(frozen=True)
 class RunnerFailureRule:
     """识别 runner 在执行命令之前失败的证据。
@@ -166,7 +166,7 @@ Tool（bash / python）
 ```
 
 ```
-backend/tool_system/sandbox/
+packages/sandbox/src/agent_platform_sandbox/
 ├── __init__.py       # 对外只导出 seam 词汇
 ├── vocabulary.py     # SandboxMode / SandboxEnforcement / SandboxPolicy
 ├── errors.py         # SandboxUnavailableError（fail-closed 的唯一出口）
@@ -179,12 +179,12 @@ backend/tool_system/sandbox/
 └── backends/
     └── docker.py     # DockerProvider（v1 唯一后端）
 
-backend/tool_system/runtime/executor.py         # + SandboxExecutor / build_sandbox_argv
-backend/tool_system/runtime/runtime.py          # executors 注册 "sandbox"
-backend/tool_system/registry/descriptor.py      # + SandboxToolConfig / sandbox 字段
-backend/tool_system/registry/registry.py        # Provider 抽象：从所有来源收集工具
-backend/tool_system/registry/providers.py       # ToolProvider / MCPToolProvider / BuiltinToolProvider
-backend/tool_system/context/context.py          # + sandbox_policy（策略下传）
+packages/sandbox/src/agent_platform_sandbox/executor.py  # SandboxExecutor / build_sandbox_argv
+packages/plugins/sandbox-tools/src/agent_platform_sandbox_tools/plugin.py  # 注册 "sandbox" executor
+packages/tool-system/src/agent_platform_tool_system/descriptor.py  # SandboxToolConfig
+packages/tool-system/src/agent_platform_tool_system/registry.py  # 工具描述索引
+packages/tool-system/src/agent_platform_tool_system/providers.py  # ToolProvider / BuiltinToolProvider
+packages/tool-system/src/agent_platform_tool_system/context.py  # sandbox_policy（策略下传）
 backend/agents/runtime/loop/agent_loop.py       # 解析策略 + 落地 SessionHeader.cwd
 backend/api/mcp.py                              # 工具列表/详情含原生工具
 backend/main.py                                 # 装配：init_sandbox + 注册 bash/python
@@ -199,7 +199,7 @@ docker-compose.yml / backend/Dockerfile         # socket + docker CLI + 工作�
 
 ### 5.1 关于 `policy.py` 的偏离
 
-DeepSeek 的 `ctx.sandboxPolicy.resolve()` 是服务，直接读会话。我们的 `tool_system/` 不应依赖 `agents/runtime/session/`，所以 `policy.py` 是**纯函数**：
+DeepSeek 的 `ctx.sandboxPolicy.resolve()` 是服务，直接读会话。我们的 `packages/sandbox/` 不应依赖 `agents/runtime/session/`，所以 `policy.py` 是**纯函数**：
 
 ```python
 def resolve_policy(
@@ -216,7 +216,7 @@ def resolve_policy(
 ## 6. Descriptor 扩展
 
 ```python
-# backend/tool_system/registry/descriptor.py
+# packages/tool-system/src/agent_platform_tool_system/descriptor.py
 @dataclass(frozen=True)
 class SandboxToolConfig:
     runtime: Literal["shell", "python"]   # 决定 argv 形状
@@ -440,7 +440,7 @@ schema 序列化 + 三层解析是 SDK 形态的投入（他们要服务几十�
 ## 10. 消费方：SandboxExecutor
 
 ```python
-# backend/tool_system/runtime/executor.py
+# packages/sandbox/src/agent_platform_sandbox/executor.py
 class SandboxExecutor(ToolExecutor):
     async def execute(self, descriptor, args, context) -> dict:
         # 1. 从 context 取已解析的 SandboxPolicy（无则 fail-closed）
@@ -460,7 +460,7 @@ self._executors = {"mcp": MCPExecutor(), "sandbox": SandboxExecutor()}
 ### 10.1 分类器
 
 ```python
-# backend/tool_system/sandbox/classify.py
+# packages/sandbox/src/agent_platform_sandbox/classify.py
 Outcome = Literal["normal", "denied", "runner_failed"]
 
 def classify_outcome(exit_code: int, stderr: str, confined: ConfinedArgv) -> Outcome:

@@ -1,0 +1,18 @@
+# Agent Platform plugin stack for local/backend development.
+# Install leaf packages first so editable dependency resolution never falls
+# back to an unpublished PyPI release.
+-e ./packages/plugin-sdk
+-e ./packages/plugin-runtime
+-e ./packages/platform-default
+-e ./packages/tool-system
+-e ./packages/skills
+-e ./packages/sandbox
+-e ./packages/plugins/tools-default
+-e ./packages/tool-host
+-e ./packages/plugins/mcp-client
+-e ./packages/plugins/skill-tools
+-e ./packages/plugins/sandbox-tools
+-e ./packages/tools/builtin-mcp
+-e ./packages/tools/paper-mcp
+-e ./packages/tools/overleaf-mcp
+-e ./packages/tools/overleaf-rt-mcp

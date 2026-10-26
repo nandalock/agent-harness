@@ -25,11 +25,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from backend.tool_system.runtime.scheduler import (  # noqa: E402
+from agent_platform_tool_host.scheduler import (  # noqa: E402
     DEFAULT_MAX_PARALLEL_TOOLS,
     ToolScheduler,
 )
-from backend.tool_system.runtime.test_scheduler import (  # noqa: E402
+from backend.tests.test_scheduler import (  # noqa: E402
     _ControlledRuntime,
     _FakeRecorder,
     _context_factory,
@@ -73,7 +73,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
             samples[label].append(await measure(args.calls, args.delay, parallel))
     serial = statistics.median(row["seconds"] for row in samples["serial"])
     parallel = statistics.median(row["seconds"] for row in samples["default_parallel"])
-    scheduler_file = ROOT / "backend/tool_system/runtime/scheduler.py"
+    scheduler_file = ROOT / "packages/tool-system/src/agent_platform_tool_system/scheduler.py"
     return {
         "scope": "simulated I/O; real ToolScheduler; no LLM/network/DB/Docker work",
         "measured_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),

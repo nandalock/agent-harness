@@ -1,0 +1,17 @@
+# 复制为 plugins.yaml 后自动生效（无需设置 PLUGIN_CONFIG）。
+# tools-default、mcp-manager、skill-tools、sandbox-tools 会自动补上；mcp_servers 表里的
+# MCP server 也会自动转换成 agent-platform.mcp-client 实例
+# （PLUGIN_MCP_AUTO=false 可关闭）。
+# 默认装配清单来自 packages/platform-default。每条配置是一个插件实例，
+# 不是一个工具：skill-tools 提供两个工具，mcp-client 提供服务器的 0～N 个工具，
+# tools-default 只提供服务。显式 disabled: true 会禁止补入对应默认插件。
+#
+# Docker 镜像已经安装 example.echo；本地运行时先执行：
+#   pip install -r requirements-plugins.txt
+#   pip install -e ./packages/plugin-runtime/examples/echo-plugin
+version: 1
+plugins:
+  - id: echo
+    name: example.echo
+    config:
+      prefix: "收到："

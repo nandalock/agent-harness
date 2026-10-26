@@ -1,0 +1,8 @@
+version: 1
+plugins:
+  - id: tools
+    name: agent-platform.tools-default
+  - id: echo
+    name: example.echo
+    config:
+      prefix: "收到："
