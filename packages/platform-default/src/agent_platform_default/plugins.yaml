@@ -10,3 +10,5 @@ plugins:
     name: agent-platform.skill-tools
   - id: sandbox-tools
     name: agent-platform.sandbox-tools
+  - id: sandbox-provider
+    name: agent-platform.sandbox-local

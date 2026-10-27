@@ -58,9 +58,15 @@ class TextPlugin:
 
 
 class CompositionTests(unittest.TestCase):
+    def test_docker_can_replace_the_default_native_service(self):
+        config = compose(PluginConfiguration(), sandbox_backend="docker")
+        names = {entry.name for entry in config.plugins}
+        self.assertIn("agent-platform.sandbox-docker", names)
+        self.assertNotIn("agent-platform.sandbox-local", names)
+
     def test_default_packages_and_explicit_disable(self):
         config = compose(PluginConfiguration())
-        self.assertEqual(len(config.plugins), 4)
+        self.assertEqual(len(config.plugins), 5)
         override = PluginConfiguration.model_validate({"plugins": [
             {"id": "custom-tools", "name": "agent-platform.tools-default", "disabled": True},
             {"id": "sandbox-tools", "name": "example.replacement"},

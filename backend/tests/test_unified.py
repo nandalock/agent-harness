@@ -32,6 +32,7 @@ try:
     from agent_platform_mcp_client import McpManagerPlugin
     from agent_platform_skill_tools import SkillToolsPlugin
     from agent_platform_sandbox_tools import SandboxToolsPlugin
+    from agent_platform_sandbox.plugin import LocalSandboxPlugin, SANDBOX
 
     PLUGIN_STACK_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -543,6 +544,7 @@ def test_config_auto_appends_mcp_client_entries_and_dedupes():
             "agent-platform.mcp-manager",
             "agent-platform.skill-tools",
             "agent-platform.sandbox-tools",
+            "agent-platform.sandbox-local",
             "agent-platform.mcp-client",
         ], names
 
@@ -569,6 +571,7 @@ def test_config_auto_appends_mcp_client_entries_and_dedupes():
             "mcp-manager",
             "skill-tools",
             "sandbox-tools",
+            "sandbox-provider",
         ]
     finally:
         plugin_host._mcp_plugin_entries = original
@@ -613,6 +616,7 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
                 {"id": "tools", "name": "agent-platform.tools-default", "config": {}},
                 {"id": "skills", "name": "agent-platform.skill-tools", "config": {}},
                 {"id": "sandbox", "name": "agent-platform.sandbox-tools", "config": {}},
+                {"id": "sandbox-provider", "name": "agent-platform.sandbox-local"},
             ]
         )
         runtime = PluginRuntime(
@@ -622,6 +626,7 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
                     "agent-platform.tools-default": ToolsDefaultPlugin,
                     "agent-platform.skill-tools": SkillToolsPlugin,
                     "agent-platform.sandbox-tools": SandboxToolsPlugin,
+                    "agent-platform.sandbox-local": LocalSandboxPlugin,
                 }
             ),
             host_services={
@@ -635,7 +640,7 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
             tools = runtime.require(TOOLS)
             scope = ExecutionScope(tenant_id=1, agent_key="a")
             names = {d.name for d in await tools.list_for_agent(scope)}
-            assert names == {"bash", "python", "skill", "skill_install"}, names
+            assert names == ({"bash", "python", "skill", "skill_install", "powershell"} if os.name == "nt" else {"bash", "python", "skill", "skill_install"}), names
 
             control = get_sandbox_control()
             assert control is not None
@@ -644,7 +649,7 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
             assert names == {"skill", "skill_install"}, names
             await control.set_enabled(True)
             names = {d.name for d in await tools.list_for_agent(scope)}
-            assert names == {"bash", "python", "skill", "skill_install"}, names
+            assert names == ({"bash", "python", "skill", "skill_install", "powershell"} if os.name == "nt" else {"bash", "python", "skill", "skill_install"}), names
         finally:
             await runtime.aclose()
 
@@ -704,6 +709,7 @@ def test_plugin_host_always_assembles_tools_default_and_unified_runtime():
                             "agent-platform.mcp-manager": McpManagerPlugin,
                             "agent-platform.skill-tools": SkillToolsPlugin,
                             "agent-platform.sandbox-tools": SandboxToolsPlugin,
+                            "agent-platform.sandbox-local": LocalSandboxPlugin,
                             "test.consumer": _consumer_plugin(calls),
                         }
                     )
@@ -755,6 +761,7 @@ def test_plugin_host_auto_discovers_plugins_yaml_in_cwd():
                                 "agent-platform.mcp-manager": McpManagerPlugin,
                                 "agent-platform.skill-tools": SkillToolsPlugin,
                                 "agent-platform.sandbox-tools": SandboxToolsPlugin,
+                                "agent-platform.sandbox-local": LocalSandboxPlugin,
                                 "test.consumer": _consumer_plugin(calls),
                             }
                         )
@@ -767,6 +774,7 @@ def test_plugin_host_auto_discovers_plugins_yaml_in_cwd():
                     "test.consumer",
                     "agent-platform.mcp-manager",
                     "agent-platform.skill-tools",
+                    "agent-platform.sandbox-local",
                     "agent-platform.sandbox-tools",
                 ]
                 unified = get_unified_tools_optional()
@@ -799,6 +807,7 @@ def test_plugin_host_starts_without_plugin_config():
                         "agent-platform.mcp-manager": McpManagerPlugin,
                         "agent-platform.skill-tools": SkillToolsPlugin,
                         "agent-platform.sandbox-tools": SandboxToolsPlugin,
+                        "agent-platform.sandbox-local": LocalSandboxPlugin,
                     }
                 )
             )

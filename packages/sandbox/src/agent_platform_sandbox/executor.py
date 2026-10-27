@@ -6,6 +6,10 @@ optional ``approval.v1`` service, then emits domain events through
 """
 import asyncio
 import logging
+import os
+import shutil
+import signal
+import subprocess
 from typing import Any
 
 from agent_platform_plugin_sdk import ApprovalRequest
@@ -60,6 +64,14 @@ def build_sandbox_argv(cfg: SandboxToolConfig, args: dict) -> list[str]:
         if not isinstance(code, str) or not code.strip():
             raise ValueError("python 工具需要非空字符串参数 code")
         return ["python", "-c", code]
+    if cfg.runtime == "powershell":
+        command = args.get("command")
+        if not isinstance(command, str) or not command.strip():
+            raise ValueError("PowerShell requires a non-empty command")
+        executable = shutil.which("pwsh") or shutil.which("powershell")
+        if not executable:
+            raise ValueError("PowerShell is not installed")
+        return [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", "$ErrorActionPreference='Stop'; " + command + "; if ($LASTEXITCODE) { exit $LASTEXITCODE }"]
     raise ValueError(f"未知沙箱 runtime: {cfg.runtime!r}（可选 shell / python）")
 
 
@@ -239,10 +251,20 @@ class SandboxExecutor(ToolExecutor):
             }
 
         confined = None
+        provider = self._provider or get_sandbox_provider()
+        local = getattr(provider, "backend", None) == "local"
+        if local:
+            from .backends.local import host_argv
+            try:
+                argv = host_argv(argv)
+                if cfg.runtime == "powershell":
+                    location = policy.workspace_root.replace("'", "''")
+                    argv[-1] = f"$ErrorActionPreference='Stop'; Set-Location -LiteralPath '{location}'; " + argv[-1]
+            except ValueError as exc:
+                return {"error": str(exc)}
         if policy.mode == "danger-full-access":
             final_argv = argv
         else:
-            provider = self._provider or get_sandbox_provider()
             if provider is None:
                 return {"error": f"没有可用的沙箱后端，拒绝执行 {descriptor.name}"}
             try:
@@ -261,11 +283,22 @@ class SandboxExecutor(ToolExecutor):
             final_argv = confined.argv
 
         try:
+            spawn_options: dict[str, Any] = {}
+            if local:
+                spawn_options["cwd"] = policy.workspace_root
+                spawn_options["env"] = {key: value for key, value in os.environ.items()
+                                        if not any(secret in key.upper() for secret in ("API_KEY", "TOKEN", "PASSWORD", "SECRET", "COOKIE"))
+                                        and key.upper() != "SSH_AUTH_SOCK"}
+                if os.name == "nt":
+                    spawn_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+                else:
+                    spawn_options["start_new_session"] = True
             proc = await asyncio.create_subprocess_exec(
                 *final_argv,
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
+                **spawn_options,
             )
         except (FileNotFoundError, PermissionError) as e:
             return {"error": f"沙箱 runner 不可执行: {e}"}
@@ -275,11 +308,10 @@ class SandboxExecutor(ToolExecutor):
                 proc.communicate(), timeout=cfg.timeout_s
             )
         except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
+            await _kill_process(proc, local)
             return {"error": f"沙箱执行超时（>{cfg.timeout_s:.0f}s），已取消"}
         except asyncio.CancelledError:
-            proc.kill()
+            await _kill_process(proc, local)
             raise
 
         stdout_full = stdout_b.decode("utf-8", errors="replace")
@@ -319,6 +351,24 @@ class SandboxExecutor(ToolExecutor):
                     "沙箱基础设施故障：命令未执行，请勿重试同一命令。"
                 )
         return result
+
+
+async def _kill_process(proc, local: bool) -> None:
+    if local and os.name == "nt":
+        killer = await asyncio.create_subprocess_exec("taskkill", "/PID", str(proc.pid), "/T", "/F",
+                                                      stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+        await killer.wait()
+    elif local:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    if proc.returncode is None:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+    await proc.wait()
 
 
 def get_sandbox_provider() -> SandboxProvider | None:

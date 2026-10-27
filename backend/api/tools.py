@@ -54,7 +54,10 @@ def api_get_sandbox_capability():
     """沙箱能力是否启用（settings.sandbox.enabled，缺省 true）。"""
     from agent_platform_sandbox_tools import is_sandbox_enabled
 
-    return {"name": "sandbox", "enabled": is_sandbox_enabled()}
+    from agent_platform_sandbox.runtime import get_sandbox_provider
+    provider = get_sandbox_provider()
+    return {"name": "sandbox", "enabled": is_sandbox_enabled(),
+            "backend": getattr(provider, "backend", None)}
 
 
 @router.put("/capabilities/sandbox")

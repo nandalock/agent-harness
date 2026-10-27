@@ -155,15 +155,6 @@ async def startup():
         from agent_platform_overleaf_rt_mcp.integration import ensure_server
         ensure_server()
 
-    # 沙箱子系统：校验工作区根 → 功能探测 → 装配 provider。
-    # 失败不阻断服务启动——沙箱工具执行时 fail-closed（返回错误而非裸跑）。
-    try:
-        from agent_platform_sandbox.runtime import init_sandbox
-        init_sandbox()
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"沙箱未装配（沙箱工具将拒绝执行）: {e}")
-
     # 审批服务：通用的人机确认能力（interaction 层），沙箱升权是它的第一个消费者。
     # **未装配时需要审批的能力恒不可用**（fail-closed 到拒绝，等价 DSH 的
     # approval=never）—— 没有判定方 ≠ 默认批准。

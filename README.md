@@ -34,7 +34,7 @@
 - 🧠 **长期记忆**：支持按用户管理会话上下文、摘要、压缩与经验记忆，持续积累可复用的信息。
 - 🔧 **工具系统**：分为注册表、运行时和执行器三层，统一接入内置工具与 MCP 工具；
   并发调度器支持滚动任务池、独占屏障和有序提交，各工具可声明超时、执行模式与使用指导。
-- 🔒 **沙箱执行**：`bash` / `python` 工具在临时 Docker 容器中运行，支持只读（`read-only`）、
+- 🔒 **沙箱执行**：本地默认宿主机操作系统沙箱，Windows 支持 PowerShell，可切换 Docker；支持只读（`read-only`）、
   工作区可写（`workspace-write`）与完全访问（`danger-full-access`）三种文件权限模式；
   超出当前模式的操作需经过**人工审批**，无法确认权限时默认拒绝执行。
 - 🔌 **MCP 支持**：内置模型上下文协议（MCP）服务与注册表，可在控制台导入和管理外部 MCP 服务。
@@ -57,7 +57,7 @@
 | 缓存 | Redis 7（redis-stack）|
 | 大语言模型 | 各智能体独立配置，支持任意 OpenAI 兼容网关（`/v1/chat/completions`）|
 | 向量与重排模型 | Ollama `bge-m3` + `BAAI/bge-reranker-v2-m3`（CrossEncoder）|
-| 沙箱 | 临时 Docker 容器，通过挂载的 `docker.sock` 访问 Docker 服务 |
+| 沙箱 | 默认宿主机原生限制；可选 Docker 容器 |
 | 协议 | 模型上下文协议（MCP）· SSE · WebSocket |
 | 基础设施 | Docker Compose |
 
@@ -121,7 +121,7 @@ flowchart LR
     A --> TS[工具系统]
     TS --> TR[工具注册表<br/>内置工具 + MCP]
     TS --> EX[工具执行器]
-    EX -->|沙箱工具| SB[Docker 沙箱<br/>bash / python]
+    EX -->|沙箱工具| SB[宿主机 / Docker 沙箱<br/>PowerShell / bash / python]
     EX -->|MCP 工具| MCP[MCP 服务<br/>:9001 / :9002]
     SB -.权限提升.-> AP[人工审批通道]
     K[RAG · FAQ + 向量模型] --> P

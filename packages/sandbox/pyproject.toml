@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent-platform-sandbox"
 version = "0.1.0"
-description = "Host-neutral sandbox policy, Docker confinement and tool executor"
+description = "Plugin-owned native OS and Docker sandbox providers and tool executor"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -16,16 +16,22 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["build>=1", "mypy>=1.10"]
 
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.sandbox-local" = "agent_platform_sandbox.plugin:LocalSandboxPlugin"
+"agent-platform.sandbox-docker" = "agent_platform_sandbox.plugin:DockerSandboxPlugin"
+
 [tool.setuptools.packages.find]
 where = ["src"]
+namespaces = false
 
 [tool.setuptools.package-data]
-agent_platform_sandbox = ["py.typed"]
+agent_platform_sandbox = ["py.typed", "native/package.json", "native/package-lock.json"]
 
 [tool.mypy]
 python_version = "3.12"
 check_untyped_defs = true
 files = ["src"]
+exclude = ["node_modules"]
 
 [tool.uv.sources]
 agent-platform-plugin-sdk = { path = "../plugin-sdk", editable = true }

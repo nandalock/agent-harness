@@ -83,9 +83,10 @@ CLI 默认只监听回环地址，适合本地部署。公网服务应由进程�
 
 - 重排模型：`python minidsh.py setup --rag`，会额外安装 sentence-transformers/PyTorch。
   默认安装不下载大模型；未安装或模型加载失败时按候选原顺序返回。
-- 沙箱 bash/python：继续使用 Docker 隔离。可执行
-  `docker compose build sandbox-image` 构建执行镜像。没有 Docker 时这些工具拒绝执行，
-  不会退化成宿主机裸跑。聊天、skills 和其他 MCP 工具可独立使用。
+- 沙箱默认宿主机执行，受限模式使用操作系统限制，Windows 支持 PowerShell。
+  Windows runner 由 setup 安装；Linux 需要 bubblewrap，macOS 使用 Seatbelt。
+  `SANDBOX_BACKEND=docker` 可切回容器。默认权限仍为 workspace-write；
+  只有 danger-full-access 才直接运行。详见[宿主机沙箱](native-sandbox.md)。
 - 数据根默认 `~/.minidsh`，可通过 `MINIDSH_HOME` 统一指定。
   工作区为 `<MINIDSH_HOME>/workspaces`、技能为 `skills`、论文缓存为 `cache/paper-mcp`。
   可通过 `.env.local` 覆盖 `SANDBOX_WORKSPACE_ROOT`、`SKILL_INSTALL_ROOT`。

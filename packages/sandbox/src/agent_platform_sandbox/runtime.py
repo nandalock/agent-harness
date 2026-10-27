@@ -1,6 +1,6 @@
 """沙箱运行时装配 —— provider 单例 + 会话策略入口
 
-装配层（``backend/main.py``）调用 :func:`init_sandbox`；
+服务插件（sandbox-local / sandbox-docker）调用 :func:`init_sandbox`；
 AgentLoop 调用 :func:`session_policy` 拿到本会话的执行策略。
 
 本包不依赖 agents 层，因此这里只吃原始值（session_id / cwd），不接收 Session 对象。
@@ -48,7 +48,7 @@ def get_sandbox_provider() -> SandboxProvider | None:
     return _provider
 
 
-def init_sandbox(*, image: str | None = None, probe: bool = True) -> SandboxProvider:
+def init_sandbox(*, image: str | None = None, probe: bool = True, backend: str | None = None) -> SandboxProvider:
     """装配沙箱：校验工作区根 → 功能探测 → 构造 provider。
 
     Raises:
@@ -56,6 +56,15 @@ def init_sandbox(*, image: str | None = None, probe: bool = True) -> SandboxProv
         ValueError: 工作区根配置不安全。
     """
     root = resolve_workspace_root()
+    selected = backend or os.environ.get("SANDBOX_BACKEND", "local")
+    if selected == "local":
+        from .backends.local import LocalProvider
+        provider: SandboxProvider = LocalProvider()
+        set_sandbox_provider(provider)
+        logger.info("宿主机沙箱已装配：root=%s；受限执行不可用时拒绝执行", root)
+        return provider
+    if selected != "docker":
+        raise ValueError("SANDBOX_BACKEND must be local or docker")
     img = image or DEFAULT_SANDBOX_IMAGE
     if probe:
         probe_workspace_root(root, image=img)
@@ -272,6 +281,9 @@ def mounts_note(workspace_host: str | None = None) -> str:
     不给 host（无 cwd 的自动工作区，且首次工具调用之前）时只报容器内路径——
     与本参数出现之前的行为一致。
     """
+    if getattr(get_sandbox_provider(), "backend", None) == "local":
+        root = workspace_host or resolve_workspace_root()
+        return f"\n执行环境：宿主机进程（操作系统沙箱）。工作目录：{root}。使用宿主机路径，无 /workspace 或 /mnt 路径映射；受限模式不限制读取和网络，全权限模式不施加沙箱限制。"
     head = f"可写位置：会话工作区 {CONTAINER_WORKSPACE}"
     head += f"（宿主 {workspace_host}）。" if workspace_host else "。"
     lines = [head]

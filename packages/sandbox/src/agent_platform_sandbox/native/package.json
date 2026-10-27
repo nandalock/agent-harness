@@ -1,0 +1,10 @@
+{
+  "name": "minidsh-native-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "allowScripts": { "koffi": true },
+  "description": "Pinned Windows restricted-token runner used by minidsh",
+  "dependencies": {
+    "@deepseek-ai/dsh-sandbox-windows-acl": "0.2.1-rc.2"
+  }
+}

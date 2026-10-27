@@ -100,6 +100,8 @@ class DockerProvider(SandboxProvider):
         tmpfs_size: ``/tmp`` 大小——``workspace-write`` 承诺的临时区域。
     """
 
+    backend = "docker"
+
     def __init__(
         self,
         *,

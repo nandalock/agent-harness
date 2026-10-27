@@ -2,7 +2,9 @@
 
 > 实现位于 `packages/sandbox/src/agent_platform_sandbox/`；本文路径按包内模块名书写。
 > `bash` / `python` 的注册与能力开关归 `agent-platform.sandbox-tools` 插件，
-> 本包只提供策略、Docker provider、升权链与执行器。
+> 本包提供策略、本机/Docker provider、sandbox.v1 服务插件、升权链与执行器。
+> 本地默认宿主机沙箱，详见[宿主机沙箱](../../docs/native-sandbox.md)；下文容器路径、
+> docker.sock 和镜像参数专属于 Docker 后端。
 
 > **本文件描述「现在是什么」**：模块职责、不变量、一次调用的实际行为。
 >
@@ -14,8 +16,8 @@
 
 ## 0. 一句话
 
-用 Docker 短命容器把 agent 的 `bash` / `python` 关进一个**只挂会话工作区**的世界；
-挡不住就**拒绝执行**，永远不裸跑。
+默认在宿主机运行工具并由操作系统限制写入，可切换 Docker 隔离。
+受限模式无法建立约束时拒绝执行；只有显式全权限模式直接启动命令。
 
 ---
 
@@ -25,7 +27,9 @@
 |---|---|---|
 | `vocabulary.py` | `SandboxMode` 三档、`SandboxPolicy` / `SandboxExecutionPolicy`、构造期校验。**无逻辑，谁都不拥有它** | 所有层 |
 | `provider.py` | `SandboxProvider` 抽象 seam + `ConfinedArgv` + `RunnerFailureRule` | 后端实现、executor |
-| `backends/docker.py` | 唯一后端实现：`confine()` 把 argv 包成 `docker run`，并声明本后端的**拒绝方言**与 **runner 故障规则** | 装配层 |
+| `backends/local.py` | 本地 Windows 受限令牌、Linux bwrap、macOS Seatbelt | sandbox-local 插件 |
+| `backends/docker.py` | 可选 Docker 后端 | sandbox-docker 插件 |
+| `plugin.py` | 两个可替换的 sandbox.v1 服务插件 | PluginRuntime、sandbox-tools |
 | `policy.py` | 模式优先级链（纯函数） | `runtime.py`、executor |
 | `escalation.py` | **完整升权链**：严格序表、参数校验、调用 `approval.v1`、两个模型可见标记。不认识 session / agent / **审批实现** | executor、`runtime.py` |
 | `classify.py` | 结果分类：`denied` / `runner_failed` / `normal` | executor |

@@ -46,6 +46,8 @@ def setup(args):
         command([PYTHON, "-m", "pip", "install", "-r", "requirements-rag.txt"])
     if not args.backend_only:
         command([executable("npm"), "ci", "--no-audit", "--no-fund"], cwd=ROOT / "frontend")
+    if os.name == "nt":
+        command([executable("npm"), "ci", "--no-audit", "--no-fund"], cwd=ROOT / "packages/sandbox/src/agent_platform_sandbox/native")
     env_file = ROOT / args.env_file
     if not env_file.exists():
         env_file.parent.mkdir(parents=True, exist_ok=True)
@@ -74,6 +76,7 @@ def environment(args):
         "SKILL_INSTALL_ROOT": str(data_home / "skills"),
         "PAPER_CACHE_DIR": str(data_home / "cache" / "paper-mcp"),
         "BUILTIN_MCP_PORT": "19001", "PAPER_MCP_PORT": "19002",
+        "SANDBOX_BACKEND": "local",
         "OVERLEAF_ENABLED": "false", "OVERLEAF_RT_ENABLED": "false",
         "MINIDSH_LOCAL": "true", "PYTHONUNBUFFERED": "1",
         "PYTHONIOENCODING": "utf-8", "NEXT_TELEMETRY_DISABLED": "1",
@@ -118,7 +121,7 @@ def doctor(env, backend_only=False):
         print("OK Redis")
     except redis.RedisError:
         print("NOTE Redis unavailable; semantic cache will miss. PostgreSQL remains required.")
-    print("NOTE bash/python isolation uses Docker; chat and MCP do not require a backend container.")
+    print(f"Sandbox backend: {env['SANDBOX_BACKEND']} (native confinement fails closed when OS support is unavailable)")
     return 0
 
 

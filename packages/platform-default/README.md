@@ -14,6 +14,11 @@ publish services, register zero or many tools, and own cleanup effects:
 | mcp-client | MCP connection lifecycle | 0–N discovered server tools |
 | skill-tools | consumes tools.v1 and agents.v1 | skill, skill_install |
 | sandbox-tools | consumes tools.v1 and settings.v1 | bash, python when enabled |
+| sandbox-local / sandbox-docker | sandbox.v1 | 0; replaceable execution backend |
+
+Native execution is the local default. `SANDBOX_BACKEND=docker` selects the Docker
+provider through the host composition. sandbox-tools consumes sandbox.v1; Windows
+native mode also registers powershell. See [native sandbox](../../docs/native-sandbox.md).
 
 Library packages such as skills, sandbox, and tool-system provide reusable
 implementations. A package is discoverable as a plugin only when it exports a
