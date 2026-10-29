@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-managed-mcp"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["agent-platform-mcp-client>=0.1,<0.2", "agent-platform-builtin-mcp>=0.1,<0.2", "agent-platform-paper-mcp>=0.1,<0.2", "agent-platform-overleaf-mcp>=0.1,<0.2", "agent-platform-overleaf-rt-mcp>=0.1,<0.2", "uvicorn>=0.30,<1"]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.builtin-mcp" = "agent_platform_managed_mcp:BuiltinPlugin"
+"agent-platform.paper-mcp" = "agent_platform_managed_mcp:PaperPlugin"
+"agent-platform.overleaf-mcp" = "agent_platform_managed_mcp:OverleafPlugin"
+"agent-platform.overleaf-rt-mcp" = "agent_platform_managed_mcp:OverleafRtPlugin"
+
+[tool.setuptools.packages.find]
+where = ["src"]

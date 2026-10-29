@@ -12,3 +12,11 @@ plugins:
     name: agent-platform.sandbox-tools
   - id: sandbox-provider
     name: agent-platform.sandbox-local
+  - id: builtin-mcp
+    name: agent-platform.builtin-mcp
+  - id: paper-mcp
+    name: agent-platform.paper-mcp
+  - id: overleaf-mcp
+    name: agent-platform.overleaf-mcp
+  - id: overleaf-rt-mcp
+    name: agent-platform.overleaf-rt-mcp

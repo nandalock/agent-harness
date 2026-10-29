@@ -66,7 +66,7 @@ class CompositionTests(unittest.TestCase):
 
     def test_default_packages_and_explicit_disable(self):
         config = compose(PluginConfiguration())
-        self.assertEqual(len(config.plugins), 5)
+        self.assertEqual(len(config.plugins), 9)
         override = PluginConfiguration.model_validate({"plugins": [
             {"id": "custom-tools", "name": "agent-platform.tools-default", "disabled": True},
             {"id": "sandbox-tools", "name": "example.replacement"},

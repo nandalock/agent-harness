@@ -77,3 +77,11 @@ def get_user_profile(user_id: str, tenant_id: int) -> list[dict]:
         with conn.cursor() as cur:
             cur.execute("SELECT tenant_id, user_id, facts, updated_at FROM user_profiles WHERE tenant_id = %s AND user_id = %s", [tenant_id, user_id])
             return [dict(r) for r in cur.fetchall()]
+
+
+def create_server():
+    """Fresh protocol lifecycle for each plugin activation."""
+    server = FastMCP('builtin-mcp')
+    for function in (query_orders, get_order_detail, track_logistics, search_faqs, list_faq_tags, get_user_profile,):
+        server.add_tool(function)
+    return server

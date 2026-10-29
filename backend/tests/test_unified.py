@@ -16,6 +16,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 # Unit tests must not connect to a real database or spawn MCP servers.
 os.environ.setdefault("PLUGIN_MCP_AUTO", "false")
+os.environ.setdefault("MANAGED_MCP_ENABLED", "false")
 
 try:
     from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
@@ -31,6 +32,7 @@ try:
     from agent_platform_tools_default import ToolsDefaultPlugin, ToolsDefaultService
     from agent_platform_mcp_client import McpManagerPlugin
     from agent_platform_skill_tools import SkillToolsPlugin
+    from agent_platform_managed_mcp import BuiltinPlugin, PaperPlugin, OverleafPlugin, OverleafRtPlugin
     from agent_platform_sandbox_tools import SandboxToolsPlugin
     from agent_platform_sandbox.plugin import LocalSandboxPlugin, SANDBOX
 
@@ -545,6 +547,10 @@ def test_config_auto_appends_mcp_client_entries_and_dedupes():
             "agent-platform.skill-tools",
             "agent-platform.sandbox-tools",
             "agent-platform.sandbox-local",
+            "agent-platform.builtin-mcp",
+            "agent-platform.paper-mcp",
+            "agent-platform.overleaf-mcp",
+            "agent-platform.overleaf-rt-mcp",
             "agent-platform.mcp-client",
         ], names
 
@@ -572,6 +578,10 @@ def test_config_auto_appends_mcp_client_entries_and_dedupes():
             "skill-tools",
             "sandbox-tools",
             "sandbox-provider",
+            "builtin-mcp",
+            "paper-mcp",
+            "overleaf-mcp",
+            "overleaf-rt-mcp",
         ]
     finally:
         plugin_host._mcp_plugin_entries = original
@@ -627,6 +637,10 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
                     "agent-platform.skill-tools": SkillToolsPlugin,
                     "agent-platform.sandbox-tools": SandboxToolsPlugin,
                     "agent-platform.sandbox-local": LocalSandboxPlugin,
+                    'agent-platform.builtin-mcp': BuiltinPlugin,
+                    'agent-platform.paper-mcp': PaperPlugin,
+                    'agent-platform.overleaf-mcp': OverleafPlugin,
+                    'agent-platform.overleaf-rt-mcp': OverleafRtPlugin,
                 }
             ),
             host_services={
@@ -710,6 +724,10 @@ def test_plugin_host_always_assembles_tools_default_and_unified_runtime():
                             "agent-platform.skill-tools": SkillToolsPlugin,
                             "agent-platform.sandbox-tools": SandboxToolsPlugin,
                             "agent-platform.sandbox-local": LocalSandboxPlugin,
+                            'agent-platform.builtin-mcp': BuiltinPlugin,
+                            'agent-platform.paper-mcp': PaperPlugin,
+                            'agent-platform.overleaf-mcp': OverleafPlugin,
+                            'agent-platform.overleaf-rt-mcp': OverleafRtPlugin,
                             "test.consumer": _consumer_plugin(calls),
                         }
                     )
@@ -762,6 +780,10 @@ def test_plugin_host_auto_discovers_plugins_yaml_in_cwd():
                                 "agent-platform.skill-tools": SkillToolsPlugin,
                                 "agent-platform.sandbox-tools": SandboxToolsPlugin,
                                 "agent-platform.sandbox-local": LocalSandboxPlugin,
+                                'agent-platform.builtin-mcp': BuiltinPlugin,
+                                'agent-platform.paper-mcp': PaperPlugin,
+                                'agent-platform.overleaf-mcp': OverleafPlugin,
+                                'agent-platform.overleaf-rt-mcp': OverleafRtPlugin,
                                 "test.consumer": _consumer_plugin(calls),
                             }
                         )
@@ -769,14 +791,18 @@ def test_plugin_host_auto_discovers_plugins_yaml_in_cwd():
                 finally:
                     os.chdir(old_cwd)
                 assert host is not None
-                assert [plugin.name for plugin in host.plugins] == [
+                assert set(plugin.name for plugin in host.plugins) == {
                     "agent-platform.tools-default",
                     "test.consumer",
                     "agent-platform.mcp-manager",
                     "agent-platform.skill-tools",
                     "agent-platform.sandbox-local",
+                    "agent-platform.builtin-mcp",
+                    "agent-platform.paper-mcp",
+                    "agent-platform.overleaf-mcp",
+                    "agent-platform.overleaf-rt-mcp",
                     "agent-platform.sandbox-tools",
-                ]
+                }
                 unified = get_unified_tools_optional()
                 assert unified is not None
                 result = await unified.execute("echo", {"text": "x"}, _context())
@@ -808,6 +834,10 @@ def test_plugin_host_starts_without_plugin_config():
                         "agent-platform.skill-tools": SkillToolsPlugin,
                         "agent-platform.sandbox-tools": SandboxToolsPlugin,
                         "agent-platform.sandbox-local": LocalSandboxPlugin,
+                        'agent-platform.builtin-mcp': BuiltinPlugin,
+                        'agent-platform.paper-mcp': PaperPlugin,
+                        'agent-platform.overleaf-mcp': OverleafPlugin,
+                        'agent-platform.overleaf-rt-mcp': OverleafRtPlugin,
                     }
                 )
             )

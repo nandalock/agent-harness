@@ -99,3 +99,11 @@ async def list_papers() -> list[dict]:
         {"url": url, **info}
         for url, info in _seen.items()
     ]
+
+
+def create_server():
+    """Fresh protocol lifecycle for each plugin activation."""
+    server = FastMCP('paper-mcp')
+    for function in (search_papers, fetch_paper_text, summarize_paper, list_papers,):
+        server.add_tool(function)
+    return server

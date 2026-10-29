@@ -16,3 +16,4 @@
 -e ./packages/tools/paper-mcp
 -e ./packages/tools/overleaf-mcp
 -e ./packages/tools/overleaf-rt-mcp
+-e ./packages/plugins/managed-mcp

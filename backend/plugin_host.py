@@ -76,13 +76,12 @@ def _mcp_plugin_entries() -> list[dict]:
         return []
 
     entries: list[dict] = []
+    from agent_platform_managed_mcp import owns_database_row
     for row in rows:
-        # A shared DB may contain container-only optional integrations. Local
-        # deployment leaves persisted rows untouched and selects its own profile.
-        if row.get("name") in ("overleaf", "overleaf-rt"):
-            enabled_var = "OVERLEAF_ENABLED" if row["name"] == "overleaf" else "OVERLEAF_RT_ENABLED"
-            if os.environ.get(enabled_var, "true").lower() in ("0", "false", "no"):
-                continue
+        # These integrations own their connections through managed-MCP plugins.
+        # Disabled plugins must not be reactivated through DB auto-discovery.
+        if owns_database_row(row):
+            continue
         transport = row.get("transport") or "http"
         config = {
             "server_name": f"mcp{row['id']}",
@@ -94,9 +93,6 @@ def _mcp_plugin_entries() -> list[dict]:
             if not row.get("url"):
                 continue
             config["url"] = row["url"]
-            for default_port, variable in ((9001, "BUILTIN_MCP_PORT"), (9002, "PAPER_MCP_PORT")):
-                if row["url"] == f"http://localhost:{default_port}/mcp":
-                    config["url"] = f"http://localhost:{os.environ.get(variable, str(default_port))}/mcp"
         else:
             if not row.get("command"):
                 continue
@@ -119,9 +115,6 @@ def _mcp_plugin_entries() -> list[dict]:
                 if isinstance(env, dict)
                 else {}
             )
-        if row.get("name") in ("overleaf", "overleaf-rt"):
-            # Compilation / realtime edits share local state and are slow.
-            config["execution_mode"] = "exclusive"
         entries.append(
             {
                 "id": f"mcp-{row['id']}",
@@ -137,7 +130,7 @@ def _compose_plugins(config):
     from agent_platform_default import compose
     from agent_platform_plugin_sdk import PluginConfiguration
 
-    data = compose(config).model_dump()
+    data = compose(config, sandbox_backend=os.environ.get("SANDBOX_BACKEND", "local")).model_dump()
     plugins = list(data["plugins"])
     existing_ids = {entry["id"] for entry in plugins}
     existing_servers = {

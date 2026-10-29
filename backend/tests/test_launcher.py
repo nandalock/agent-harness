@@ -77,9 +77,7 @@ class LauncherTests(unittest.TestCase):
             "BUILTIN_MCP_PORT": "19001", "PAPER_MCP_PORT": "19002", "OVERLEAF_ENABLED": "false", "PLUGIN_MCP_AUTO": "true",
         }):
             entries = _mcp_plugin_entries()
-        self.assertEqual([entry["config"]["url"] for entry in entries], [
-            "http://localhost:19001/mcp", "http://localhost:19002/mcp",
-        ])
+        self.assertEqual(entries, [])  # managed services never become duplicate auto clients
         self.assertEqual(cursor.execute.call_count, 1)
         self.assertTrue(cursor.execute.call_args.args[0].startswith("SELECT"))
 

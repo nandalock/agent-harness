@@ -122,39 +122,6 @@ async def startup():
 
     # asyncio.create_task(auto_connect())  # 闲鱼已禁用
 
-    # 先启动本地 MCP server (9001)，ToolRegistry 需要连接它
-    from agent_platform_builtin_mcp.server import mcp as mcp_server
-    from starlette.middleware.cors import CORSMiddleware as StarletteCORS
-    from backend.embedded_mcp import start_server
-    app.state.mcp_servers = []
-    mcp_app = mcp_server.streamable_http_app()
-    mcp_app.add_middleware(StarletteCORS, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"], expose_headers=["Mcp-Session-Id"])
-    app.state.mcp_servers.append(await start_server(mcp_app, int(os.environ.get("BUILTIN_MCP_PORT", "9001"))))
-
-    # 论文域 MCP server (9002) — 领域扩展点，新域继续往下加
-    from agent_platform_paper_mcp.server import mcp as paper_mcp
-    paper_app = paper_mcp.streamable_http_app()
-    paper_app.add_middleware(StarletteCORS, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"], expose_headers=["Mcp-Session-Id"])
-    try:
-        app.state.mcp_servers.append(await start_server(paper_app, int(os.environ.get("PAPER_MCP_PORT", "9002"))))
-    except BaseException:
-        from backend.embedded_mcp import close_servers
-        await close_servers(app.state.mcp_servers)
-        raise
-
-    # Overleaf 使用独立 SDK 2 环境；这里只确保 DB 里有可被 mcp-client 读取的行。
-    try:
-        from agent_platform_overleaf_mcp.integration import ensure_server
-        if os.environ.get("OVERLEAF_ENABLED", "true").lower() == "true":
-            ensure_server()
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Overleaf MCP 注册失败: {e}")
-
-    if os.environ.get("OVERLEAF_RT_ENABLED", "false").lower() == "true":
-        from agent_platform_overleaf_rt_mcp.integration import ensure_server
-        ensure_server()
-
     # 审批服务：通用的人机确认能力（interaction 层），沙箱升权是它的第一个消费者。
     # **未装配时需要审批的能力恒不可用**（fail-closed 到拒绝，等价 DSH 的
     # approval=never）—— 没有判定方 ≠ 默认批准。
@@ -186,5 +153,3 @@ async def shutdown():
         logging.getLogger(__name__).warning(f"单轨工具运行时关闭失败: {e}")
     from backend.core.http import close_http_session
     await close_http_session()
-    from backend.embedded_mcp import close_servers
-    await close_servers(getattr(app.state, "mcp_servers", []))
