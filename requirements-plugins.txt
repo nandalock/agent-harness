@@ -1,19 +1,23 @@
 # Agent Platform plugin stack for local/backend development.
 # Install leaf packages first so editable dependency resolution never falls
 # back to an unpublished PyPI release.
--e ./packages/plugin-sdk
--e ./packages/plugin-runtime
--e ./packages/platform-default
--e ./packages/tool-system
--e ./packages/skills
--e ./packages/sandbox
--e ./packages/plugins/tools-default
--e ./packages/tool-host
--e ./packages/plugins/mcp-client
--e ./packages/plugins/skill-tools
--e ./packages/plugins/sandbox-tools
--e ./packages/tools/builtin-mcp
--e ./packages/tools/paper-mcp
--e ./packages/tools/overleaf-mcp
--e ./packages/tools/overleaf-rt-mcp
--e ./packages/plugins/managed-mcp
+-e ./packages/plugin/sdk
+-e ./packages/plugin/runtime
+-e ./packages/llm/core
+-e ./packages/llm/deepseek
+-e ./packages/plugin/default
+-e ./packages/tools/system
+-e ./packages/skills/core
+-e ./packages/skills/default
+-e ./packages/skills/filesystem
+-e ./packages/sandbox/core
+-e ./packages/tools/default
+-e ./packages/tools/host
+-e ./packages/mcp/client
+-e ./packages/skills/tools
+-e ./packages/sandbox/tools
+-e ./packages/mcp/builtin
+-e ./packages/mcp/paper
+-e ./packages/mcp/overleaf
+-e ./packages/mcp/overleaf-rt
+-e ./packages/mcp/managed

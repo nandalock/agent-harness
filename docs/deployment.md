@@ -5,8 +5,8 @@
 
 | 方式 | 前后端 | PostgreSQL / Redis | 命令 |
 | --- | --- | --- | --- |
-| 本地 | 宿主机进程 | 自建本地或远程服务 | `python minidsh.py dev` |
-| 混合 | 宿主机进程 | Docker Compose | `python minidsh.py dev --mode hybrid` |
+| 本地 | 宿主机进程 | 自建本地或远程服务 | `python minidsh.py web` |
+| 混合 | 宿主机进程 | Docker Compose | `python minidsh.py web --mode hybrid` |
 | Docker | 容器 | Docker Compose | `python minidsh.py docker` |
 
 ## 本地安装
@@ -17,13 +17,13 @@ Windows、Linux、macOS 均使用 Python 3.12+ 和 Node.js 20+（建议 22）。
 ```sh
 python minidsh.py setup
 python minidsh.py doctor
-python minidsh.py dev
+python minidsh.py web
 ```
 
-`setup` 创建/复用 `.venv`，安装后端及所有插件包，执行前端 `npm ci`，
-从 `.env.local.example` 创建 `.env.local` 并生成随机 JWT 密钥。已有配置不覆盖。
-请在 `.env.local` 中设置数据库连接。命令行环境变量优先。
-CLI 不读取 Docker Compose 使用的 `.env`，也不会输出连接密码或 API 密钥。
+`setup` 创建/复用 `.venv`，安装后端及所有插件包，执行 `packages/client/` 的
+`npm ci`，从 `config/local.env.example` 创建 `config/local.env` 并生成随机 JWT 密钥。
+已有配置不覆盖。请在 `config/local.env` 中设置数据库连接；命令行环境变量优先。
+CLI 不读取 Docker Compose 使用的 `config/docker.env`，也不会输出连接密码或 API 密钥。
 
 本地 PostgreSQL 需要安装 pgvector、pg_trgm 扩展文件，创建用户及数据库。
 首次启动自动建表、迁移、初始化演示数据，因此数据库用户需要建表和创建扩展权限。
@@ -42,15 +42,49 @@ Redis 默认 `redis://localhost:6379/0`，用于缓存；未配置时缓存不�
 FAQ 的向量检索还需要配置 Ollama 和 `bge-m3`；普通工具对话不需要它。
 LLM API Key / Base URL / Model 仍在智能体配置页设置。
 
-开发模式自动重载后端，启动 Next.js dev。前端 `http://localhost:4000`，
-后端文档 `http://localhost:8000/docs`，就绪检查 `/health`。
+开发模式自动重载后端，启动 `packages/client` 的 Web 插件壳（Vite）。
+前端 `http://localhost:4000`，后端文档 `http://localhost:8000/docs`，就绪检查 `/health`。
 Ctrl+C 关闭本次启动的前后端进程树，不关闭数据库。
+
+### 前端 profile
+
+前端不是硬编码在 `minidsh.py` 里的，而是由前端包自己的 `package.json` 声明
+`dsh.frontend`，和 DSH 的 `dsh.client` / `dsh.bundle` 一样是包自描述：
+
+```json
+{
+  "name": "@app/web2",
+  "dsh": {
+    "frontend": {
+      "name": "web2",
+      "install": "npm ci --no-audit --no-fund",
+      "dev": "npm run dev -- --host 127.0.0.1 --port {port}",
+      "build": "npm run build",
+      "start": "npm run preview -- --host 127.0.0.1 --port {port}",
+      "dist": "dist",
+      "requiresNode": true
+    }
+  }
+}
+```
+
+`minidsh` 扫描 `packages/*/package.json` 发现 profile：
+
+```sh
+python minidsh.py web                        # 默认 web
+python minidsh.py web --profile web2         # 按 packages/client2 目录名或包名
+python minidsh.py web --dir D:/jk/Code/web2  # 仓库外的前端包
+```
+
+`setup` / `build` / `start` / `doctor` 同样支持 `--profile` 和 `--dir`。
+`minidsh.py` 只负责环境变量、端口和后端健康检查，不 import 前端代码；因此换前端不需要改
+Python。
 
 ## 混合部署
 
 ```sh
 python minidsh.py setup
-python minidsh.py dev --mode hybrid
+python minidsh.py web --mode hybrid
 ```
 
 只执行 `docker compose -f deploy/compose.infra.yaml up -d --wait db redis`，不会构建后端镜像。
@@ -59,7 +93,7 @@ python minidsh.py dev --mode hybrid
 `docker compose stop backend frontend`，或者换端口：
 
 ```sh
-python minidsh.py dev --mode hybrid --backend-port 18000 --frontend-port 14000
+python minidsh.py web --mode hybrid --backend-port 18000 --frontend-port 14000
 ```
 
 CLI 会检查端口冲突，不会自动关闭已有服务。不要同时用多个应用进程修改同一会话。
@@ -67,17 +101,22 @@ CLI 会检查端口冲突，不会自动关闭已有服务。不要同时用多�
 ## 本地生产模式
 
 ```sh
+# 一步完成构建 + 启动
+python minidsh.py web --prod
+# 使用容器数据库：python minidsh.py web --prod --mode hybrid
+
+# 或分开执行
 python minidsh.py build
 python minidsh.py start
-# 使用容器数据库：python minidsh.py start --mode hybrid
-# 仅启动后端：python minidsh.py start --backend-only
+# 仅启动后端：python minidsh.py dev --backend-only
 ```
 
-生产模式关闭自动重载；前端构建在 `.next-local-build`，开发产物在 `.next-local`，
-与容器的 `.next` 分开。构建和启动应使用相同的前端/API 地址参数与环境变量，
+生产模式关闭自动重载；`packages/client` 构建到 `packages/client/dist`，由
+`vite preview` 提供服务。构建和启动应使用相同的前端/API 地址参数与环境变量，
 因为 `NEXT_PUBLIC_API_URL` 在构建时写入前端资源。
 CLI 默认只监听回环地址，适合本地部署。公网服务应由进程管理器和反向代理接管，
-配置 HTTPS、正式数据库账号和认证密钥；原有 Docker 部署不受影响。
+配置 HTTPS、正式数据库账号和认证密钥；Docker Compose 的 `frontend` 服务也构建
+`packages/client`，与本地使用同一套插件壳。
 
 ## 可选功能
 
@@ -89,7 +128,7 @@ CLI 默认只监听回环地址，适合本地部署。公网服务应由进程�
   只有 danger-full-access 才直接运行。详见[宿主机沙箱](native-sandbox.md)。
 - 数据根默认 `~/.minidsh`，可通过 `MINIDSH_HOME` 统一指定。
   工作区为 `<MINIDSH_HOME>/workspaces`、技能为 `skills`、论文缓存为 `cache/paper-mcp`。
-  可通过 `.env.local` 覆盖 `SANDBOX_WORKSPACE_ROOT`、`SKILL_INSTALL_ROOT`。
+  可通过 `config/local.env` 覆盖 `SANDBOX_WORKSPACE_ROOT`、`SKILL_INSTALL_ROOT`。
   原 `.agent-harness` 目录不会被自动删除；需要沿用旧数据时显式设置 `MINIDSH_HOME`
   或相应子目录变量。`harness.py` 仅保留为兼容入口，新部署使用 `minidsh.py`。
 - 本地内置 MCP 默认监听 19001/19002，以避开 Windows 常见的端口保留范围。
@@ -99,7 +138,7 @@ CLI 默认只监听回环地址，适合本地部署。公网服务应由进程�
   安装 `overleaf-mcp-plus[compile]` 和 python-dotenv，通过 `OVERLEAF_MCP_PYTHON` 指定解释器。
   主后端使用 MCP SDK 1，不能把 SDK 2 服务装入同一个 `.venv`。
   Overleaf RT 使用 `OVERLEAF_RT_ENABLED=true`，另需 Node/npx 和相应凭据。
-- 自定义插件继续使用根目录 `plugins.yaml` 或环境变量 `PLUGIN_CONFIG`。
+- 自定义插件继续使用 `config/plugins.yaml` 或环境变量 `PLUGIN_CONFIG`。
   内置/论文 MCP 与 Overleaf 的启动、连接和关闭现由 managed-mcp 插件包负责，
   不再由 backend/main.py 逐项启动。可按插件实例设置 disabled 或 config.enabled。
   `MANAGED_MCP_ENABLED=false` 可整体关闭这些集成；`PLUGIN_MCP_AUTO` 仅控制其他数据库 MCP 的自动发现。
@@ -107,11 +146,14 @@ CLI 默认只监听回环地址，适合本地部署。公网服务应由进程�
 ## 保留 Docker 部署
 
 ```sh
-docker compose up -d --build
+cp config/docker.env.example config/docker.env   # 首次
+docker compose --env-file config/docker.env up -d --build
 # 等价入口：python minidsh.py docker
 ```
 
 本地新增包已经包含在 `requirements-plugins.txt`，镜像构建会一起安装。
+`frontend` 服务使用 `packages/client/Dockerfile` 构建 Web 插件壳，并由 `vite preview`
+在容器内提供服务；浏览器端 API 地址由构建参数 `VITE_PUBLIC_BACKEND_URL` 写入。
 `doctor` 只做检查，不修改数据库，也不启动服务。
 
 ## Agent 配置

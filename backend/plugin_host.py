@@ -12,18 +12,16 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = REPO_ROOT / "config" / "plugins.yaml"
+
+
 def _resolve_config_path() -> Path | None:
-    """显式 env 优先；否则自动发现工作目录里的约定文件。"""
+    """Explicit PLUGIN_CONFIG wins; otherwise only the repository config is used."""
     explicit = os.environ.get("PLUGIN_CONFIG")
     if explicit:
         return Path(explicit)
-    for candidate in (
-        Path.cwd() / "plugins.yaml",
-        Path.cwd() / "config" / "plugins.yaml",
-    ):
-        if candidate.is_file():
-            return candidate
-    return None
+    return CONFIG_PATH if CONFIG_PATH.is_file() else None
 
 
 @dataclass

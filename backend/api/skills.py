@@ -6,7 +6,8 @@ from fastapi import APIRouter, Header, HTTPException
 from backend.agents import get_agent
 from backend.agents.runtime import AgentRuntime
 from backend.core.connection import get_conn
-from agent_platform_skills.registry import SkillError, get_skill_registry
+from agent_platform_skills import SKILLS, SkillError
+from agent_platform_plugin_sdk import AgentRunContext, ServiceUnavailableError
 from agent_platform_skills.runtime import catalog_entries, scope_for
 
 router = APIRouter(prefix="/api/agents", tags=["Skills"])
@@ -43,14 +44,26 @@ async def list_skills(agent_key: str, session_id: str | None = None,
         return {"skills": []}
     config = await asyncio.to_thread(agent._cfg)
     names = await asyncio.to_thread(_bindings, agent_key)
-    from agent_platform_skills.installer import install_enabled
-    if install_enabled(config):
-        names = [*names, "skill_install"]
-    else:
-        names = [name for name in names if name != "skill_install"]
+    from backend.plugin_host import get_plugin_host
+    from backend.agents.runtime.extensions import get_agent_extensions
+    host = get_plugin_host()
+    if host is None:
+        return {"skills": []}
     try:
+        skills = host.runtime.require(SKILLS)
+    except ServiceUnavailableError:
+        return {"skills": []}
+    try:
+        contribution = await get_agent_extensions().prepare(AgentRunContext(
+            tenant_id=x_tenant_id, agent_key=agent_key, config=config,
+            tool_schemas=[{"type": "function", "function": {"name": name}} for name in names],
+        ))
+        # With the consumer plugin disabled there is no skill invocation UI.
+        if "skills" not in contribution.capabilities:
+            return {"skills": []}
+        names = [tool["function"]["name"] for tool in contribution.tool_schemas]
         scope = scope_for(x_tenant_id, agent_key, names, config)
-        entries = await asyncio.to_thread(catalog_entries, get_skill_registry(), scope)
+        entries = await asyncio.to_thread(catalog_entries, skills, scope)
     except SkillError as exc:
         raise HTTPException(400, str(exc)) from exc
     return {"skills": [e for e in entries if e["user_invocable"]]}

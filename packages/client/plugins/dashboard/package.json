@@ -1,0 +1,11 @@
+{
+  "name": "@app/plugin-dashboard",
+  "private": true,
+  "version": "0.1.0",
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": ["@app/plugin-shell"]
+    }
+  }
+}

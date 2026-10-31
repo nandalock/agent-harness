@@ -10,6 +10,7 @@ Usage:
 import asyncio
 import json
 import os
+from pathlib import Path
 import shutil
 import subprocess
 import sys
@@ -493,6 +494,7 @@ def test_mounts_note_reports_workspace_host():
 
 
 def test_assert_root_is_safe_rejects_repo_and_backend():
+    assert repo_root() == Path(__file__).resolve().parents[2]
     repo = str(repo_root())
     expect_raises(ValueError, assert_root_is_safe, repo)
     expect_raises(ValueError, assert_root_is_safe, str(repo_root() / "backend"))

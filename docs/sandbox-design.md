@@ -2,7 +2,7 @@
 
 > 状态：设计已定稿，待实现
 > 参考：DeepSeek Harness `dsh-sandbox`（seam / 词汇 / fail-closed / 分类方言）
-> 关联代码：`packages/sandbox/`、`packages/plugins/sandbox-tools/`、`backend/agents/runtime/session/`
+> 关联代码：`packages/sandbox/core/`、`packages/sandbox/tools/`、`backend/agents/runtime/session/`
 
 ## 1. 背景与威胁模型
 
@@ -38,12 +38,12 @@
 
 | 偏离 | 原因 |
 |---|---|
-| `policy.py` 做成纯函数而非服务 | `packages/sandbox/` 不应依赖 `agents/runtime/session/` |
+| `policy.py` 做成纯函数而非服务 | `packages/sandbox/core/` 不应依赖 `agents/runtime/session/` |
 | 后端用 Docker 而非 bwrap/Landlock | 见 §2.1 |
 
 ### 2.1 为什么第一阶段用 Docker
 
-- **沙箱世界 ≠ backend 世界**：backend 容器里挂着整个仓库（`docker-compose.yml:19` 的 `.:/app`）、`.env`、DB 密码。同世界约束会把沙箱正好安放在密钥和源码的所在地；Docker 沙箱只挂独立工作区，两者物理隔离。这是 Docker 方案最关键的价值（见 §9.2）。
+- **沙箱世界 ≠ backend 世界**：backend 容器里挂着整个仓库（`docker-compose.yml:19` 的 `.:/app`）、`config/`、DB 密码。同世界约束会把沙箱正好安放在密钥和源码的所在地；Docker 沙箱只挂独立工作区，两者物理隔离。这是 Docker 方案最关键的价值（见 §9.2）。
 - Windows 开发机与 Linux 生产环境行为一致（Landlock/bwrap 在 Windows 上不可用）
 - 与现有 docker-compose 部署同构
 - 文件 / 进程隔离一次到位（网络 v1 不限制，见 §3）
@@ -94,7 +94,7 @@ DeepSeek 的 `ConfinedArgv` 只有**一个** `enforcement` 字段，它的语义
 ### 4.1 词汇
 
 ```python
-# packages/sandbox/src/agent_platform_sandbox/vocabulary.py
+# packages/sandbox/core/src/vocabulary.py
 SandboxMode = Literal["read-only", "workspace-write", "danger-full-access"]
 ConfinedSandboxMode = Literal["read-only", "workspace-write"]  # danger-* 不走 provider
 SandboxEnforcement = Literal["full", "partial"]
@@ -117,7 +117,7 @@ class SandboxPolicy:
 ### 4.2 seam
 
 ```python
-# packages/sandbox/src/agent_platform_sandbox/provider.py
+# packages/sandbox/core/src/provider.py
 @dataclass(frozen=True)
 class RunnerFailureRule:
     """识别 runner 在执行命令之前失败的证据。
@@ -166,7 +166,7 @@ Tool（bash / python）
 ```
 
 ```
-packages/sandbox/src/agent_platform_sandbox/
+packages/sandbox/core/src/
 ├── __init__.py       # 对外只导出 seam 词汇
 ├── vocabulary.py     # SandboxMode / SandboxEnforcement / SandboxPolicy
 ├── errors.py         # SandboxUnavailableError（fail-closed 的唯一出口）
@@ -179,12 +179,12 @@ packages/sandbox/src/agent_platform_sandbox/
 └── backends/
     └── docker.py     # DockerProvider（v1 唯一后端）
 
-packages/sandbox/src/agent_platform_sandbox/executor.py  # SandboxExecutor / build_sandbox_argv
-packages/plugins/sandbox-tools/src/agent_platform_sandbox_tools/plugin.py  # 注册 "sandbox" executor
-packages/tool-system/src/agent_platform_tool_system/descriptor.py  # SandboxToolConfig
-packages/tool-system/src/agent_platform_tool_system/registry.py  # 工具描述索引
-packages/tool-system/src/agent_platform_tool_system/providers.py  # ToolProvider / BuiltinToolProvider
-packages/tool-system/src/agent_platform_tool_system/context.py  # sandbox_policy（策略下传）
+packages/sandbox/core/src/executor.py  # SandboxExecutor / build_sandbox_argv
+packages/sandbox/tools/src/plugin.py  # 注册 "sandbox" executor
+packages/tools/system/src/descriptor.py  # SandboxToolConfig
+packages/tools/system/src/registry.py  # 工具描述索引
+packages/tools/system/src/providers.py  # ToolProvider / BuiltinToolProvider
+packages/tools/system/src/context.py  # sandbox_policy（策略下传）
 backend/agents/runtime/loop/agent_loop.py       # 解析策略 + 落地 SessionHeader.cwd
 backend/api/mcp.py                              # 工具列表/详情含原生工具
 backend/main.py                                 # 装配：init_sandbox + 注册 bash/python
@@ -194,12 +194,12 @@ docker-compose.yml / backend/Dockerfile         # socket + docker CLI + 工作�
 阶段 1c 追加：`session/events.py`（`SANDBOX_MODE` 常量）、`session/projections/sandbox.py`
 （find-last fold + 回放同构）、`session/projections/trajectory.py`（tool node 携带 sandbox 事实
 与状态归类）、`agent_loop.py`（读取覆盖 + `tool/result` 结构化字段）、`api/agents.py`
-（`GET/POST /sessions/{sid}/sandbox_mode`）、`frontend/lib/trajectory.ts` +
+（`GET/POST /sessions/{sid}/sandbox_mode`）、`packages/client/legacy/lib/trajectory.ts` +
 `TrajectoryTimeline.tsx`（轨迹里显示沙箱状态）。
 
 ### 5.1 关于 `policy.py` 的偏离
 
-DeepSeek 的 `ctx.sandboxPolicy.resolve()` 是服务，直接读会话。我们的 `packages/sandbox/` 不应依赖 `agents/runtime/session/`，所以 `policy.py` 是**纯函数**：
+DeepSeek 的 `ctx.sandboxPolicy.resolve()` 是服务，直接读会话。我们的 `packages/sandbox/core/` 不应依赖 `agents/runtime/session/`，所以 `policy.py` 是**纯函数**：
 
 ```python
 def resolve_policy(
@@ -216,7 +216,7 @@ def resolve_policy(
 ## 6. Descriptor 扩展
 
 ```python
-# packages/tool-system/src/agent_platform_tool_system/descriptor.py
+# packages/tools/system/src/descriptor.py
 @dataclass(frozen=True)
 class SandboxToolConfig:
     runtime: Literal["shell", "python"]   # 决定 argv 形状
@@ -367,18 +367,18 @@ assert not any(a in argv for a in _FORBIDDEN), "模型参数不得影响隔离�
 这里与 DeepSeek 有一个重要差异，且对我们有利：
 
 - **DeepSeek 是同世界约束**：命令与宿主共享文件系统，`read-only` 只挡写不挡读——宿主上有什么就能读什么。他们的场景是「用户自己的机器」，可以接受。
-- **Docker 是另一个容器**：沙箱只挂载工作区，backend 的 `.env`、DB 密码、源码**根本不在那个容器里**。
+- **Docker 是另一个容器**：沙箱只挂载工作区，backend 的 `config/`、DB 密码、源码**根本不在那个容器里**。
 
 因此读侧边界天然存在，但它**依赖一个配置约束**：
 
 ```
 ✅ SANDBOX_WORKSPACE_ROOT=/srv/agent/workspaces
    → 沙箱挂 /srv/agent/workspaces/<session_id>:/workspace
-   → 看不到 .env、源码、DB 密码
+   → 看不到 config/、源码、DB 密码
 
 ❌ SANDBOX_WORKSPACE_ROOT=.（仓库根）
    → 沙箱挂整个仓库
-   → .env 直接被挂进去
+   → config/ 直接被挂进去
 ```
 
 **必须实现校验**：`SANDBOX_WORKSPACE_ROOT` 启动时断言其不等于、也不包含仓库根或 `backend/` 目录。这条把「读侧不设防」从固有风险降级为配置错误。
@@ -395,7 +395,7 @@ Seatbelt 的 `allow default` + `deny file-write*`。它们的 `roots.ts` 只派�
 读侧**没有轴可配**，因为读本来就不设限。Docker 后端的读被容器边界收窄，整盘只读挂载
 把这个差距补回来，于是两条轴的语义与上游对齐：**读由授予决定，写由模式决定**。
 
-代价必须说清楚：**整盘只读意味着沙箱能读到仓库的 `.env`（`JWT_SECRET`、
+代价必须说清楚：**整盘只读意味着沙箱能读到仓库的 `config/`（`JWT_SECRET`、
 `PAPER_LLM_API_KEY`）以及用户目录下的凭据文件**。沙箱容器有网络，所以「读全域 + 网络」
 = 凭据外泄是可达路径。这是上游同世界后端**本来就有**的暴露面，不是本后端引入的缺陷；
 要收窄就列具体目录（`D:/jk/Papers,D:/Documents`）而不是整盘。
@@ -440,7 +440,7 @@ schema 序列化 + 三层解析是 SDK 形态的投入（他们要服务几十�
 ## 10. 消费方：SandboxExecutor
 
 ```python
-# packages/sandbox/src/agent_platform_sandbox/executor.py
+# packages/sandbox/core/src/executor.py
 class SandboxExecutor(ToolExecutor):
     async def execute(self, descriptor, args, context) -> dict:
         # 1. 从 context 取已解析的 SandboxPolicy（无则 fail-closed）
@@ -460,7 +460,7 @@ self._executors = {"mcp": MCPExecutor(), "sandbox": SandboxExecutor()}
 ### 10.1 分类器
 
 ```python
-# packages/sandbox/src/agent_platform_sandbox/classify.py
+# packages/sandbox/core/src/classify.py
 Outcome = Literal["normal", "denied", "runner_failed"]
 
 def classify_outcome(exit_code: int, stderr: str, confined: ConfinedArgv) -> Outcome:

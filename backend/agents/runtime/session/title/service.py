@@ -36,6 +36,7 @@ import json
 import logging
 from dataclasses import dataclass
 
+from backend.agents.runtime.llm.providers import resolve_model_config
 from backend.agents.runtime.session.events import TITLE
 from backend.agents.runtime.session.persistence import (
     flush_session_events,
@@ -415,22 +416,21 @@ class SessionTitleService:
 
 
 def _llm_endpoint(config: dict) -> tuple[str, str]:
-    """从 agent 配置里取 (base_url, api_key)——标题复用主模型那套凭据。"""
-    base_url = (config.get("base_url") or "").strip().rstrip("/")
-    api_key = (config.get("api_key") or "").strip()
-    if not base_url or not api_key:
-        raise RuntimeError("agent 未配置 base_url / api_key")
-    return base_url, api_key
+    """从**解析后**的模型配置取 (base_url, api_key)——标题复用主模型那套凭据。"""
+    resolved = resolve_model_config(config)
+    if not resolved.configured:
+        raise RuntimeError("agent 未配置模型 / base_url / api_key")
+    return resolved.base_url, resolved.api_key
 
 
 def _model_of(config: dict) -> str:
     """标题用哪个模型：``session_title_model`` 优先（可以挑个更便宜的），否则同主模型。"""
-    return (config.get("session_title_model") or config.get("model") or "").strip()
+    resolved = resolve_model_config(config)
+    return (config.get("session_title_model") or resolved.model).strip()
 
 
 def _llm_ready(config: dict) -> bool:
-    return bool(_model_of(config) and (config.get("base_url") or "").strip()
-                and (config.get("api_key") or "").strip())
+    return bool(_model_of(config) and resolve_model_config(config).configured)
 
 
 # ── 进程级装配（与 get_session_store() / get_session_persistence() 同模式）──

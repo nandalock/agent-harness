@@ -299,14 +299,21 @@ class RouterRuntime(BaseAgent):
         self, question: str, config: dict, context: dict | None = None
     ) -> tuple[str | None, float, list]:
         l3 = config.get("l3_llm", {})
-        model = l3.get("model") or config.get("model", "").strip()
-        api_key = l3.get("api_key") or config.get("api_key", "").strip()
-        base_url = l3.get("base_url") or config.get("base_url", "").strip()
+        from backend.agents.runtime.llm.providers import resolve_model_config
+        model_config = resolve_model_config({
+            "provider": l3.get("provider") or config.get("provider") or "deepseek",
+            "model": l3.get("model") or config.get("model", ""),
+            "base_url": l3.get("base_url") or config.get("base_url", ""),
+            "api_key": l3.get("api_key") or config.get("api_key", ""),
+        })
+        model = model_config.model
+        api_key = model_config.api_key
+        base_url = model_config.base_url
         fallback = l3.get("fallback_agent", "")
         system_extra = l3.get("system_prompt_extra", "")
         min_confidence = l3.get("min_confidence", 0.6)
 
-        if not all([model, api_key, base_url]):
+        if not model_config.configured:
             logger.warning(f"[{self.key}] L3 LLM 未配置，兜底 {fallback}")
             return fallback, 0.0, [{"error": "LLM 未配置"}]
 

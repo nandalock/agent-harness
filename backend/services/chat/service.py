@@ -219,6 +219,37 @@ def list_messages(
             return [MessageResponse(**r) for r in rows]
 
 
+def list_message_window(
+    tenant_id: int, conversation_id: int, *, before_id: int | None = None, size: int = 50,
+) -> dict:
+    """Newest-first keyset query, returned in reading order. Concurrent appends don't shift pages."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            params = [tenant_id, conversation_id]
+            sql = "SELECT * FROM messages WHERE tenant_id = %s AND conversation_id = %s"
+            if before_id is not None:
+                sql += " AND id < %s"
+                params.append(before_id)
+            cur.execute(sql + " ORDER BY id DESC LIMIT %s", (*params, size + 1))
+            rows = cur.fetchall()
+            has_more = len(rows) > size
+            items = [MessageResponse(**r) for r in reversed(rows[:size])]
+            # Only needed to bind legacy replies without an explicit event pointer.
+            if items:
+                cur.execute(
+                    """SELECT COUNT(*) AS total,
+                              COUNT(*) FILTER (WHERE id < %s) AS preceding
+                       FROM messages WHERE tenant_id = %s AND conversation_id = %s AND role = 'agent'""",
+                    (items[0].id, tenant_id, conversation_id),
+                )
+                counts = cur.fetchone()
+            else:
+                counts = {"total": 0, "preceding": 0}
+            return {"items": items, "has_more": has_more,
+                    "next_before_id": items[0].id if has_more else None,
+                    "agent_total": counts["total"], "agent_offset": counts["preceding"]}
+
+
 def get_conversation_session_id(tenant_id: int, conversation_id: int) -> Optional[str]:
     """conversation → Agent Runtime session 映射读取（会话级记忆恢复用）。
 

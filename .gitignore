@@ -17,17 +17,22 @@ test-results/
 playwright-report/
 *.tsbuildinfo
 
-# Docker
+# Configuration
+# Canonical runtime files live in config/; templates (*.example) stay tracked.
+config/local.env
+config/docker.env
+config/plugins.yaml
+config/backup/
+# Legacy root locations, kept ignored for compatibility.
 .env
 .env.local
 .env.local.*
-!.env.local.example
 .next-local/
 .next-local-build/
 
 # Sensitive credentials
 *.cookie.json
-packages/tools/paper-mcp/src/agent_platform_paper_mcp/llm.config.json
+packages/mcp/paper/src/llm.config.json
 
 # Temp files
 _temp_*
@@ -50,3 +55,7 @@ test_payload.json
 
 # Build logs
 backend_build.log
+
+# Web plugin shell build output
+packages/client/dist/
+packages/client/.vite/

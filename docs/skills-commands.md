@@ -67,12 +67,12 @@ $skill-installer https://github.com/anthropics/skills/tree/main/skills/pdf
 
 ## Overleaf 实时服务
 
-内置四个上游技能和 `/overleaf-login`、`/overleaf-status` 两个命令，来自 `overleaf-mcp-rt` 2.2.0。原文、来源和许可证保留在 `packages/skills/builtin/overleaf_rt/`。
+内置四个上游技能和 `/overleaf-login`、`/overleaf-status` 两个命令，来自 `overleaf-mcp-rt` 2.2.0。原文、来源和许可证保留在 `packages/skills/filesystem/src/builtin/overleaf_rt/`。
 
 新后端镜像安装固定版本的 Node.js 服务。Compose 默认启用 `OVERLEAF_RT_ENABLED=true`，启动时独立登记 `overleaf-rt`；不覆盖已有 MCP 服务配置和智能体工具绑定。
 
-1. 按 `.env.overleaf-rt.example` 配置 `OVERLEAF_RT_URL` 与 `OVERLEAF_RT_SESSION_COOKIE`。
-2. 执行 `docker compose build backend` 和 `docker compose up -d backend`。
+1. 按 `config/docker.env.example` 配置 `OVERLEAF_RT_URL` 与 `OVERLEAF_RT_SESSION_COOKIE`。
+2. 执行 `docker compose build backend` 和 `docker compose --env-file config/docker.env up -d backend`。
 3. 在 MCP 页面确认 `overleaf-rt` 的工具可用。在智能体配置页绑定需要的工具；状态和登录命令至少需要 `overleaf_list_hosts`、`overleaf_list_projects`。
 4. 在工作区发送 `/overleaf-status`，或 `/overleaf-login https://www.overleaf.com overleaf`。
 
@@ -92,4 +92,15 @@ $skill-installer https://github.com/anthropics/skills/tree/main/skills/pdf
 docker compose exec -T backend python -m unittest backend.skills.test_skills backend.skills.test_installer -v
 ```
 
-前端交互测试：在 `frontend/` 运行 `npm run test:skills`。本机未安装 Playwright Chromium 时可设置 `PLAYWRIGHT_CHANNEL=msedge` 使用已安装的 Edge。
+前端交互测试：旧 Next.js 前端的 Playwright 技能测试已随 `frontend/` 归档；当前前端为 `packages/client`。
+
+## 插件装配
+
+技能系统由三个插件组成：`agent-platform.skills-default` 提供 `skills.v1`，
+`agent-platform.skills-filesystem` 登记本地目录，`agent-platform.skill-tools`
+注册工具和对话扩展。内置内容属于文件系统插件。源码结构见
+[packages/skills](../packages/skills/README.md)。
+
+AgentRuntime 通过通用的 `agent.extensions.v1` 接收工具和 pre-step 钩子，不再
+直接导入技能实现。禁用 skill-tools 会一并移除工具、目录注入和 `/技能名` 处理。
+保留 `skills_enabled`、`enabled_skills`、`skill_install_enabled` 的 Agent 配置语义。

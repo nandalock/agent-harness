@@ -32,6 +32,11 @@ try:
     from agent_platform_tools_default import ToolsDefaultPlugin, ToolsDefaultService
     from agent_platform_mcp_client import McpManagerPlugin
     from agent_platform_skill_tools import SkillToolsPlugin
+    from agent_platform_skills_default import SkillsDefaultPlugin
+    from agent_platform_skills_filesystem import SkillsFilesystemPlugin
+    from agent_platform_plugin_sdk import AGENT_EXTENSIONS
+    from backend.agents.runtime.extensions import AgentExtensionRegistry
+    from agent_platform_llm_deepseek import DeepSeekProviderPlugin
     from agent_platform_managed_mcp import BuiltinPlugin, PaperPlugin, OverleafPlugin, OverleafRtPlugin
     from agent_platform_sandbox_tools import SandboxToolsPlugin
     from agent_platform_sandbox.plugin import LocalSandboxPlugin, SANDBOX
@@ -543,7 +548,10 @@ def test_config_auto_appends_mcp_client_entries_and_dedupes():
         names = [entry.name for entry in config.plugins]
         assert names == [
             "agent-platform.tools-default",
+            "agent-platform.llm-deepseek",
             "agent-platform.mcp-manager",
+            "agent-platform.skills-default",
+            "agent-platform.skills-filesystem",
             "agent-platform.skill-tools",
             "agent-platform.sandbox-tools",
             "agent-platform.sandbox-local",
@@ -574,7 +582,10 @@ def test_config_auto_appends_mcp_client_entries_and_dedupes():
         assert [entry.id for entry in deduped.plugins] == [
             "tools",
             "custom",
+            "llm-deepseek",
             "mcp-manager",
+            "skills",
+            "skills-filesystem",
             "skill-tools",
             "sandbox-tools",
             "sandbox-provider",
@@ -624,7 +635,9 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
         config = PluginConfiguration(
             plugins=[
                 {"id": "tools", "name": "agent-platform.tools-default", "config": {}},
-                {"id": "skills", "name": "agent-platform.skill-tools", "config": {}},
+                {"id": "skill-tools", "name": "agent-platform.skill-tools", "config": {}},
+                {"id": "skills", "name": "agent-platform.skills-default"},
+                {"id": "filesystem", "name": "agent-platform.skills-filesystem"},
                 {"id": "sandbox", "name": "agent-platform.sandbox-tools", "config": {}},
                 {"id": "sandbox-provider", "name": "agent-platform.sandbox-local"},
             ]
@@ -635,6 +648,9 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
                 {
                     "agent-platform.tools-default": ToolsDefaultPlugin,
                     "agent-platform.skill-tools": SkillToolsPlugin,
+                    "agent-platform.skills-default": SkillsDefaultPlugin,
+                    "agent-platform.skills-filesystem": SkillsFilesystemPlugin,
+                    "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
                     "agent-platform.sandbox-tools": SandboxToolsPlugin,
                     "agent-platform.sandbox-local": LocalSandboxPlugin,
                     'agent-platform.builtin-mcp': BuiltinPlugin,
@@ -645,6 +661,7 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
             ),
             host_services={
                 AGENTS: Agents(),
+                AGENT_EXTENSIONS: AgentExtensionRegistry(),
                 SETTINGS: Settings(),
                 APPROVAL: Approval(),
             },
@@ -722,6 +739,9 @@ def test_plugin_host_always_assembles_tools_default_and_unified_runtime():
                             "agent-platform.tools-default": ToolsDefaultPlugin,
                             "agent-platform.mcp-manager": McpManagerPlugin,
                             "agent-platform.skill-tools": SkillToolsPlugin,
+                            "agent-platform.skills-default": SkillsDefaultPlugin,
+                            "agent-platform.skills-filesystem": SkillsFilesystemPlugin,
+                            "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
                             "agent-platform.sandbox-tools": SandboxToolsPlugin,
                             "agent-platform.sandbox-local": LocalSandboxPlugin,
                             'agent-platform.builtin-mcp': BuiltinPlugin,
@@ -750,7 +770,7 @@ def test_plugin_host_always_assembles_tools_default_and_unified_runtime():
     asyncio.run(case())
 
 
-def test_plugin_host_auto_discovers_plugins_yaml_in_cwd():
+def test_plugin_host_reads_repository_config_independently_of_cwd():
     if _skip():
         return
 
@@ -759,6 +779,7 @@ def test_plugin_host_auto_discovers_plugins_yaml_in_cwd():
         await plugin_host.close_plugin_host()
         old_config = os.environ.pop("PLUGIN_CONFIG", None)
         old_cwd = os.getcwd()
+        old_path = plugin_host.CONFIG_PATH
         try:
             with tempfile.TemporaryDirectory() as directory:
                 path = Path(directory) / "plugins.yaml"
@@ -769,6 +790,7 @@ def test_plugin_host_auto_discovers_plugins_yaml_in_cwd():
                     "    name: test.consumer\n",
                     encoding="utf-8",
                 )
+                plugin_host.CONFIG_PATH = path
                 os.chdir(directory)
                 try:
                     calls = []
@@ -778,6 +800,9 @@ def test_plugin_host_auto_discovers_plugins_yaml_in_cwd():
                                 "agent-platform.tools-default": ToolsDefaultPlugin,
                                 "agent-platform.mcp-manager": McpManagerPlugin,
                                 "agent-platform.skill-tools": SkillToolsPlugin,
+                                "agent-platform.skills-default": SkillsDefaultPlugin,
+                                "agent-platform.skills-filesystem": SkillsFilesystemPlugin,
+                                "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
                                 "agent-platform.sandbox-tools": SandboxToolsPlugin,
                                 "agent-platform.sandbox-local": LocalSandboxPlugin,
                                 'agent-platform.builtin-mcp': BuiltinPlugin,
@@ -796,6 +821,9 @@ def test_plugin_host_auto_discovers_plugins_yaml_in_cwd():
                     "test.consumer",
                     "agent-platform.mcp-manager",
                     "agent-platform.skill-tools",
+                    "agent-platform.skills-default",
+                    "agent-platform.skills-filesystem",
+                    "agent-platform.llm-deepseek",
                     "agent-platform.sandbox-local",
                     "agent-platform.builtin-mcp",
                     "agent-platform.paper-mcp",
@@ -811,6 +839,7 @@ def test_plugin_host_auto_discovers_plugins_yaml_in_cwd():
         finally:
             await plugin_host.close_plugin_host()
             os.chdir(old_cwd)
+            plugin_host.CONFIG_PATH = old_path
             if old_config is not None:
                 os.environ["PLUGIN_CONFIG"] = old_config
 
@@ -832,6 +861,9 @@ def test_plugin_host_starts_without_plugin_config():
                         "agent-platform.tools-default": ToolsDefaultPlugin,
                         "agent-platform.mcp-manager": McpManagerPlugin,
                         "agent-platform.skill-tools": SkillToolsPlugin,
+                        "agent-platform.skills-default": SkillsDefaultPlugin,
+                        "agent-platform.skills-filesystem": SkillsFilesystemPlugin,
+                        "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
                         "agent-platform.sandbox-tools": SandboxToolsPlugin,
                         "agent-platform.sandbox-local": LocalSandboxPlugin,
                         'agent-platform.builtin-mcp': BuiltinPlugin,

@@ -5,12 +5,13 @@ venv
 **/__pycache__
 **/*.py[cod]
 .pytest_cache
+config/local.env
+config/docker.env
+config/plugins.yaml
+config/backup
 .env
 .env.*
-!.env.example
-plugins.yaml
-packages/tools/paper-mcp/src/agent_platform_paper_mcp/llm.config.json
-frontend
+packages/mcp/paper/src/llm.config.json
 docs
 sandbox
 README.md

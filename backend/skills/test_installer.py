@@ -18,8 +18,11 @@ from agent_platform_skill_tools import (
     skill_install_descriptor,
 )
 from agent_platform_skills import installer
-from agent_platform_skills.registry import SkillError, SkillRegistry, SkillScope, default_sources
-from agent_platform_skills.runtime import SkillPreStep, load_model_skill
+from agent_platform_skills_filesystem import default_sources
+from backend.skills.support import filesystem_registry as SkillRegistry
+from agent_platform_skills.registry import SkillError, SkillScope
+from agent_platform_skill_tools.runtime import SkillPreStep
+from agent_platform_skills.runtime import load_model_skill
 
 COMMIT = "a" * 40
 
@@ -165,14 +168,18 @@ class InstallerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(SkillRegistry([], include_installed=True).list(self.scope), [])
 
     async def test_api_catalog_exposes_installer_without_manual_bindings(self):
+        from types import SimpleNamespace
         from backend.agents.runtime import AgentRuntime
         from backend.api.skills import list_skills
+        from backend.skills.support import installed_skill_runtime
         agent = AgentRuntime("assistant", {"config": {}})
-        registry = type("Tools", (), {"get_bindings": lambda _, key: []})()
-        with patch("backend.api.skills.get_agent", return_value=agent), \
-                patch("backend.api.skills.get_registry", return_value=registry), \
-                patch.object(agent, "_cfg", return_value={}):
-            result = await list_skills("assistant", x_tenant_id=7)
+        async with installed_skill_runtime() as (runtime, extensions):
+            with patch("backend.api.skills.get_agent", return_value=agent), \
+                    patch("backend.api.skills._bindings", return_value=[]), \
+                    patch("backend.plugin_host.get_plugin_host", return_value=SimpleNamespace(runtime=runtime)), \
+                    patch("backend.agents.runtime.extensions.get_agent_extensions", return_value=extensions), \
+                    patch.object(agent, "_cfg", return_value={}):
+                result = await list_skills("assistant", x_tenant_id=7)
         entry = next(row for row in result["skills"] if row["key"] == "platform:skill-installer")
         self.assertIsNone(entry["unavailable_reason"])
 
@@ -215,7 +222,7 @@ class InstallerTests(unittest.IsolatedAsyncioTestCase):
 
         descriptors = [skill_descriptor(), skill_install_descriptor()]
         service = ToolsDefaultService()
-        service.register_executor("skill", SkillExecutor(FakeAgents()))
+        service.register_executor("skill", SkillExecutor(FakeAgents(), SkillRegistry(default_sources(), include_installed=True)))
         service.register_executor("skill_install", SkillInstallExecutor(FakeAgents()))
         for descriptor in descriptors:
             service.register_tool(descriptor)

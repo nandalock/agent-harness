@@ -66,30 +66,64 @@
 支持本地、混合和 Docker 三种部署。Python 3.12+、Node.js 20+ 环境下：
 
 ```sh
-python minidsh.py setup              # 安装 .venv、插件和前端依赖，创建 .env.local
-python minidsh.py dev --mode hybrid  # 前后端本地运行，Docker 只启动数据库和 Redis
-# 已有 PostgreSQL：python minidsh.py dev
-# 本地生产：python minidsh.py build && python minidsh.py start
+python minidsh.py setup              # 安装 .venv、插件和前端依赖，创建 config/local.env
+python minidsh.py web --mode hybrid  # 后端 + Web 插件壳，Docker 只启动数据库和 Redis
+# 已有 PostgreSQL：python minidsh.py web
+# 本地生产：python minidsh.py web --prod
 ```
 
-配置 `.env.local` 后也可执行 `python minidsh.py doctor` 检查环境。
-原有 `docker compose up -d --build` 保留。完整说明见[部署方式](docs/deployment.md)。
+配置 `config/local.env` 后也可执行 `python minidsh.py doctor` 检查环境。
+所有配置文件集中在 [`config/`](config/README.md)；Docker 部署使用
+`python minidsh.py docker`（自动读取 `config/docker.env`），或
+`docker compose --env-file config/docker.env up -d --build`。
+完整说明见[部署方式](docs/deployment.md)。
 
 > FAQ 语义检索需要运行中的 [Ollama](https://ollama.com/) 实例，并安装 `bge-m3` 向量模型
 > （`ollama pull bge-m3`）。开始模型对话前，请在控制台配置智能体的模型地址与 API 密钥。
 
+### 🧩 Web 插件壳（默认前端）
+
+`packages/client` 是按 DeepSeek Harness client-modules 思路实现的浏览器端插件壳。现有的
+Next.js 页面已经全部迁移为独立插件，由启动图 + lazy CommonJS loader 加载：
+
+```bash
+python minidsh.py web                   # 后端 8000 + Web 插件壳 4000（开发模式）
+python minidsh.py web --prod            # 构建并启动 Web 插件壳（生产预览）
+python minidsh.py web --mode hybrid     # 使用 Docker 提供数据库/Redis
+python minidsh.py web --profile web2    # 选择 packages/client2（package.json 声明 dsh.frontend）
+python minidsh.py web --dir D:/jk/Code/web2  # 选择仓库外的前端包
+
+# 单独构建/启动
+python minidsh.py build
+python minidsh.py start
+
+# 单独开发插件壳
+cd packages/client && npm run dev          # http://localhost:4100
+```
+
+前端 profile 由前端包自己的 `package.json` 声明 `dsh.frontend`（和 DSH 的
+`dsh.client`、`dsh.bundle` 同为包自描述）。`minidsh` 扫描 `packages/*/package.json`，
+按目录名或包名匹配 `--profile`，或用 `--dir` 指向仓库外目录；不需要中心配置文件。
+
+聊天、Agent、知识库、集成、MCP、记忆、工作流、工作区、`/agents/*` 均已迁移；
+页面源码在 `packages/client/legacy`，插件在 `packages/client/plugins`。Docker Compose
+的 `frontend` 服务也已切换到 `packages/client`。详见
+[packages/client/README.md](packages/client/README.md)。
+
 ```bash
 # 1. 启动全部服务（数据库、Redis、后端和前端）
-docker compose up -d --build
+cp config/docker.env.example config/docker.env   # 首次
+python minidsh.py docker
+# 等价：docker compose --env-file config/docker.env up -d --build
 
 # 2. 打开控制台
 open http://localhost:4000
 ```
 
-插件默认零配置：`tools-default` 会自动装配。要额外加载插件，把 `plugins.yaml.example` 复制为仓库根目录的 `plugins.yaml`，重启 backend 即可；不写这个文件也能正常启动。
+插件默认零配置：`tools-default` 会自动装配。要额外加载插件，把 `config/plugins.yaml.example` 复制为 `config/plugins.yaml`，重启 backend 即可；不写这个文件也能正常启动。
 
 重排模型会在首次 RAG 请求时下载，并持久化到 `hf_cache` 数据卷。
-如需在构建时预下载，请在项目根目录的 `.env` 文件中设置 `PRELOAD_RERANKER=true`，
+如需在构建时预下载，请在 `config/docker.env` 中设置 `PRELOAD_RERANKER=true`，
 然后重新构建后端。后端会等待数据库与 Redis 健康检查通过后启动。
 
 | 服务 | 地址 |
@@ -157,13 +191,9 @@ minidsh/
 │   ├── gateway/           # 请求入口：RequestContext 与通道分发
 │   ├── services/          # 业务服务：FAQ、对话、记忆与缓存
 │   └── integrations/      # 第三方渠道集成（闲鱼）
-├── packages/              # 插件 SDK/runtime、tools-default、mcp-client/manager、tool-host、sandbox、工具与技能包
+├── packages/              # 领域包：plugin（框架）、tools、mcp、sandbox、skills、client（前端）
+│   └── client/            # Web 插件壳：kernel / shell / plugins / legacy（页面源码）
 ├── docs/                  # 设计文档（sandbox-design.md 等）
-├── frontend/
-│   └── app/
-│       ├── dashboard/     # 智能体、对话、知识库、MCP、记忆与工作流
-│       │   └── workspace/ # 工作区浏览器与工作区内对话
-│       └── agents/        # 各智能体的配置页面
 └── docker-compose.yml     # 数据库、Redis、后端与前端服务编排
 ```
 
@@ -171,7 +201,7 @@ minidsh/
 
 | 方法 | 接口路径 | 说明 |
 | ---- | -------- | ---- |
-| POST | `/api/auth/login` | JWT 登录 |
+| POST | `/api/auth/login` | JWT 登录（可选接口，前端不再使用） |
 | GET | `/api/agents` | 获取智能体列表 |
 | POST | `/api/agents` | 创建智能体，配置存储在数据库中 |
 | GET | `/api/agents/{key}/config` | 读取合并后的智能体配置 |
@@ -219,7 +249,7 @@ minidsh/
 
 ### 📄 论文 MCP：模型配置
 
-论文 MCP（`packages/tools/paper-mcp/`，端口 `:9002`）提供 `search_papers` /
+论文 MCP（`packages/mcp/paper/`，端口 `:9002`）提供 `search_papers` /
 `fetch_paper_text` / `summarize_paper` / `list_papers` 四个工具。总结论文时会在
 **工具内部**调用大语言模型，因此需要配置 OpenAI 兼容网关（`/v1/chat/completions`）。
 
@@ -229,8 +259,8 @@ minidsh/
 
 ```bash
 # 复制配置模板（模板纳入版本管理，真实配置已被 .gitignore 忽略）
-cp packages/tools/paper-mcp/src/agent_platform_paper_mcp/llm.config.example.json \
-   packages/tools/paper-mcp/src/agent_platform_paper_mcp/llm.config.json
+cp packages/mcp/paper/src/llm.config.example.json \
+   packages/mcp/paper/src/llm.config.json
 ```
 
 编辑 `llm.config.json` 中的以下三项。代码目录以绑定挂载方式接入容器，修改后即时生效，无需重启：
@@ -246,12 +276,12 @@ cp packages/tools/paper-mcp/src/agent_platform_paper_mcp/llm.config.example.json
 **方式二：环境变量**（通过 Docker Compose 注入）
 
 ```bash
-# 项目根目录 .env
+# config/docker.env
 PAPER_LLM_BASE_URL=https://api.openai.com/v1
 PAPER_LLM_API_KEY=sk-...
 PAPER_LLM_MODEL=gpt-4o
 # 应用配置
-docker compose up -d backend
+docker compose --env-file config/docker.env up -d backend
 ```
 
 **用户创建的论文研究智能体**还需单独配置编排模型，由 `AgentRuntime` 使用，
@@ -263,8 +293,9 @@ docker compose up -d backend
 
 后端自动注册 `overleaf` 工具服务，提供 LaTeX 文件读写、编译、PDF 下载与版面查询。
 `overleaf-mcp-plus[compile]==0.3.1` 使用独立 Python 环境，不影响平台的 MCP SDK 版本。
-账户凭据在项目根目录 `.env` 中配置：`OVERLEAF_GIT_TOKEN` 用于 Git 文件操作，
-`OVERLEAF_SESSION` 用于项目列表、编译与下载。安装和使用见 [Overleaf MCP 文档](docs/overleaf-mcp.md)。
+账户凭据在 `config/docker.env`（Docker）或 `config/local.env`（本地）中配置：
+`OVERLEAF_GIT_TOKEN` 用于 Git 文件操作，`OVERLEAF_SESSION` 用于项目列表、编译与下载。
+安装和使用见 [Overleaf MCP 文档](docs/overleaf-mcp.md)。
 
 ## 🗺️ 开发路线
 
@@ -290,19 +321,20 @@ docker compose up -d backend
 
 ### 开发说明
 
-插件公共协议位于独立包 [`packages/plugin-sdk`](packages/plugin-sdk/README.md)，YAML 加载、entry point 发现、依赖排序和生命周期管理位于 [`packages/plugin-runtime`](packages/plugin-runtime/README.md)；默认工具实现仍由后续包提供。
+插件公共协议位于独立包 [`packages/plugin/sdk`](packages/plugin/sdk/README.md)，YAML 加载、entry point 发现、依赖排序和生命周期管理位于 [`packages/plugin/runtime`](packages/plugin/runtime/README.md)；默认工具实现仍由后续包提供。
 
-后端启动时总是装配单轨工具运行时：插件侧的 `tools-default` 持有唯一 `tools.v1` 注册表；MCP 工具实现位于 [`packages/tools/`](packages/tools/README.md)，由 `agent-platform.mcp-client` 插件连接并注册（`agent-platform.mcp-manager` 负责运行时导入/探测/重连）；沙箱 `bash`/`python` 由 [`packages/plugins/sandbox-tools`](packages/plugins/sandbox-tools/README.md) 注册，技能 `skill`/`skill_install` 由 [`packages/plugins/skill-tools`](packages/plugins/skill-tools/README.md) 注册。AgentLoop、系统提示词和工具列表都只读这一个注册表，并只经它执行。`PLUGIN_CONFIG` 只决定额外加载哪些插件，不再决定是否启用工具服务；四个默认工具插件（tools-default、mcp-manager、skill-tools、sandbox-tools）会自动补上。Docker 镜像已内置 SDK、runtime、tools-default 和示例插件，例如：
+后端启动时总是装配单轨工具运行时：插件侧的 `tools-default` 持有唯一 `tools.v1` 注册表；MCP 工具实现位于 `packages/mcp/`，由 `agent-platform.mcp-client` 插件连接并注册（`agent-platform.mcp-manager` 负责运行时导入/探测/重连）；沙箱 `bash`/`python` 由 `packages/sandbox/tools` 注册，技能 `skill`/`skill_install` 由 `packages/skills/tools` 注册。AgentLoop、系统提示词和工具列表都只读这一个注册表，并只经它执行。`PLUGIN_CONFIG` 只决定额外加载哪些插件，不再决定是否启用工具服务；默认服务和功能插件会自动补上；技能系统由 skills-default、skills-filesystem、skill-tools 三个插件组成，分别负责技能中心、目录来源与工具/对话接入。Docker 镜像已内置 SDK、runtime、tools-default 和示例插件，例如：
 
 默认零配置启动，不需要设置任何插件变量：
 
 ```bash
-docker compose up -d
+python minidsh.py docker
+# 或：docker compose --env-file config/docker.env up -d
 ```
 
 `mcp_servers` 表里的 MCP server 会自动转换成 `agent-platform.mcp-client` 插件实例，不需要在 YAML 里手写；设置 `PLUGIN_MCP_AUTO=false` 可关闭自动装配。
 
-要额外加载插件时，把 `plugins.yaml.example` 复制成仓库根目录的 `plugins.yaml`（Docker 内是 `/app/plugins.yaml`），重启 backend 即可；`PLUGIN_CONFIG` 只用于把配置放到其他路径。本地开发一次安装插件栈：
+要额外加载插件时，把 `config/plugins.yaml.example` 复制成 `config/plugins.yaml`（Docker 内是 `/app/config/plugins.yaml`），重启 backend 即可；`PLUGIN_CONFIG` 只用于把配置放到其他路径。本地开发一次安装插件栈：
 
 ```bash
 pip install -r requirements-plugins.txt

@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-sandbox"
+version = "0.1.0"
+description = "Plugin-owned native OS and Docker sandbox providers and tool executor"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-tool-system>=0.1,<0.2",
+]
+
+[project.optional-dependencies]
+dev = ["build>=1", "mypy>=1.10"]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.sandbox-local" = "agent_platform_sandbox.plugin:LocalSandboxPlugin"
+"agent-platform.sandbox-docker" = "agent_platform_sandbox.plugin:DockerSandboxPlugin"
+
+[tool.setuptools]
+packages = ["agent_platform_sandbox", "agent_platform_sandbox.backends"]
+
+[tool.setuptools.package-dir]
+agent_platform_sandbox = "src"
+
+[tool.setuptools.package-data]
+agent_platform_sandbox = ["py.typed", "native/package.json", "native/package-lock.json"]
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+files = ["src"]
+exclude = ["node_modules"]
+
+[tool.uv.sources]
+agent-platform-plugin-sdk = { path = "../../plugin/sdk", editable = true }
+agent-platform-tool-system = { path = "../../tools/system", editable = true }
