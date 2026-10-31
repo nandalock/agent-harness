@@ -22,6 +22,11 @@
 - 服务端消息 ID、运行中回合 ID 和 steer ID 保持稳定。展开状态保存在列表级，虚拟行卸载再挂载不会丢失工具/思考卡的展开状态。
 - SSE 请求和轨迹数据由父组件持有，卸载虚拟行不会中止任务。历史回合使用 memo，避免每个流式增量都重新解析正文。
 
+消息窗口使用顶部/底部占位空间保留虚拟化，已挂载消息按正常文档流排列。
+此前每条消息分别绝对定位，容器宽度观察器晚于消息观察器执行时，会清空刚更新的高度，
+长消息便按 160px 的估算高度定位并互相覆盖。现在宽度变化后会立即补测已挂载行；
+即使测量尚未完成，正常文档流也会把后一条消息排在前一条实际内容之后。
+
 历史接口只返回本页消息对应的回合轨迹，不再让浏览器另取整场 trajectory：
 
 - 新回复的 trace 保存 `session_id` 与 `turn_start_seq`，直接定位对应事件区间。
@@ -43,11 +48,16 @@
 
 当前冷恢复仍读取完整 Session Event Log，随后只投影本页需要的回合；没有实现数据库事件日志的按回合范围查询。聊天虚拟化单位是消息，一条消息内部极长的 Markdown 或大量工具节点仍需要单独优化。客服聊天管理页及其他业务列表不在本次改造范围。
 
+消息重叠修复的浏览器回归位于 `packages/client/tests/transcript.spec.ts`，使用实际的
+VirtualTranscript、AgentTurn 和 Markdown 样式。5 项测试覆盖侧栏宽度变化、观察器回调
+顺序交错、正文与展开面板增高、历史插入锚点，以及上翻阅读后回到最新消息；
+其中回调顺序交错场景在修复前稳定出现 404px 的消息重叠。
+
 运行检查：
 
 ```powershell
 # 前端浏览器测试；Windows 已安装 Edge 时可指定通道
-cd frontend
+cd packages/client
 $env:PLAYWRIGHT_CHANNEL = 'msedge'
 npm run test:e2e
 
@@ -55,9 +65,7 @@ npm run test:e2e
 npx playwright install chromium
 npm run test:e2e
 
-# 与 dev/e2e 隔离的生产构建
-$env:NEXT_DIST_DIR = '.next-build'
-$env:NEXT_TELEMETRY_DISABLED = '1'
+# TypeScript 检查与 Vite 生产构建
 npm run build
 ```
 

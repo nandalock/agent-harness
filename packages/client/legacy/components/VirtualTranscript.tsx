@@ -65,19 +65,34 @@ export default forwardRef<TranscriptHandle, Props>(function VirtualTranscript({
       virtualizer.scrollToEnd();
     }
   }, [loading, rows.length, virtualizer]);
-  // Reflow can change every row's height; discard old width-dependent sizes.
+  // Reflow invalidates offscreen heights too. Refill mounted measurements in
+  // the same callback: their ResizeObserver may already have reported the new
+  // size before this viewport observer clears the cache, with no further row
+  // resize to repair the now-estimated positions.
   const previousWidth = useRef(0);
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
     const observer = new ResizeObserver(entries => {
       const width = entries[0].contentRect.width;
-      if (previousWidth.current && Math.abs(width - previousWidth.current) > 1) virtualizer.measure();
+      if (width <= 0) return;
+      if (previousWidth.current && Math.abs(width - previousWidth.current) > 1) {
+        // Read before invalidation: resizeItem can synchronously change the
+        // virtual window and detach some of these elements while notifying.
+        const sizes = Array.from(element.querySelectorAll<HTMLElement>('[data-message-key]'),
+          row => [Number(row.dataset.index), row.offsetHeight] as const);
+        virtualizer.measure();
+        sizes.forEach(([index, height]) => virtualizer.resizeItem(index, height));
+      }
       previousWidth.current = width;
     });
     observer.observe(element);
     return () => observer.disconnect();
   }, [virtualizer]);
+
+  const items = virtualizer.getVirtualItems();
+  const first = items[0];
+  const last = items[items.length - 1];
 
   return (
     <div style={{ flex: 1, minHeight: 0, position: 'relative', display: 'flex' }}>
@@ -87,7 +102,12 @@ export default forwardRef<TranscriptHandle, Props>(function VirtualTranscript({
           setFollowing(el.scrollHeight - el.scrollTop - el.clientHeight < 48);
         }}
         style={{ ...style, flex: 1, minHeight: 0, overflowY: 'auto', overflowAnchor: 'none' }}>
-        <div style={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}>
+        {/* Keep mounted messages in normal flow. Only the unmounted regions
+            use estimated space, so a growing/remeasured answer cannot overlap
+            the next message while measurements are catching up. */}
+        <div style={{ position: 'relative', width: '100%',
+          paddingTop: first?.start ?? 0,
+          paddingBottom: Math.max(0, virtualizer.getTotalSize() - (last?.end ?? 0)) }}>
           <div style={{ position: 'absolute', top: 0, height: 40, width: '100%', textAlign: 'center', fontSize: 12 }}>
             {loading ? '加载历史消息…' : (hasMore || error) ? (
               <button type="button" disabled={loadingOlder} onClick={onLoadOlder}
@@ -96,14 +116,13 @@ export default forwardRef<TranscriptHandle, Props>(function VirtualTranscript({
               </button>
             ) : null}
           </div>
-          {virtualizer.getVirtualItems().map(item => {
+          {items.map(item => {
             const key = String(item.key);
             let state = disclosures.current.get(key);
             if (!state) { state = new Map(); disclosures.current.set(key, state); }
             return (
               <div key={key} ref={virtualizer.measureElement} data-index={item.index} data-message-key={key}
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%',
-                  transform: `translateY(${item.start}px)`, display: 'flow-root' }}>
+                style={{ width: '100%', display: 'flow-root' }}>
                 <RowState.Provider value={state}>{rows[item.index]}</RowState.Provider>
               </div>
             );
