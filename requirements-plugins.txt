@@ -13,6 +13,9 @@
 -e ./packages/sandbox/core
 -e ./packages/tools/default
 -e ./packages/tools/host
+-e ./packages/session/core
+-e ./packages/agent/core
+-e ./packages/agent/loop
 -e ./packages/mcp/client
 -e ./packages/skills/tools
 -e ./packages/sandbox/tools

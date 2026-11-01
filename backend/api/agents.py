@@ -31,7 +31,7 @@ from backend.agents.config_service import list_l1_keywords, create_l1_keyword, u
 from backend.core.connection import get_conn
 from backend.services.chat import service as chat_service
 from backend.services.chat.live import LiveRun, LiveRunConflict, get_live_runs
-from backend.agents.runtime.loop import NEXT_STEP, NEXT_TURN
+from agent_platform_agents import NEXT_STEP, NEXT_TURN
 from backend.gateway import AgentNotFound, NoActiveRun, RequestContext, get_gateway
 from backend.agents.runtime.session.checkpoint import CheckpointError
 from backend.agents.runtime.session.recovery import CONTINUE_TASK, recovery_status, prepare_session

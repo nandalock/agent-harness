@@ -4,6 +4,10 @@ version: 1
 plugins:
   - id: tools
     name: agent-platform.tools-default
+  - id: agents
+    name: agent-platform.agents
+  - id: agent-loop
+    name: agent-platform.agent-loop
   - id: llm-deepseek
     name: agent-platform.llm-deepseek
   - id: mcp-manager

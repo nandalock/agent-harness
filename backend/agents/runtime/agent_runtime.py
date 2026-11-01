@@ -24,8 +24,9 @@ from backend.agents.runtime.llm import (
     OpenAiChatClient,
 )
 from backend.agents.runtime.llm.providers import ModelConfig, resolve_model_config
-from backend.agents.runtime.loop import AgentLoop, get_run_registry
-from backend.agents.runtime.loop.events import EventSink
+from agent_platform_agents import Agent
+from backend.agents.runtime.services import get_agent_runs
+from agent_platform_agents import EventSink
 from backend.agents.runtime.session import (
     Session,
     SessionEvent,
@@ -41,7 +42,6 @@ from backend.agents.runtime.system_prompt import (
     assemble,
     render_system_prompt,
 )
-from agent_platform_tool_system.scheduler import DEFAULT_MAX_PARALLEL_TOOLS
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +150,8 @@ class AgentRuntime(BaseAgent):
         # 全在客户端后面 —— 换 provider = 在这里换一个客户端，循环一行不改。
         model_config = resolve_model_config(config)
         llm = self._llm_client(model_config, config)
-        loop = AgentLoop(
+        runs = get_agent_runs()
+        async with runs.open(
             key=self.key,
             llm_params=self._llm_params(config),
             llm=llm,
@@ -166,38 +167,30 @@ class AgentRuntime(BaseAgent):
             hooks=LoopHooks(request_error=llm.retry_policy, pre_step=contributions.pre_step),
             checkpoint=checkpoint, resumed_from=resumed_from,
             task_context=saved_task_context(context),
-        )
+            sandbox_policy=lambda: self._sandbox_policy(session),
+        ) as loop:
 
-        # 同 session 单飞 + 活动句柄登记（docs/agent-loop-design.md §4）：本会话已经有一轮在跑
-        # → RunConflict（Gateway 翻 AgentBusy、通道层翻 409）。登记之后，外部就能按 session_id
-        # 找到这一轮并投递运行中输入 / 叫停它（get_run_registry().get(...)）。
-        # 登记得晚一点是刻意的：句柄就是 loop 本身，它到这里才存在；此前没有任何 LLM 动作。
-        get_run_registry().register(session.header.id, loop)
-
-        # 派生消费者装配：TraceProjection（→ AgentReply.trace / done.trace）与
-        # session_event_sink（→ UI projection）都是 Session listener，不产生事实。
-        # Session.append 同步回调、无 await 间隙 → 按 seq 收到全部事件；
-        # Session 被 SessionStore 跨轮复用 → listener 只在 loop.run 期间挂载，
-        # finally 统一摘除，保证不跨轮泄漏（事件不会迟到下一轮的投影/快照）。
-        projection = TraceProjection()
-        session.add_listener(projection.handle)
-        attached_sink = session_event_sink is not None
-        if attached_sink:
-            session.add_listener(session_event_sink)
-        try:
-            answer = await self._drive(loop, question, cancel)
-        finally:
-            session.remove_listener(projection.handle)
+            # 派生消费者装配：TraceProjection（→ AgentReply.trace / done.trace）与
+            # session_event_sink（→ UI projection）都是 Session listener，不产生事实。
+            # Session.append 同步回调、无 await 间隙 → 按 seq 收到全部事件；
+            # Session 被 SessionStore 跨轮复用 → listener 只在 loop.run 期间挂载，
+            # finally 统一摘除，保证不跨轮泄漏（事件不会迟到下一轮的投影/快照）。
+            projection = TraceProjection()
+            session.add_listener(projection.handle)
+            attached_sink = session_event_sink is not None
             if attached_sink:
-                session.remove_listener(session_event_sink)
-
+                session.add_listener(session_event_sink)
             try:
+                answer = await self._drive(loop, question, cancel)
+            finally:
+                session.remove_listener(projection.handle)
+                if attached_sink:
+                    session.remove_listener(session_event_sink)
+
                 if session_enabled:
                     get_session_title_service().settle(session)
                     if not checkpoint.failed:
                         await checkpoint.flush("turn_end")
-            finally:
-                get_run_registry().unregister(session.header.id)
 
         if session_enabled:
             # 排一次 LLM 标题升级：**不在本函数里 await**（schedule 不返回 awaitable），
@@ -236,7 +229,7 @@ class AgentRuntime(BaseAgent):
                 trace["turn_start_seq"] = starts[-1].seq
         return AgentReply(answer=answer, tier=tier, trace=trace, session_id=sid)
 
-    async def _drive(self, loop: AgentLoop, question: str, cancel: asyncio.Event | None) -> str:
+    async def _drive(self, loop: Agent, question: str, cancel: asyncio.Event | None) -> str:
         """事件驱动的三段式：**投递 → 等 driver 收敛 → 取答案**（Loop 没有一次性入口）。
 
         投递是同步的（不等待），等待是显式的，答案从 Event Log 的投影里取 —— 中间那段时间
@@ -258,7 +251,7 @@ class AgentRuntime(BaseAgent):
         return loop.answer_text()
 
     @staticmethod
-    async def _bridge_cancel(loop: AgentLoop, cancel: asyncio.Event) -> None:
+    async def _bridge_cancel(loop: Agent, cancel: asyncio.Event) -> None:
         """外部信号 → ``loop.cancel``：只停这一轮，不动待投递队列。
 
         ``keep_inbox=True`` 是刻意的：队列归投递方所有，这里只负责「叫停」，不该顺手
@@ -266,6 +259,18 @@ class AgentRuntime(BaseAgent):
         """
         await cancel.wait()
         loop.cancel("外部信号（连接断开）", keep_inbox=True)
+
+    @staticmethod
+    def _sandbox_policy(session):
+        """Host policy adapter, sampled for each tool call after mode changes."""
+        from backend.agents.runtime.session.projections import project_sandbox_mode
+        from agent_platform_sandbox.runtime import session_policy
+        header = session.header
+        policy = session_policy(header.id, header.cwd,
+                                session_override=project_sandbox_mode(session.events))
+        if policy is not None and header.cwd is None:
+            header.cwd = policy.workspace_root
+        return policy
 
     def _llm_client(self, model: ModelConfig, config: dict) -> OpenAiChatClient:
         """本 agent 的 LLM 客户端：端点 + 凭据 + provider 声明的默认重试策略。
@@ -289,7 +294,7 @@ class AgentRuntime(BaseAgent):
             "max_wall_time": float(config.get("max_wall_time", 300)),
             # 同批 Tool 调用的并发上限（ToolScheduler 的滚动池大小）；
             # 1 = 退化为串行，与调度器引入前行为一致
-            "max_parallel_tools": int(config.get("max_parallel_tools", DEFAULT_MAX_PARALLEL_TOOLS)),
+            **({"max_parallel_tools": int(config["max_parallel_tools"])} if "max_parallel_tools" in config else {}),
             "max_tokens": int(config.get("max_tokens", 1024)),
             "max_tokens_plain": int(config.get("max_tokens_plain", 512)),
             "temperature": float(config.get("temperature", 0.3)),

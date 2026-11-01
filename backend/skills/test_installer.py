@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import AsyncMock, patch
 import zipfile
+from backend.agents.runtime.tests.loop_support import loop_context
 
 from agent_platform_plugin_sdk import ExecutionScope, ToolContext
 from agent_platform_skill_tools import (
@@ -213,11 +214,8 @@ class InstallerTests(unittest.IsolatedAsyncioTestCase):
         from agent_platform_tools_default import ToolsDefaultService
         from backend.agents.runtime.llm import LoopHooks
         from backend.agents.runtime.llm.types import LlmResponse
-        from backend.agents.runtime.loop.agent_loop import AgentLoop
+        from agent_platform_agent_loop.agent_loop import AgentLoop
         from backend.agents.runtime.session import Session
-        from agent_platform_tool_system.registry import ToolRegistry
-        from agent_platform_tool_system.runtime import ToolRuntime
-        from agent_platform_tool_host import UnifiedToolsRuntime, close_unified_tools, set_unified_tools
         from agent_platform_skill_tools import SkillExecutor
 
         descriptors = [skill_descriptor(), skill_install_descriptor()]
@@ -226,12 +224,6 @@ class InstallerTests(unittest.IsolatedAsyncioTestCase):
         service.register_executor("skill_install", SkillInstallExecutor(FakeAgents()))
         for descriptor in descriptors:
             service.register_tool(descriptor)
-        native = ToolRuntime(ToolRegistry(providers=[]), executors={})
-        runtime = UnifiedToolsRuntime(
-            ToolRegistry(providers=[]), native, service, service
-        )
-        await runtime.start()
-        set_unified_tools(runtime)
         registry = SkillRegistry(default_sources(), include_installed=True)
         requests = []
 
@@ -248,7 +240,7 @@ class InstallerTests(unittest.IsolatedAsyncioTestCase):
                 return LlmResponse({"role": "assistant", "content": "安装完成"}, "stop")
 
         session = Session()
-        loop = AgentLoop(key="assistant", llm=Llm(), model="test", tenant_id=7, session=session,
+        loop = AgentLoop(loop_context(Llm(), tools=service), key="assistant", model="test", tenant_id=7, session=session,
                          tool_schemas=[openai_tool(d) for d in descriptors],
                          hooks=LoopHooks(pre_step=SkillPreStep(self.scope, registry)),
                          llm_params={"max_steps": 5, "max_tool_calls": 5, "max_wall_time": 20,
@@ -257,7 +249,7 @@ class InstallerTests(unittest.IsolatedAsyncioTestCase):
             loop.followup("$skill-installer " + SOURCE)
             await asyncio.wait_for(loop.when_idle(), 10)
         finally:
-            await close_unified_tools()
+            await service.aclose()
         self.assertEqual(len(requests), 3)
         invocations = [e for e in session.events if e.data.get("source", {}).get("kind") == "skill-invocation"]
         self.assertEqual(invocations[0].data["source"]["name"], "platform:skill-installer")

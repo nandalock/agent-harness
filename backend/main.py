@@ -27,7 +27,7 @@ from backend.gateway.errors import (
 )
 from backend.agents.runtime.session.checkpoint import CheckpointError
 from backend.agents.runtime.session.recovery import RecoveryError
-from backend.agents.runtime.loop.registry import RunConflict
+from agent_platform_agents import RunConflict
 
 app = FastAPI(title="minidsh")
 app.add_middleware(

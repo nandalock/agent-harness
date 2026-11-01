@@ -9,6 +9,8 @@
 #
 # 下面这些默认实例会自动补入，不需要在这里重复：
 #   tools-default        id: tools
+#   agents               id: agents
+#   agent-loop           id: agent-loop
 #   llm-deepseek         id: llm-deepseek
 #   mcp-manager          id: mcp-manager
 #   skills-default       id: skills

@@ -63,7 +63,7 @@ class PostgresSessionPersistence(SessionPersistence):
     @contextmanager
     def write_owner(self, session_id):
         """Advisory ownership held on a dedicated pooled connection until teardown."""
-        from backend.agents.runtime.loop.registry import RunConflict
+        from agent_platform_agents import RunConflict
         with super().write_owner(session_id):
             with get_conn() as conn:
                 with conn.cursor() as cur:

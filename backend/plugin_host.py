@@ -38,9 +38,11 @@ class PluginHost:
         from agent_platform_tool_host import close_unified_tools
 
         try:
-            await close_unified_tools()
-        finally:
+            # Drivers must settle tool results and host checkpoints while tools
+            # are still usable; dependency order closes the loop before tools.
             await self.runtime.aclose()
+        finally:
+            await close_unified_tools()
 
 
 _host: PluginHost | None = None

@@ -152,6 +152,12 @@ class ToolCallRecorder(Protocol):
         """记录一次 Tool 调用结果（写 ``tool/result``，含合成结果）。"""
 
 
+class ToolExecutionRuntime(Protocol):
+    """Only the dispatch capability is required; implementations may use ctx.tools."""
+
+    async def execute(self, tool_name: str, args: dict, context: ToolContext) -> dict: ...
+
+
 class ToolScheduler:
     """把一批 PlannedCall 调度成 ToolRuntime 调用，并按模型顺序提交结果"""
 
@@ -160,7 +166,7 @@ class ToolScheduler:
         *,
         recorder: ToolCallRecorder,
         context_factory: Callable[[str], ToolContext],
-        runtime: ToolRuntime | None = None,
+        runtime: ToolExecutionRuntime | None = None,
         max_parallel_tools: int = DEFAULT_MAX_PARALLEL_TOOLS,
         mode_resolver: Callable[[str], str] | None = None,
         before_dispatch: Callable[[PlannedCall], Awaitable[None]] | None = None,

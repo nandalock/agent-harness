@@ -1,5 +1,9 @@
 # Python package layout
 
+Agent 服务与循环插件位于 [`agent/`](agent/README.md)，公共会话事实层位于
+[`session/core/`](session/core/README.md)。默认装配通过插件工厂驱动对话；
+后端不直接创建循环。
+
 Python plugin and library packages use the same flat source layout:
 
 ```text

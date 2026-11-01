@@ -23,7 +23,8 @@ from backend.agents.runtime.session.persistence import postgres as postgres_modu
 from backend.agents.runtime.session.persistence.postgres import PostgresSessionPersistence
 from backend.agents.runtime.session.recovery import prepare_session
 from backend.agents.runtime.session.session import Session
-from backend.agents.runtime.loop.registry import RunConflict
+from agent_platform_agents import RunConflict
+from backend.agents.runtime.tests.loop_support import loop_context
 from backend.core.schema import TABLES_DDL
 
 
@@ -174,7 +175,7 @@ def test_killed_process_preserves_checkpoints_and_releases_ownership(database, t
                 if mode == "tool":
                     # A scripted model verifies the file before selecting the next action.
                     from backend.agents.runtime.llm.types import LlmResponse
-                    from backend.agents.runtime.loop.agent_loop import AgentLoop
+                    from agent_platform_agent_loop.agent_loop import AgentLoop
                     from backend.agents.runtime.session.recovery import CONTINUE_TASK
                     class Model:
                         configured = True
@@ -198,7 +199,7 @@ def test_killed_process_preserves_checkpoints_and_releases_ownership(database, t
                         async def execute(self, name, args, context):
                             calls.append(name)
                             return {"content": effect.read_text()} if name == "read_file" else {"passed": True}
-                    loop = AgentLoop(key="a", llm=Model(), llm_params={"max_steps": 3, "max_tool_calls": 30,
+                    loop = AgentLoop(loop_context(Model()), key="a", llm_params={"max_steps": 3, "max_tool_calls": 30,
                                      "max_wall_time": 30, "max_tokens": 100, "temperature": 0}, model="test",
                                      tool_schemas=[{"type": "function", "function": {"name": name, "parameters": {"type": "object", "properties": {}}}}
                                                    for name in ("read_file", "run_tests")],

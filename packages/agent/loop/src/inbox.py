@@ -23,8 +23,7 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 #: 两条待投递队列（对齐 A 的 InboxTarget）
-NEXT_TURN = "next-turn"
-NEXT_STEP = "next-step"
+from agent_platform_agents import NEXT_STEP, NEXT_TURN
 
 
 @dataclass(frozen=True)

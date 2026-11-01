@@ -52,6 +52,7 @@ class RuntimePluginContext:
         self._spec = spec
         self._registry = registry
         self._effects: list[Registration] = []
+        self._quiesce: list[Registration] = []
         self._closed = False
 
     @property
@@ -111,11 +112,32 @@ class RuntimePluginContext:
         self._effects.append(registration)
         return registration
 
+    def on_quiesce(self, callback: CleanupCallback, *, label: str) -> Registration:
+        self._ensure_open()
+        registration = _CallbackRegistration(callback, label)
+        self._quiesce.append(registration)
+        return registration
+
+    async def quiesce(self) -> None:
+        errors: list[BaseException] = []
+        for registration in reversed(self._quiesce):
+            try:
+                await registration.aclose()
+            except BaseException as exc:
+                errors.append(exc)
+        self._quiesce.clear()
+        if errors:
+            raise BaseExceptionGroup(f"quiescence failed for plugin {self.instance_id!r}", errors)
+
     async def aclose(self) -> None:
         if self._closed:
             return
-        self._closed = True
         errors: list[BaseException] = []
+        try:
+            await self.quiesce()
+        except BaseException as exc:
+            errors.append(exc)
+        self._closed = True
         for registration in reversed(self._effects):
             try:
                 await registration.aclose()

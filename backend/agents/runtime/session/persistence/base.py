@@ -54,7 +54,7 @@ class SessionPersistence(abc.ABC):
     @contextmanager
     def write_owner(self, session_id: str):
         """Process-local exclusion for memory-only providers and test doubles."""
-        from backend.agents.runtime.loop.registry import RunConflict
+        from agent_platform_agents import RunConflict
         with _owner_guard:
             identity = (id(self), session_id)
             if identity in _owners:

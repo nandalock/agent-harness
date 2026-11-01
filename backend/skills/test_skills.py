@@ -8,8 +8,9 @@ import unittest
 
 from backend.agents.runtime.llm import LoopHooks
 from backend.agents.runtime.llm.types import LlmResponse
-from backend.agents.runtime.loop.agent_loop import AgentLoop
-from backend.agents.runtime.loop.inbox import new_message
+from agent_platform_agent_loop.agent_loop import AgentLoop
+from backend.agents.runtime.tests.loop_support import loop_context
+from agent_platform_agent_loop.inbox import new_message
 from backend.agents.runtime.session import Session
 from backend.agents.runtime.session.projections import TrajectoryProjection
 from backend.skills.support import filesystem_registry as SkillRegistry
@@ -138,7 +139,7 @@ class SkillsTest(unittest.IsolatedAsyncioTestCase):
                 return LlmResponse({"role": "assistant", "content": "完成"}, "stop")
         llm = Llm()
         session = Session()
-        loop = AgentLoop(key="test", llm=llm, model="test", tenant_id=1, session=session,
+        loop = AgentLoop(loop_context(llm), key="test", model="test", tenant_id=1, session=session,
                          tool_schemas=[], hooks=LoopHooks(pre_step=SkillPreStep(self.scope, self.registry)),
                          llm_params={"max_steps": 4, "max_tool_calls": 4, "max_wall_time": 20,
                                      "max_parallel_tools": 1, "max_tokens": 128, "temperature": 0})

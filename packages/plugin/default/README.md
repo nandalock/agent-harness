@@ -10,6 +10,8 @@ publish services, register zero or many tools, and own cleanup effects:
 | Package entry | Services | Tools per instance |
 | --- | --- | --- |
 | tools-default | tools.v1, tools.catalog.v1 | 0 of its own; hosts registrations |
+| agents | agent.runs.v1 | 0; owns driver factory and active run scopes |
+| agent-loop | consumes agent.runs.v1, tools.v1, tools.catalog.v1 and approval.v1 | 0; supplies the default LLM/tool driver and drains it on unload |
 | llm-deepseek | — (registers a model provider route) | 0; resolves DeepSeek base URL/model/credential from plugin config + env |
 | mcp-manager | mcp.manager.v1 | 0 at setup; manages dynamic server tool groups |
 | mcp-client | MCP connection lifecycle | 0–N discovered server tools |

@@ -101,7 +101,7 @@ async def prepare_session(persistence, session_id, *, enabled, agent_key, resume
             acquired = True
             raise
         except Exception as exc:
-            from backend.agents.runtime.loop.registry import RunConflict
+            from agent_platform_agents import RunConflict
             if isinstance(exc, RunConflict):
                 raise
             raise CheckpointError(session_id, "ownership") from exc

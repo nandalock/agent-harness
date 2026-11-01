@@ -39,9 +39,8 @@ import logging
 import time
 from dataclasses import dataclass
 
-from backend.agents.runtime.llm import (
+from agent_platform_llm import (
     DEFAULT_MAX_LLM_RETRIES,
-    LlmClient,
     LlmError,
     LlmRequest,
     LlmResponse,
@@ -52,16 +51,16 @@ from backend.agents.runtime.llm import (
     make_retry_policy,
     validate_response,
 )
-from backend.agents.runtime.loop.assistant_stream import AssistantStream
-from backend.agents.runtime.loop.events import EventSink
-from backend.agents.runtime.loop.inbox import (
+from agent_platform_agent_loop.assistant_stream import AssistantStream
+from agent_platform_agents import EventSink
+from agent_platform_agent_loop.inbox import (
     NEXT_STEP,
     NEXT_TURN,
     InboxMessage,
     ReactLoopInbox,
     new_message,
 )
-from backend.agents.runtime.session import (
+from agent_platform_session import (
     ASSISTANT_MESSAGE,
     LLM_ERROR,
     LLM_USAGE,
@@ -75,18 +74,19 @@ from backend.agents.runtime.session import (
     SessionToolRecorder,
 )
 from agent_platform_tool_system.context import ToolContext
-from agent_platform_tool_host.scheduler import (
+from agent_platform_tool_system.scheduler import (
     DEFAULT_MAX_PARALLEL_TOOLS,
     DISPATCH,
     SKIP,
     SKIP_MAX_TOOL_CALLS,
     SKIP_REPEAT_TOOL,
     PlannedCall,
-    ToolScheduler,
 )
+from .context import LoopContext
+from .tool_calls import LoopToolScheduler
 
-from backend.agents.runtime.session.checkpoint import CheckpointError, SessionCheckpoint
-from backend.agents.runtime.session.events import REQUEST_HEADER, TASK_INPUT
+from agent_platform_session.checkpoint import CheckpointError, SessionCheckpoint
+from agent_platform_session.events import REQUEST_HEADER, TASK_INPUT
 
 logger = logging.getLogger(__name__)
 
@@ -198,9 +198,9 @@ class AgentLoop:
 
     def __init__(
         self,
+        ctx: LoopContext,
         *,
         key: str,
-        llm: LlmClient,
         llm_params: dict,
         model: str = "",
         tool_schemas: list[dict],
@@ -214,6 +214,7 @@ class AgentLoop:
         resumed_from: int | None = None,
         task_context: dict | None = None,
     ):
+        self.loop_ctx = ctx
         #: ``key`` 是 agent 的**业务标识**（paper_agent 这种），不是凭据 —— 它只进日志、
         #: turn/start 事件与 ToolContext（对齐 A 的 ``agent.ts`` 用 ``this.id`` 做同一件事）。
         self.key = key
@@ -226,7 +227,6 @@ class AgentLoop:
         # LLM 出口：本层只知道「发 canonical 请求、收 canonical 结果」；端点与凭据在它后面
         # （llm/openai_chat.py）。model 是**请求内容**（对齐 A 的 GenerateOptions.model），
         # 不是凭据 —— 由装配层随配置给进来。
-        self._llm = llm
         self._model = (model or "").strip()
         # system prompt 由 Runtime 每轮组装，此处只在派生消息时前置；空串表示本轮无提示词。
         self.system_prompt = system_prompt
@@ -244,7 +244,8 @@ class AgentLoop:
         self._resumed_from = resumed_from
         self._task_context = task_context
         # Tool 调度器：执行的顺序 / 并发 / 成对落库 / 有序提交归它，Loop 只产出调用计划
-        self._scheduler = ToolScheduler(
+        self._scheduler = LoopToolScheduler(
+            self.loop_ctx,
             recorder=SessionToolRecorder(session),
             context_factory=self._tool_context,
             max_parallel_tools=llm_params.get("max_parallel_tools", DEFAULT_MAX_PARALLEL_TOOLS),
@@ -544,7 +545,7 @@ class AgentLoop:
     def _llm_ready(self) -> bool:
         """端点+凭据齐备（问客户端）且请求里有模型名才执行：缺一即不落任何事件
         （不开一个注定失败的 turn）。"""
-        return self._llm.configured and bool(self._model)
+        return self.loop_ctx.llm.configured and bool(self._model)
 
     def _assemble_state(self, abort: asyncio.Event) -> _RunState:
         """一轮的装配：LLM 参数 + 工具 schema（safe name + tenant_id 强注入）+ 防失控上限。
@@ -927,7 +928,7 @@ class AgentLoop:
         """
         response = (
             await self._consume_stream(request, cancel) if request.stream
-            else await self._llm.complete(request)
+            else await self.loop_ctx.llm.complete(request)
         )
         validate_response(response.message, response.finish_reason)
         return response
@@ -944,7 +945,7 @@ class AgentLoop:
         """
         stream = AssistantStream(self.session)
         try:
-            async for chunk in self._llm.stream(request):
+            async for chunk in self.loop_ctx.llm.stream(request):
                 if cancel is not None and cancel.is_set():
                     raise RunCancelled(partial=stream.message())
                 stream.push(chunk)
@@ -972,43 +973,6 @@ class AgentLoop:
             tenant_id=self.tenant_id,
             visible_tool_names=frozenset(t["function"]["name"] for t in self.tool_schemas),
             event_sink=SessionToolEventSink(self.session, tool_call_id, forward=self.on_event),
-            sandbox_policy=self._sandbox_policy(),
-            approval=self._approval_channel(),
+            sandbox_policy=self.loop_ctx.sandbox_policy,
+            approval=self.loop_ctx.approval,
         )
-
-    @staticmethod
-    def _approval_channel():
-        """审批通道；未装配返回 None（需要审批的能力将 fail-closed）。
-
-        与 _sandbox_policy 同模式：装配层的单例在这里惰性取用，Loop 只把它挂到
-        ToolContext 上，不解释它是什么。
-        """
-        try:
-            from backend.interaction.approval import get_approval_service
-            return get_approval_service()
-        except Exception as e:
-            logger.warning(f"审批服务取用失败（需要审批的能力将一律被拒）: {e}")
-            return None
-
-    def _sandbox_policy(self):
-        """本会话的沙箱执行策略；沙箱未装配时 None（MCP 工具不受影响）。
-
-        工作区根来自 SessionHeader.cwd，确定性派生自 session_id + 部署配置，因此不需要
-        额外的事件记录。会话覆盖来自 sandbox/mode 事件的投影（find-last）。沙箱工具在
-        策略缺失时 fail-closed。
-        """
-        try:
-            from backend.agents.runtime.session.projections import project_sandbox_mode
-            from agent_platform_sandbox.runtime import session_policy
-            header = self.session.header
-            policy = session_policy(
-                header.id,
-                header.cwd,
-                session_override=project_sandbox_mode(self.session.events),
-            )
-            if policy is not None and header.cwd is None:
-                header.cwd = policy.workspace_root
-            return policy
-        except Exception as e:
-            logger.warning(f"沙箱策略解析失败（沙箱工具将拒绝执行）: {e}")
-            return None

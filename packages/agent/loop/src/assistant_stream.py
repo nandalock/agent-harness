@@ -12,7 +12,7 @@
 ``RunCancelled.partial``（见 agent_loop._settle_interrupted）—— 适配器不认识取消，
 也不认识 Session。一次**尝试**一个实例（重试不能把上一次的残片拼进这一次）。
 """
-from backend.agents.runtime.llm import (
+from agent_platform_llm import (
     CHUNK_FINISH,
     CHUNK_TEXT,
     CHUNK_THINKING,
@@ -21,7 +21,7 @@ from backend.agents.runtime.llm import (
     StreamChunk,
     TokenUsage,
 )
-from backend.agents.runtime.session import ASSISTANT_CHUNK, Session
+from agent_platform_session import ASSISTANT_CHUNK, Session
 
 
 class AssistantStream:

@@ -13,6 +13,10 @@
 应用的默认清单由 [`platform-default`](../default/README.md) 包提供，
 通用 PluginRuntime 不硬编码任何工具或默认插件。
 
+后台驱动插件可以通过 `ctx.on_quiesce(callback, label=...)` 登记停止与等待任务结束的回调。
+关闭与启动失败回滚都会先执行所有插件的这一阶段，再逆序清理普通 `on_dispose` 和注册效果。
+例如 Agent Loop 先停止对话并等待工具结果、检查点完成，再释放工具提供方，避免工具在运行中被卸载。
+
 ## 安装与验证
 
 在仓库根目录执行：

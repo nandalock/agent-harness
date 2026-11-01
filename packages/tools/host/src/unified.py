@@ -1,20 +1,11 @@
-"""单轨工具运行时：AgentLoop 只通过插件侧 tools.v1 执行所有工具。
+"""Host queries/bindings over the single plugin-owned tools.v1 registry.
 
-`tools-default` 插件持有唯一注册表。本模块负责：
-
-1. 把 backend 原生工具（MCP / sandbox / skill）注册进 tools-default；
-2. 为 AgentLoop 提供与旧 `ToolRuntime.execute(tool_name, args, context)` 相同的入口；
-3. 把 backend `ToolContext`（沙箱策略、审批、事件出口）作为不序列化的
-   `host_context` 传给 native executor；
-4. 在单点产生 tool.started / completed / failed 生命周期事件。
-
-原生工具的实现仍留在 backend（MCP client、sandbox、skill 执行器），但它们在
-AgentLoop 视角下只是 tools-default 里的一种 executor；不存在第二套 agent-facing
-注册表或执行分支。
+The application registers all tools through plugins. Native executor hooks are
+retained for embedded hosts and tests. Execution conversion/events are shared
+with independently loaded agent drivers through ToolsExecutionAdapter.
 """
 import asyncio
 import logging
-import time
 from dataclasses import dataclass
 from typing import Any, Callable, Literal, cast
 
@@ -22,13 +13,11 @@ from agent_platform_plugin_sdk import (
     ExecutionScope,
     Registration,
     RegistrationConflictError,
-    ToolCall,
     ToolContext as SdkToolContext,
     ToolDescriptor as SdkToolDescriptor,
     ToolError,
     ToolResult,
     ToolsService,
-    TOOL_DENIED,
     TOOL_NOT_FOUND,
     TOOL_UNAVAILABLE,
 )
@@ -36,12 +25,6 @@ from agent_platform_tools_default import ToolCatalog
 from pydantic import ValidationError
 
 from agent_platform_tool_system.context import ToolContext as BackendToolContext
-from agent_platform_tool_system.events import (
-    TOOL_COMPLETED,
-    TOOL_FAILED,
-    TOOL_STARTED,
-    ToolEvent,
-)
 from agent_platform_tool_system.descriptor import ToolDescriptor as BackendToolDescriptor
 from agent_platform_tool_system.registry import ToolRegistry
 from agent_platform_tool_system.runtime import ToolRuntime
@@ -88,20 +71,7 @@ def _dict_to_result(raw: Any) -> ToolResult:
     return ToolResult(data=raw)
 
 
-def _result_to_dict(result: ToolResult) -> dict:
-    """SDK ToolResult → AgentLoop / Session 认识的后端 dict。"""
-    if result.status == "error":
-        error = result.error
-        assert error is not None
-        payload: dict = {"error": error.message, "code": error.code}
-        if error.details:
-            payload["details"] = error.details
-        if result.data is not None:
-            payload["data"] = result.data
-        return payload
-    if isinstance(result.data, dict):
-        return result.data
-    return {"data": result.data}
+from .execution import ToolsExecutionAdapter
 
 
 @dataclass(frozen=True)
@@ -143,7 +113,7 @@ class NativeToolExecutor:
         return _dict_to_result(raw)
 
 
-class UnifiedToolsRuntime:
+class UnifiedToolsRuntime(ToolsExecutionAdapter):
     """单轨入口：插件工具与原生工具共用一个 tools-default 注册表。"""
 
     def __init__(
@@ -225,77 +195,10 @@ class UnifiedToolsRuntime:
 
     # ── AgentLoop 执行入口（与 ToolRuntime.execute 同签名） ──
 
-    async def execute(
-        self,
-        tool_name: str,
-        args: dict,
-        context: BackendToolContext | None = None,
-    ) -> dict:
+    async def execute(self, tool_name: str, args: dict, context: BackendToolContext | None = None) -> dict:
         if not self._started:
             return {"error": "单轨工具运行时已关闭", "code": TOOL_UNAVAILABLE}
-        if context is None:
-            # 内部/调试调用没有可信身份：只允许调用方显式点名的工具，且
-            # 原生工具拿不到 sandbox/approval 上下文（与旧路径一致，fail-closed）。
-            scope = ExecutionScope(tenant_id=1, agent_key="<api>")
-            visible = frozenset({tool_name})
-        else:
-            if (
-                context.tenant_id is None
-                or context.tenant_id <= 0
-                or not context.agent_id
-                or context.visible_tool_names is None
-            ):
-                return {"error": "工具调用缺少已验证的智能体、租户或工具上下文",
-                        "code": TOOL_DENIED}
-            scope = ExecutionScope(
-                tenant_id=context.tenant_id,
-                agent_key=context.agent_id,
-                session_id=context.session_id,
-            )
-            visible_set = set(context.visible_tool_names)
-            if _safe_name(tool_name) in visible_set:
-                visible_set.add(tool_name)
-            visible = frozenset(visible_set)
-
-        sdk_context = SdkToolContext(
-            scope=scope,
-            visible_tool_names=visible,
-            host_context=context,
-        )
-        call = ToolCall(
-            call_id=(context.tool_call_id if context is not None else None)
-            or tool_name,
-            name=tool_name,
-            arguments=args,
-        )
-        start = time.perf_counter()
-        await self._emit(context, TOOL_STARTED, tool_name, {})
-        try:
-            result = await self._tools.execute(call, sdk_context)
-        except Exception as exc:  # noqa: BLE001
-            await self._emit(
-                context,
-                TOOL_FAILED,
-                tool_name,
-                {"error": str(exc), "duration_ms": round((time.perf_counter() - start) * 1000)},
-            )
-            raise
-        duration_ms = round((time.perf_counter() - start) * 1000)
-        if result.error is not None:
-            await self._emit(
-                context,
-                TOOL_FAILED,
-                tool_name,
-                {"error": result.error.message, "duration_ms": duration_ms},
-            )
-        else:
-            await self._emit(
-                context,
-                TOOL_COMPLETED,
-                tool_name,
-                {"duration_ms": duration_ms},
-            )
-        return _result_to_dict(result)
+        return await super().execute(tool_name, args, context)
 
     # ── 提示词 / 绑定 / UI 查询 ──
 
@@ -465,32 +368,6 @@ class UnifiedToolsRuntime:
         self._sdk.pop(name, None)
         self._modes.pop(name, None)
         self._sources.pop(name, None)
-
-    # ── 事件 ──
-
-    @staticmethod
-    async def _emit(
-        context: BackendToolContext | None,
-        event_type: str,
-        tool_name: str,
-        data: dict,
-    ) -> None:
-        if context is None:
-            return
-        sink = context.event_sink
-        if sink is None:
-            return
-        try:
-            await sink.emit(ToolEvent(
-                type=event_type,
-                tool_name=tool_name,
-                session_id=context.session_id,
-                trace_id=context.trace_id,
-                data=data,
-            ))
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("ToolEvent 发送失败（%s %s）: %s", event_type, tool_name, exc)
-
 
 # 单例状态放在不依赖插件 SDK 的模块里；回退路径可以安全地查询。
 from .unified_state import (  # noqa: E402,F401

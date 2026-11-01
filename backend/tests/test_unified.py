@@ -37,6 +37,8 @@ try:
     from agent_platform_plugin_sdk import AGENT_EXTENSIONS
     from backend.agents.runtime.extensions import AgentExtensionRegistry
     from agent_platform_llm_deepseek import DeepSeekProviderPlugin
+    from agent_platform_agents import AgentsPlugin
+    from agent_platform_agent_loop import AgentLoopPlugin
     from agent_platform_managed_mcp import BuiltinPlugin, PaperPlugin, OverleafPlugin, OverleafRtPlugin
     from agent_platform_sandbox_tools import SandboxToolsPlugin
     from agent_platform_sandbox.plugin import LocalSandboxPlugin, SANDBOX
@@ -548,6 +550,8 @@ def test_config_auto_appends_mcp_client_entries_and_dedupes():
         names = [entry.name for entry in config.plugins]
         assert names == [
             "agent-platform.tools-default",
+            "agent-platform.agents",
+            "agent-platform.agent-loop",
             "agent-platform.llm-deepseek",
             "agent-platform.mcp-manager",
             "agent-platform.skills-default",
@@ -582,6 +586,8 @@ def test_config_auto_appends_mcp_client_entries_and_dedupes():
         assert [entry.id for entry in deduped.plugins] == [
             "tools",
             "custom",
+            "agents",
+            "agent-loop",
             "llm-deepseek",
             "mcp-manager",
             "skills",
@@ -651,6 +657,8 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
                     "agent-platform.skills-default": SkillsDefaultPlugin,
                     "agent-platform.skills-filesystem": SkillsFilesystemPlugin,
                     "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
+                    "agent-platform.agents": AgentsPlugin,
+                    "agent-platform.agent-loop": AgentLoopPlugin,
                     "agent-platform.sandbox-tools": SandboxToolsPlugin,
                     "agent-platform.sandbox-local": LocalSandboxPlugin,
                     'agent-platform.builtin-mcp': BuiltinPlugin,
@@ -742,6 +750,8 @@ def test_plugin_host_always_assembles_tools_default_and_unified_runtime():
                             "agent-platform.skills-default": SkillsDefaultPlugin,
                             "agent-platform.skills-filesystem": SkillsFilesystemPlugin,
                             "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
+                            "agent-platform.agents": AgentsPlugin,
+                            "agent-platform.agent-loop": AgentLoopPlugin,
                             "agent-platform.sandbox-tools": SandboxToolsPlugin,
                             "agent-platform.sandbox-local": LocalSandboxPlugin,
                             'agent-platform.builtin-mcp': BuiltinPlugin,
@@ -803,6 +813,8 @@ def test_plugin_host_reads_repository_config_independently_of_cwd():
                                 "agent-platform.skills-default": SkillsDefaultPlugin,
                                 "agent-platform.skills-filesystem": SkillsFilesystemPlugin,
                                 "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
+                                "agent-platform.agents": AgentsPlugin,
+                                "agent-platform.agent-loop": AgentLoopPlugin,
                                 "agent-platform.sandbox-tools": SandboxToolsPlugin,
                                 "agent-platform.sandbox-local": LocalSandboxPlugin,
                                 'agent-platform.builtin-mcp': BuiltinPlugin,
@@ -824,6 +836,8 @@ def test_plugin_host_reads_repository_config_independently_of_cwd():
                     "agent-platform.skills-default",
                     "agent-platform.skills-filesystem",
                     "agent-platform.llm-deepseek",
+                    "agent-platform.agents",
+                    "agent-platform.agent-loop",
                     "agent-platform.sandbox-local",
                     "agent-platform.builtin-mcp",
                     "agent-platform.paper-mcp",
@@ -864,6 +878,8 @@ def test_plugin_host_starts_without_plugin_config():
                         "agent-platform.skills-default": SkillsDefaultPlugin,
                         "agent-platform.skills-filesystem": SkillsFilesystemPlugin,
                         "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
+                        "agent-platform.agents": AgentsPlugin,
+                        "agent-platform.agent-loop": AgentLoopPlugin,
                         "agent-platform.sandbox-tools": SandboxToolsPlugin,
                         "agent-platform.sandbox-local": LocalSandboxPlugin,
                         'agent-platform.builtin-mcp': BuiltinPlugin,

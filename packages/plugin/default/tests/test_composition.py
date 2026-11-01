@@ -66,7 +66,7 @@ class CompositionTests(unittest.TestCase):
 
     def test_default_packages_and_explicit_disable(self):
         config = compose(PluginConfiguration())
-        self.assertEqual(len(config.plugins), 12)
+        self.assertEqual(len(config.plugins), 14)
         self.assertIn("agent-platform.llm-deepseek", {p.name for p in config.plugins})
         override = PluginConfiguration.model_validate({"plugins": [
             {"id": "custom-tools", "name": "agent-platform.tools-default", "disabled": True},

@@ -68,6 +68,14 @@ class PluginContext(Protocol):
         """Track a sync or async finalizer with an actionable diagnostic label."""
         ...
 
+    def on_quiesce(self, callback: CleanupCallback, *, label: str) -> Registration:
+        """Stop and drain work before any plugin's effects/services are removed.
+
+        Called on shutdown and setup rollback. Dependencies remain available
+        throughout this phase; callbacks must revoke new work before awaiting.
+        """
+        ...
+
 
 class Plugin(Protocol[ConfigT]):
     """An entry point exports a no-argument plugin class; host instantiates it.

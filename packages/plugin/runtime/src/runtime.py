@@ -156,6 +156,13 @@ class PluginRuntime:
             raise LifecycleError("plugin runtime is already stopping")
         self._state = RuntimeState.STOPPING
         errors: list[BaseException] = []
+        # Drivers must settle in-flight tool calls before any provider is
+        # removed, including providers mounted after the driver itself.
+        for _, context in reversed(self._contexts):
+            try:
+                await context.quiesce()
+            except BaseException as exc:
+                errors.append(exc)
         for _, context in reversed(self._contexts):
             try:
                 await context.aclose()
@@ -187,6 +194,12 @@ class PluginRuntime:
         original: BaseException,
     ) -> None:
         failures: list[BaseException] = []
+        contexts = ([current] if current is not None else []) + [ctx for _, ctx in reversed(started)]
+        for context in contexts:
+            try:
+                await context.quiesce()
+            except BaseException as exc:
+                failures.append(exc)
         if current is not None:
             try:
                 await current.aclose()

@@ -4,7 +4,8 @@ import sys
 from pathlib import Path
 
 from backend.agents.runtime.llm.types import LlmResponse
-from backend.agents.runtime.loop.agent_loop import AgentLoop
+from agent_platform_agent_loop.agent_loop import AgentLoop
+from backend.agents.runtime.tests.loop_support import loop_context
 from backend.agents.runtime.session.checkpoint import SessionCheckpoint
 from backend.agents.runtime.session.persistence.postgres import PostgresSessionPersistence
 from backend.agents.runtime.session.recovery import prepare_session
@@ -46,7 +47,7 @@ async def main():
 
     async with prepare_session(persistence, sid, enabled=True, agent_key="a") as (session, _, _):
         checkpoint = Checkpoint(session, persistence)
-        loop = AgentLoop(key="a", llm=Client(), llm_params={"max_steps": 3, "max_tool_calls": 30,
+        loop = AgentLoop(loop_context(Client()), key="a", llm_params={"max_steps": 3, "max_tool_calls": 30,
                          "max_wall_time": 60, "max_tokens": 100, "temperature": 0}, model="test",
                          tool_schemas=[{"type": "function", "function": {"name": "write", "parameters": {"type": "object", "properties": {}}}}],
                          tenant_id=1, session=session, checkpoint=checkpoint)
