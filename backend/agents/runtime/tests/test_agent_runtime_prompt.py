@@ -19,7 +19,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "..
 from backend.agents.runtime import agent_runtime as runtime_mod  # noqa: E402
 from backend.agents.runtime.agent_runtime import AgentRuntime  # noqa: E402
 from backend.agents.runtime.llm import openai_chat as client_mod  # noqa: E402
-from backend.agents.runtime.loop import get_run_registry  # noqa: E402
+from agent_platform_agents import AgentService
+from agent_platform_agent_loop.plugin import LoopFactory, LoopConfig  # noqa: E402
+from backend.agents.runtime.tests.loop_support import plugin_context
 from backend.agents.runtime.session import (  # noqa: E402
     NoopPersistence,
     get_session_title_service,
@@ -63,6 +65,9 @@ class _FakeSession:
 def _install_fakes():
     """拦截 LLM HTTP 调用（patch 点是**适配器**：唯一 import get_http_session 的地方）"""
     captured.clear()
+    runs = AgentService()
+    runs.register_factory(LoopFactory(plugin_context(), LoopConfig()))
+    runtime_mod.get_agent_runs = lambda: runs
     runtime_mod.get_agent_config = lambda key: {}
     fake = _async_return(_FakeSession())
     client_mod.get_http_session = fake
@@ -113,7 +118,7 @@ def test_run_registry_is_released_after_the_turn():
 
     reply = _reply(agent)
     assert reply.session_id
-    assert get_run_registry().get(reply.session_id) is None
+    assert runtime_mod.get_agent_runs().get(reply.session_id) is None
 
     # 注销干净 → 同一个会话还能接着来一轮（不冲突，且继续用同一个 session）
     again = _reply(agent, session_id=reply.session_id)
@@ -202,7 +207,12 @@ def test_tools_come_from_assembly():
 
 def test_chat_installer_is_available_without_manual_tool_bindings():
     _install_fakes()
-    _reply(_runtime(skills_enabled=True), "$skill-installer")
+    from backend.skills.support import installed_skill_runtime
+    from backend.agents.runtime.extensions import get_agent_extensions
+    async def case():
+        async with installed_skill_runtime(get_agent_extensions()):
+            await _runtime(skills_enabled=True).reply(tenant_id=1, question="$skill-installer")
+    asyncio.run(case())
     names = [tool["function"]["name"] for tool in captured[0]["tools"]]
     assert "skill_install" in names and "skill" in names
     content = "\n".join(message.get("content", "") for message in captured[0]["messages"])
@@ -210,11 +220,23 @@ def test_chat_installer_is_available_without_manual_tool_bindings():
 
 
 def test_disabled_installer_and_skill_whitelist_do_not_advertise_install_tool():
+    from backend.skills.support import installed_skill_runtime
+    from backend.agents.runtime.extensions import get_agent_extensions
     for config in ({"skill_install_enabled": False}, {"enabled_skills": []}):
         _install_fakes()
-        _reply(_runtime(skills_enabled=True, **config))
+        async def case():
+            async with installed_skill_runtime(get_agent_extensions()):
+                await _runtime(skills_enabled=True, **config).reply(tenant_id=1, question="你好")
+        asyncio.run(case())
         names = [tool["function"]["name"] for tool in captured[0].get("tools", [])]
         assert "skill_install" not in names
+
+
+def test_no_skill_plugin_means_no_automatic_tools_or_skill_catalog():
+    _install_fakes()
+    _reply(_runtime(skills_enabled=True), "$skill-installer")
+    assert "tools" not in captured[0]
+    assert not any("skill_content" in message.get("content", "") for message in captured[0]["messages"])
 
 
 def test_broken_variable_fails_loudly():

@@ -35,8 +35,13 @@ class RecoveryError(ValueError):
     code = "session/recovery-conflict"
 
 
-def recovery_status(events, *, busy=False) -> dict:
-    """Read-only status; an open turn is interrupted only without a live owner."""
+def recovery_status(events, *, busy=False, last_durable_seq: int | None = None) -> dict:
+    """Read-only status; an open turn is interrupted only without a live owner.
+
+    ``events`` may be only the tail from the last ``turn/start`` (see
+    ``SessionPersistence.load_recovery``); ``last_durable_seq`` then carries the
+    true high-water mark because the tail may not start at seq 1.
+    """
     start = None
     end = None
     for event in events:
@@ -61,7 +66,10 @@ def recovery_status(events, *, busy=False) -> dict:
             unknown.append(event.data)
     return {
         "status": status,
-        "last_durable_seq": events[-1].seq if events else 0,
+        "last_durable_seq": (
+            last_durable_seq if last_durable_seq is not None
+            else (events[-1].seq if events else 0)
+        ),
         "source_turn_start_seq": start.seq if start else None,
         "can_resume": not busy and status in ("interrupted", "cancelled", "persistence_error"),
         "unknown_tool_calls": unknown,
@@ -93,7 +101,7 @@ async def prepare_session(persistence, session_id, *, enabled, agent_key, resume
             acquired = True
             raise
         except Exception as exc:
-            from backend.agents.runtime.loop.registry import RunConflict
+            from agent_platform_agents import RunConflict
             if isinstance(exc, RunConflict):
                 raise
             raise CheckpointError(session_id, "ownership") from exc

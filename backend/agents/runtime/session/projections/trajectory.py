@@ -93,8 +93,8 @@ class TrajectoryProjection:
     turn/step 从 1 编号，node id 为不透明键（UI 只按 id 引用，不解析）。
     """
 
-    def __init__(self):
-        self.turn = 0
+    def __init__(self, *, initial_turn: int = 0):
+        self.turn = initial_turn
         self.cur_step = 0
         self.nodes: list[dict] = []        # 有序 node（插入序 = 执行序）
         self._by_id: dict[str, dict] = {}

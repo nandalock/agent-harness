@@ -89,12 +89,14 @@ class AgentConfigHostService:
 
 def host_services() -> dict:
     """Services supplied to every plugin runtime scope."""
-    from agent_platform_plugin_sdk import AGENTS, APPROVAL, SETTINGS
+    from agent_platform_plugin_sdk import AGENTS, APPROVAL, SETTINGS, AGENT_EXTENSIONS
+    from backend.agents.runtime.extensions import get_agent_extensions
 
     services: dict = {
         APPROVAL: ApprovalHostService(),
         SETTINGS: SettingsHostService(),
         AGENTS: AgentConfigHostService(),
+        AGENT_EXTENSIONS: get_agent_extensions(),
     }
     return services
 

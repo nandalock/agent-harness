@@ -59,7 +59,7 @@ RUN npm install --global overleaf-mcp-rt@2.2.0
 COPY packages ./packages
 COPY requirements-plugins.txt ./requirements-plugins.txt
 RUN pip install --no-cache-dir -r requirements-plugins.txt && \
-    pip install --no-cache-dir -e ./packages/plugin-runtime/examples/echo-plugin
+    pip install --no-cache-dir -e ./packages/plugin/examples/echo-plugin
 
 COPY backend ./backend
 

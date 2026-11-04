@@ -38,14 +38,15 @@ from backend.agents.runtime.llm import (  # noqa: E402
 )
 from backend.agents.runtime.llm import openai_chat as client_mod  # noqa: E402
 from backend.agents.runtime.llm import retry as retry_mod  # noqa: E402
-from backend.agents.runtime.loop.agent_loop import CANCELLED_REPLY, AgentLoop  # noqa: E402
-from backend.agents.runtime.loop.assistant_stream import AssistantStream  # noqa: E402
-from backend.agents.runtime.loop.inbox import (  # noqa: E402
+from agent_platform_agent_loop.agent_loop import CANCELLED_REPLY, AgentLoop  # noqa: E402
+from backend.agents.runtime.tests.loop_support import loop_context
+from agent_platform_agent_loop.assistant_stream import AssistantStream  # noqa: E402
+from agent_platform_agent_loop.inbox import (  # noqa: E402
     NEXT_STEP,
     NEXT_TURN,
     ReactLoopInbox,
 )
-from backend.agents.runtime.loop.registry import RunConflict, RunRegistry  # noqa: E402
+from agent_platform_agents import RunConflict, RunRegistry  # noqa: E402
 from backend.agents.runtime.session import (  # noqa: E402
     ASSISTANT_MESSAGE,
     LLM_ERROR,
@@ -241,7 +242,7 @@ def _loop(*, session=None, config=None, llm_params=None, on_event=None, tool_sch
         max_llm_retries=params["max_llm_retries"],
     )
     loop = AgentLoop(
-        key="test_agent", llm_params=params, llm=llm, model=cfg.get("model", ""),
+        loop_context(llm), key="test_agent", llm_params=params, model=cfg.get("model", ""),
         tool_schemas=tool_schemas or [], tenant_id=1, system_prompt="", on_event=on_event,
         session=session, hooks=hooks, fallback_reply=cfg.get("fallback_reply", ""),
     )

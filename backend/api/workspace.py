@@ -17,6 +17,8 @@
   - **新建空条目**（``POST /{sid}/files`` 与 ``POST /folders``）：在已存在的
     目录里建**零字节空文件**或空目录。不写内容、不改名、不删除 —— 用户想往里
     填东西，要么上传覆盖，要么让模型写。
+  - **创建工作区目录**（``POST /folder``）：把浏览器选择器给出的文件夹名落到
+    工作区根下（已存在则选中）。只 mkdir，不写入内容。
 
 两者因此走与读不同的防护链：路径经 :func:`resolve_workspace_member` 挡「事前
 种下的」符号链接，落盘经临时文件 + ``os.replace``（上传）或 ``O_EXCL``（新建）
@@ -49,6 +51,7 @@
 不属于即 404 —— 用 404 而非 403，不泄漏会话是否存在。当前所有 Session 都经
 HTTP chat 创建并回写该映射（见 ``api/agents.py``），因此不会漏掉真实会话。
 """
+import ipaddress
 import itertools
 import json
 import logging
@@ -60,7 +63,7 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Header, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from backend.agents import get_agent
@@ -80,6 +83,7 @@ from backend.agents.runtime.session.title import (
     title_message_of,
 )
 from backend.core.connection import get_conn
+from backend.services import folder_picker
 from agent_platform_sandbox.errors import SandboxUnavailableError
 from agent_platform_sandbox.workspace import (
     READ_ROOTS_ENV,
@@ -99,6 +103,8 @@ router = APIRouter(prefix="/api/workspace", tags=["Workspace"])
 
 #: 列目录返回的最大条目数。超出则截断并置 ``truncated``，**不静默吞掉**。
 MAX_LIST_ENTRIES = 2000
+#: browse 对话框一层的上限（对齐 DSH 的 1000）。
+MAX_BROWSE_ENTRIES = 1000
 #: 会话列表上限（侧栏用，不需要全量）。
 MAX_SESSIONS = 100
 #: 候选会话的扫描上限。判据在文件系统上，SQL 层没法先过滤，所以给个安全阀
@@ -699,6 +705,15 @@ def _resolve_session_workspace(
     目录**。落在根上 = 跨会话可见；越出根 = 直读宿主。两者都拒。
     """
     if cwd:
+        # 本地后端：cwd 可以是用户在系统对话框里选的**任意真实目录**（项目），
+        # 直接用它；Docker/远程仍只认配置根和容器挂载。
+        if _local_backend():
+            try:
+                local = Path(cwd).expanduser().resolve()
+            except (OSError, RuntimeError):
+                local = None
+            if local is not None and local.is_dir():
+                return local
         # 浏览根优先：cwd 可能是「新建会话选了某个根目录」的宿主路径（写根如
         # D:/jk/Nexus/proj，读根如 C:/Users）——backend 容器看不到宿主的盘，
         # 文件操作走 compose 挂进来的 /srv/host-write|host-read/<名> 等价路径。
@@ -1081,6 +1096,51 @@ def _read_roots() -> tuple[str, ...]:
     return parse_roots(os.environ.get(READ_ROOTS_ENV))
 
 
+def _local_backend() -> bool:
+    """本地后端直接看宿主路径；Docker 后端只能看挂载根。"""
+    return os.environ.get("SANDBOX_BACKEND", "local").strip().lower() == "local"
+
+
+def _is_loopback_request(request: Request) -> bool:
+    host = request.client.host if request.client else ""
+    if not host:
+        return False
+    if host == "localhost":
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if address.is_loopback:
+        return True
+    mapped = getattr(address, "ipv4_mapped", None)
+    return bool(mapped and mapped.is_loopback)
+
+
+def _local_project_path(raw: str) -> Path:
+    """绝对路径项目（本机选择器返回的文件夹）→ 已验证的目录路径。
+
+    Only the local sandbox backend may bind a session to an arbitrary host
+    directory. Docker/remote deployments must use configured roots.
+    """
+    if not _local_backend():
+        raise HTTPException(400, "绝对路径项目只在本地后端可用")
+    path = Path(raw).expanduser()
+    if not path.is_absolute():
+        raise HTTPException(400, f"项目路径必须是绝对路径: {raw!r}")
+    path = path.resolve()
+    if path == Path(path.anchor):
+        raise HTTPException(400, "不能把磁盘根目录作为项目")
+    if not path.exists():
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise HTTPException(400, f"无法创建项目目录: {e}")
+    if not path.is_dir():
+        raise HTTPException(400, f"项目路径不是目录: {path}")
+    return path
+
+
 @dataclass(frozen=True)
 class _BrowseRoot:
     """文件系统选择器里的一个根：它能看见的一块宿主路径。"""
@@ -1168,6 +1228,72 @@ def _is_writable(host_path: str, write_roots: tuple[str, ...]) -> bool:
     这个标志如今只喂 UI 的措辞（"写入需授权" vs 直接可写）。
     """
     return path_in_roots(host_path, write_roots)
+
+
+def _folder_by_name(raw_name: object) -> dict:
+    """按名字创建 / 打开一个工作区文件夹（浏览器 showDirectoryPicker 的落点）。
+
+    浏览器的目录选择器只交出**文件夹名**（``handle.name``），交不出宿主绝对
+    路径。因此这里把名字落到部署配置的工作区根上：
+
+      - 配了浏览根：按写根优先的顺序，在根内 ``mkdir`` / 打开同名目录；
+      - 没配浏览根：落在 ``<SANDBOX_WORKSPACE_ROOT>/<name>``。
+
+    已存在且是目录 → 直接选中（幂等）；同名的是文件 → 409，绝不覆盖。
+    返回给前端的 ``folder`` 已翻译成 ``POST /sessions`` 的命名，前端不自己拼。
+    """
+    name = _validate_new_name(raw_name if isinstance(raw_name, str) else None)
+
+    roots = _browse_roots()
+    if roots:
+        errors: list[str] = []
+        # local 后端直接看宿主路径；docker 后端看 compose 挂进来的容器路径。
+        # 与 sandbox/runtime.py 的 SANDBOX_BACKEND 默认值保持一致。
+        local = os.environ.get("SANDBOX_BACKEND", "local").strip().lower() == "local"
+        # 写根优先：同一个名字两边都存在时，选模型可直接写的那一份
+        for root in sorted(roots, key=lambda r: not r.writable):
+            base = Path(root.host) if local else root.container
+            try:
+                target = resolve_workspace_member(str(base), name)
+            except ValueError as exc:
+                errors.append(str(exc))
+                continue
+            if target.exists() and not target.is_dir():
+                raise HTTPException(409, f"同名文件已存在，无法作为工作区: {name}")
+            try:
+                target.mkdir(exist_ok=True)
+            except OSError as exc:
+                errors.append(f"{root.host}: {exc}")
+                continue
+            host_path = root.host.rstrip("/") + "/" + name
+            return {
+                "path": str(target),
+                "host_path": host_path,
+                "folder": _folder_value(host_path, roots) or name,
+                "writable": _is_writable(host_path, _write_roots()),
+            }
+        raise HTTPException(400, "无法在工作区根内创建文件夹: " + "；".join(errors))
+
+    try:
+        deployment_root = Path(resolve_workspace_root()).resolve()
+    except (SandboxUnavailableError, ValueError) as e:
+        raise HTTPException(503, f"沙箱工作区未配置: {e}")
+    try:
+        target = resolve_workspace_member(str(deployment_root), name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if target.exists() and not target.is_dir():
+        raise HTTPException(409, f"同名文件已存在，无法作为工作区: {name}")
+    try:
+        target.mkdir(exist_ok=True)
+    except OSError as e:
+        raise HTTPException(400, f"无法创建工作区文件夹: {e}")
+    return {
+        "path": str(target),
+        "host_path": str(target),
+        "folder": name,
+        "writable": True,
+    }
 
 
 def _browse_root_by_name(roots: list[_BrowseRoot], name: str) -> _BrowseRoot | None:
@@ -1429,6 +1555,213 @@ def api_create_browse_entry(
     }
 
 
+@router.post("/folder")
+def api_ensure_workspace_folder(body: dict) -> dict:
+    """按名字创建 / 打开工作区文件夹（浏览器目录选择器的落点）。
+
+    前端用 ``showDirectoryPicker()`` 选一个本地文件夹，浏览器只给出文件夹名
+    （安全边界：不暴露绝对路径）。这里把名字落到后端工作区根：不存在就建，
+    已存在就选，同名文件则 409。返回的 ``folder`` 可直接交给 ``POST /sessions``。
+
+    为什么不是「上传所选目录的内容」：本接口只负责选工作区位置，内容导入是
+    另一件事；把目录内容悄悄复制进工作区，会让「打开已有项目」和「新建空目录」
+    产生两种不同的副作用，用户无从预期。
+    """
+    return _folder_by_name(body.get("name"))
+
+
+def _local_crumbs(path: Path) -> list[dict]:
+    chain = [str(parent) for parent in reversed(path.parents)]
+    chain.append(str(path))
+    return [{"label": item, "path": item} for item in chain]
+
+
+def _mounted_crumbs(root_host: str, host_path: str) -> list[dict]:
+    base = normalize_host_path(root_host).rstrip("/")
+    current = normalize_host_path(host_path).rstrip("/")
+    crumbs = [{"label": base, "path": base}]
+    if current != base and current.startswith(base + "/"):
+        walk = base
+        for part in current[len(base) + 1:].split("/"):
+            walk = walk + "/" + part
+            crumbs.append({"label": part, "path": walk})
+    return crumbs
+
+
+def _browse_local(path: str) -> dict:
+    """One host-directory level for the in-app browser (local backend)."""
+    base = Path(path).expanduser().resolve() if path else Path.home().resolve()
+    if not base.exists():
+        raise HTTPException(404, f"目录不存在: {path}")
+    if not base.is_dir():
+        raise HTTPException(400, f"不是目录: {path}")
+    entries: list[dict] = []
+    truncated = False
+    try:
+        with os.scandir(base) as it:
+            for i, de in enumerate(it):
+                if i >= MAX_BROWSE_ENTRIES:
+                    truncated = True
+                    break
+                try:
+                    if not de.is_dir():
+                        continue
+                except OSError:
+                    continue
+                entries.append({
+                    "name": de.name,
+                    "path": str(Path(de.path).resolve()),
+                    "hidden": de.name.startswith("."),
+                })
+    except OSError as e:
+        raise HTTPException(400, f"无法读取目录: {e}")
+    entries.sort(key=lambda e: e["name"].lower())
+    try:
+        home = str(Path.home())
+    except RuntimeError:
+        home = str(base)
+    return {
+        "path": str(base), "entries": entries, "home": home,
+        "crumbs": _local_crumbs(base), "truncated": truncated,
+        "can_create": True, "folder": None, "writable": True, "mode": "local",
+    }
+
+
+def _browse_mounted(path: str) -> dict:
+    """One mounted-root level for containers/remote backend."""
+    roots = _browse_roots()
+    if not roots:
+        raise HTTPException(503, "没有可浏览的挂载根")
+    host_path = normalize_host_path(path) if path else normalize_host_path(roots[0].host)
+    host_path = host_path.rstrip("/") or "/"
+    root = next((
+        r for r in sorted(roots, key=lambda r: len(r.host), reverse=True)
+        if host_path == normalize_host_path(r.host).rstrip("/")
+        or host_path.startswith(normalize_host_path(r.host).rstrip("/") + "/")
+    ), None)
+    if root is None:
+        raise HTTPException(400, f"目录不在可浏览的挂载根内: {host_path}")
+    container = _host_cwd_to_backend(roots, host_path)
+    if container is None or not container.is_dir():
+        raise HTTPException(404, f"目录不存在: {host_path}")
+    entries: list[dict] = []
+    truncated = False
+    try:
+        with os.scandir(container) as it:
+            for i, de in enumerate(it):
+                if i >= MAX_BROWSE_ENTRIES:
+                    truncated = True
+                    break
+                try:
+                    if not de.is_dir():
+                        continue
+                except OSError:
+                    continue
+                entries.append({
+                    "name": de.name,
+                    "path": host_path.rstrip("/") + "/" + de.name,
+                    "hidden": de.name.startswith("."),
+                })
+    except OSError as e:
+        raise HTTPException(400, f"无法读取目录: {e}")
+    entries.sort(key=lambda e: e["name"].lower())
+    return {
+        "path": host_path, "entries": entries, "home": normalize_host_path(roots[0].host),
+        "crumbs": _mounted_crumbs(root.host, host_path), "truncated": truncated,
+        "can_create": not _is_read_only_mount(container),
+        "folder": _folder_value(host_path, roots),
+        "writable": _is_writable(host_path, _write_roots()),
+        "mode": "mounted",
+    }
+
+
+@router.get("/browse")
+def api_browse_directories(path: str = Query(default="")) -> dict:
+    """In-app directory browser for remote/container clients."""
+    if _local_backend():
+        return _browse_local(path)
+    return _browse_mounted(path)
+
+
+@router.post("/browse/mkdir", status_code=201)
+def api_browse_mkdir(body: dict) -> dict:
+    """Create one child directory for the in-app browser."""
+    path = (body.get("path") or "").strip()
+    name = _validate_new_name(body.get("name"))
+    if not path:
+        raise HTTPException(400, "path 不能为空")
+
+    if _local_backend():
+        base = Path(path).expanduser().resolve()
+        if not base.is_dir():
+            raise HTTPException(404, f"目录不存在: {path}")
+        target = (base / name).resolve()
+        if not target.is_relative_to(base):
+            raise HTTPException(400, "目录越出当前位置")
+        try:
+            target.mkdir()
+        except FileExistsError:
+            raise HTTPException(409, f"目录已存在: {name}")
+        except OSError as e:
+            raise HTTPException(400, f"无法创建目录: {e}")
+        return {
+            "path": str(base),
+            "entry": {"name": name, "path": str(target), "hidden": name.startswith(".")},
+        }
+
+    roots = _browse_roots()
+    host_path = normalize_host_path(path).rstrip("/")
+    target_root = _create_target(roots, host_path)
+    if target_root is None:
+        raise HTTPException(400, f"目录不在可浏览的挂载根内: {host_path}")
+    container_root, rel = target_root
+    parent = _member_or_400(container_root, rel)
+    if not parent.is_dir():
+        raise HTTPException(404, f"目录不存在: {host_path}")
+    child = parent / name
+    _member_or_400(container_root, f"{rel}/{name}" if rel else name)
+    try:
+        child.mkdir()
+    except FileExistsError:
+        raise HTTPException(409, f"目录已存在: {name}")
+    except OSError as e:
+        raise HTTPException(400, f"无法创建目录: {e}")
+    return {
+        "path": host_path,
+        "entry": {
+            "name": name,
+            "path": host_path + "/" + name,
+            "hidden": name.startswith("."),
+        },
+    }
+
+
+@router.post("/folder-picker")
+def api_pick_project_folder(request: Request) -> dict:
+    """Open the host OS folder chooser and return the real absolute path.
+
+    Only the local backend and a loopback browser can use it. The Windows
+    dialog is owned by a topmost offscreen form so it comes to the foreground
+    even when the backend runs as a background process.
+    """
+    if not _is_loopback_request(request):
+        raise HTTPException(409, "本机文件夹选择器只对本地浏览器开放")
+    try:
+        chosen = folder_picker.pick_folder()
+    except folder_picker.FolderPickerBusy as e:
+        raise HTTPException(409, str(e))
+    except folder_picker.FolderPickerUnavailable as e:
+        raise HTTPException(503, str(e))
+    except folder_picker.FolderPickerFailed as e:
+        raise HTTPException(500, str(e))
+    if not chosen:
+        return {"path": None}
+    path = Path(chosen).expanduser().resolve()
+    if not path.is_dir():
+        raise HTTPException(400, f"所选路径不是目录: {chosen}")
+    return {"path": str(path)}
+
+
 @router.post("/sessions", status_code=201)
 def api_create_workspace_session(
     body: dict,
@@ -1446,11 +1779,15 @@ def api_create_workspace_session(
     指导），不属于会话历史。预创建因此只负责 header，不存在与执行侧逐字对齐的
     镜像代码——这正是本次重构消除的双处同步点。
 
-    folder 缺省 / 空串 = 不设 cwd（会话工作区自动落在 ``<root>/<session_id>``，
-    即原有行为）。
+    ``folder_path``（本机绝对路径）优先于 ``folder``：cwd 直接是所选的真实
+    目录，不再按名字复制到工作区根。仅 local 后端接受。
+
+    folder / folder_path 都缺省 = 不设 cwd（会话工作区自动落在
+    ``<root>/<session_id>``，即原有行为）。
     """
     agent_key = (body.get("agent_key") or "").strip()
     folder = (body.get("folder") or "").strip()
+    folder_path = (body.get("folder_path") or "").strip()
     if not agent_key:
         raise HTTPException(400, "agent_key 不能为空")
     try:
@@ -1466,7 +1803,11 @@ def api_create_workspace_session(
     # （见 sandbox/runtime.py），模型要写走升权审批——「能不能选」与「能不能写」
     # 是两件事，这里只负责前者。
     cwd: str | None = None
-    if folder:
+    if folder_path:
+        # 本机选择器返回的**真实文件夹**：cwd 就是它，不再按名字复制到
+        # ~/.minidsh/workspaces。仅 local 后端允许。
+        cwd = str(_local_project_path(folder_path))
+    elif folder:
         roots = _browse_roots()
         if roots:
             name, _, rest = folder.partition("/")
@@ -1506,13 +1847,20 @@ def api_create_workspace_session(
             cwd = str(target)
 
     # conversation（channel=agent:<key>，会话归属与列表端点的解析约定一致）
-    label = folder.rsplit('/', 1)[-1] if folder else "新会话"
+    label = (
+        (Path(cwd).name if cwd else "")
+        or (folder.rsplit('/', 1)[-1] if folder else "")
+        or "新会话"
+    )
     from backend.services.chat import service as chat_service
     conv = chat_service.create_conversation(
         x_tenant_id,
         chat_service.ConversationCreate(
             channel=f"agent:{agent_key}",
             customer_name=label,
+            # 技能目录端点按 conversations.agent_key 校验会话归属；只写 channel
+            # 会让工作区会话的技能请求 404。
+            agent_key=agent_key,
         ),
     )
 
@@ -1550,7 +1898,7 @@ def api_create_workspace_session(
             "agent_key": agent_key,
             "agent_name": getattr(agent, "name", agent_key),
             "label": label,
-            "folder": folder or None,
+            "folder": folder or folder_path or None,
         },
     }
 

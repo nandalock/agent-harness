@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-llm"
+version = "0.1.0"
+description = "Provider-neutral model connection registry for the Agent Platform"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.setuptools]
+packages = ["agent_platform_llm"]
+
+[tool.setuptools.package-dir]
+agent_platform_llm = "src"

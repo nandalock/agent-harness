@@ -54,7 +54,7 @@ class SessionPersistence(abc.ABC):
     @contextmanager
     def write_owner(self, session_id: str):
         """Process-local exclusion for memory-only providers and test doubles."""
-        from backend.agents.runtime.loop.registry import RunConflict
+        from agent_platform_agents import RunConflict
         with _owner_guard:
             identity = (id(self), session_id)
             if identity in _owners:
@@ -92,6 +92,21 @@ class SessionPersistence(abc.ABC):
         注意:load 读的是 durable 状态(不含未 flush 的 pending)——同进程内 pending
         的 Session 必然同时存在于 SessionStore,不会走 load 路径。
         """
+
+    def load_recovery(self, session_id: str) -> tuple[list[SessionEvent], int] | None:
+        """Read only what recovery status needs: the tail from the last turn start.
+
+        Returns ``(tail_events, last_durable_seq)`` or ``None`` when the session
+        does not exist.  Implementations may override this with a narrow query;
+        the default keeps the full-load semantics for test doubles.
+        """
+        loaded = self.load(session_id)
+        if loaded is None:
+            return None
+        events = loaded[1]
+        starts = [index for index, event in enumerate(events) if event.type == "turn/start"]
+        tail = events[starts[-1]:] if starts else []
+        return tail, (events[-1].seq if events else 0)
 
     @abc.abstractmethod
     def flush(self, session_id: str | None = None) -> None:

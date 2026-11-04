@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-skills-default"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["agent-platform-skills>=0.1,<0.2"]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.skills-default" = "agent_platform_skills_default:SkillsDefaultPlugin"
+
+[tool.setuptools]
+packages = ["agent_platform_skills_default"]
+
+[tool.setuptools.package-dir]
+agent_platform_skills_default = "src"
+
+[tool.uv.sources]
+agent-platform-skills = { path = "../core", editable = true }

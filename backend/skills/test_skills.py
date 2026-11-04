@@ -8,12 +8,15 @@ import unittest
 
 from backend.agents.runtime.llm import LoopHooks
 from backend.agents.runtime.llm.types import LlmResponse
-from backend.agents.runtime.loop.agent_loop import AgentLoop
-from backend.agents.runtime.loop.inbox import new_message
+from agent_platform_agent_loop.agent_loop import AgentLoop
+from backend.agents.runtime.tests.loop_support import loop_context
+from agent_platform_agent_loop.inbox import new_message
 from backend.agents.runtime.session import Session
 from backend.agents.runtime.session.projections import TrajectoryProjection
-from agent_platform_skills.registry import SkillError, SkillRegistry, SkillScope, SkillSource, get_skill_registry
-from agent_platform_skills.runtime import SkillPreStep, catalog_entries, load_model_skill, render_skill
+from backend.skills.support import filesystem_registry as SkillRegistry
+from agent_platform_skills.registry import SkillError, SkillScope, SkillSource
+from agent_platform_skill_tools.runtime import SkillPreStep
+from agent_platform_skills.runtime import catalog_entries, load_model_skill, render_skill
 
 
 class SkillsTest(unittest.IsolatedAsyncioTestCase):
@@ -55,7 +58,7 @@ class SkillsTest(unittest.IsolatedAsyncioTestCase):
         other = self.root / "other"
         other.mkdir()
         self.write("demo", "另一版本", root=other)
-        registry = SkillRegistry([*self.registry.sources, SkillSource("second", other)])
+        registry = SkillRegistry([SkillSource("local", self.root), SkillSource("second", other)])
         with self.assertRaisesRegex(SkillError, "歧义"):
             registry.get("demo", self.scope)
         self.assertEqual(registry.get("second:demo", self.scope).content, "另一版本")
@@ -136,7 +139,7 @@ class SkillsTest(unittest.IsolatedAsyncioTestCase):
                 return LlmResponse({"role": "assistant", "content": "完成"}, "stop")
         llm = Llm()
         session = Session()
-        loop = AgentLoop(key="test", llm=llm, model="test", tenant_id=1, session=session,
+        loop = AgentLoop(loop_context(llm), key="test", model="test", tenant_id=1, session=session,
                          tool_schemas=[], hooks=LoopHooks(pre_step=SkillPreStep(self.scope, self.registry)),
                          llm_params={"max_steps": 4, "max_tool_calls": 4, "max_wall_time": 20,
                                      "max_parallel_tools": 1, "max_tokens": 128, "temperature": 0})
@@ -154,7 +157,8 @@ class SkillsTest(unittest.IsolatedAsyncioTestCase):
 
     def test_bundled_overleaf_commands_have_correct_dependencies(self):
         scope = replace(self.scope, tool_names=frozenset({"overleaf_list_hosts", "overleaf_list_projects"}))
-        registry = get_skill_registry()
+        from agent_platform_skills_filesystem import default_sources
+        registry = SkillRegistry(default_sources())
         command = registry.get("overleaf-login", scope)
         self.assertFalse(command.model_invocable)
         self.assertIsNone(command.unavailable_reason(scope))

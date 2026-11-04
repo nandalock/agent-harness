@@ -7,8 +7,9 @@ import pytest
 
 from backend.agents.runtime.agent_runtime import AgentRuntime
 from backend.agents.runtime.llm.types import LlmResponse, StreamChunk
-from backend.agents.runtime.loop.agent_loop import AgentLoop
-from backend.agents.runtime.loop.registry import RunConflict
+from agent_platform_agent_loop.agent_loop import AgentLoop
+from backend.agents.runtime.tests.loop_support import loop_context, plugin_context
+from agent_platform_agents import RunConflict
 from backend.agents.runtime.session.checkpoint import CheckpointError, SessionCheckpoint
 from backend.agents.runtime.session.events import TURN_START, TURN_END, TOOL_CALL, TOOL_RESULT
 from backend.agents.runtime.session.persistence.base import SessionPersistence, set_session_persistence
@@ -110,7 +111,7 @@ def build_loop(persistence, messages):
     persistence.create(session.header.id, session.header)
     client = Client(messages, persistence)
     checkpoint = SessionCheckpoint(session, persistence)
-    loop = AgentLoop(key="a", llm=client, llm_params={"max_steps": 3, "max_tool_calls": 30,
+    loop = AgentLoop(loop_context(client), key="a", llm_params={"max_steps": 3, "max_tool_calls": 30,
                      "max_wall_time": 30, "max_tokens": 1024, "temperature": .1,
                      "max_llm_retries": 0}, model="test",
                      tool_schemas=[{"type": "function", "function": {"name": "write", "parameters": {"type": "object", "properties": {}}}}],
@@ -284,10 +285,15 @@ def test_only_one_recovery_owner_can_prepare_a_session():
 
 def runtime(monkeypatch, persistence, client):
     from backend.agents.runtime import agent_runtime
+    from agent_platform_agents import AgentService
+    from agent_platform_agent_loop.plugin import LoopFactory, LoopConfig
+    runs = AgentService()
+    runs.register_factory(LoopFactory(plugin_context(), LoopConfig()))
+    monkeypatch.setattr(agent_runtime, "get_agent_runs", lambda: runs)
     monkeypatch.setattr(agent_runtime, "get_agent_config", lambda key: {})
     set_session_persistence(persistence)
     agent = AgentRuntime("a", {"name": "测试", "config": {"model": "test", "session_title_enabled": False}})
-    monkeypatch.setattr(agent, "_llm_client", lambda config: client)
+    monkeypatch.setattr(agent, "_llm_client", lambda model, config: client)
     return agent
 
 

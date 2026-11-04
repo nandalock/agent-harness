@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 #
 # 内置沙箱工具（bash/python）的指导写在各自的 ToolDescriptor 上（注册处直接可见）。
 # 但平台自有的 MCP 工具没有这样的注册点——它们的 schema 由 FastMCP 从函数签名与
-# docstring 自动派生（packages/tools/builtin-mcp），描述符在
+# docstring 自动派生（packages/mcp/builtin），描述符在
 # MCPToolProvider 里统一构造，无从附加。于是按工具名在这里登记。
 #
 # 解析优先级（见 _platform_tool_provider）：描述符自带 > 本表 > 无指导。

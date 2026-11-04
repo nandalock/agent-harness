@@ -1,6 +1,7 @@
 import logging
 
 from backend.core.connection import get_conn
+from backend.core.default_agent import seed_default_agent
 
 logger = logging.getLogger(__name__)
 
@@ -288,6 +289,7 @@ INDEXES_DDL = [
     "CREATE INDEX IF NOT EXISTS idx_conversations_channel_cid ON conversations(channel, channel_conversation_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_tenant ON messages(tenant_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_conv_time ON messages(conversation_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_messages_cursor ON messages(tenant_id, conversation_id, id)",
     # orders
     "CREATE INDEX IF NOT EXISTS idx_orders_tenant ON orders(tenant_id)",
     "CREATE INDEX IF NOT EXISTS idx_orders_tenant_order_no ON orders(tenant_id, order_no)",
@@ -481,6 +483,9 @@ def init_db():
 
             from backend.core.legacy_agents import retire_examples
             retire_examples(cur)
+
+            # 内置默认智能体（本地终端工具）。已有 default 时不动用户配置。
+            seed_default_agent(cur)
 
             for seed_sql in SEED_CACHE_POLICIES:
                 cur.execute(seed_sql)

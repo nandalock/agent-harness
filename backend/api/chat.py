@@ -69,6 +69,21 @@ def list_messages(
     return {"items": msgs, "page": page, "size": size}
 
 
+@router.get("/conversations/{conversation_id}/messages/window")
+def message_window(
+    conversation_id: int,
+    before_id: int | None = Query(default=None, gt=0),
+    size: int = Query(default=50, ge=1, le=100),
+    x_tenant_id: int = Header(alias="X-Tenant-ID"),
+) -> dict:
+    from backend.services.chat.history import hydrate_message_window
+    conv = chat_service.get_conversation(x_tenant_id, conversation_id)
+    if conv is None:
+        raise HTTPException(404, "会话不存在")
+    window = chat_service.list_message_window(x_tenant_id, conversation_id, before_id=before_id, size=size)
+    return hydrate_message_window(window, conv.session_id)
+
+
 @router.post("/conversations/{conversation_id}/messages", status_code=201)
 def send_message(
     conversation_id: int,

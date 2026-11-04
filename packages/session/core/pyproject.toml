@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-session"
+version = "0.1.0"
+description = "Storage-independent session events and model-visible history"
+requires-python = ">=3.12"
+dependencies = ["agent-platform-tool-system>=0.1,<0.2"]
+
+[tool.setuptools]
+packages = ["agent_platform_session"]
+
+[tool.setuptools.package-dir]
+agent_platform_session = "src"

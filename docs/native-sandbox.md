@@ -9,7 +9,7 @@ PluginRuntime
   └─ sandbox-tools → ctx.require(SANDBOX) → confine → 宿主机子进程
 ```
 
-`sandbox-local` 和 `sandbox-docker` 都由 `packages/sandbox` 提供 entry point，
+`sandbox-local` 和 `sandbox-docker` 都由 `packages/sandbox/core` 提供 entry point，
 发布同一个服务；它们自身不注册工具。`sandbox-tools` 注册 bash、python，
 在 Windows 本地后端额外注册 powershell。工具绑定和审批继续走原有单轨入口。
 一个 runtime 只选择一个 sandbox.v1 提供方。
@@ -21,7 +21,7 @@ SANDBOX_BACKEND=local
 SANDBOX_DEFAULT_MODE=workspace-write
 ```
 
-修改后重启 `python minidsh.py dev`。如需 Docker：
+修改后重启 `python minidsh.py web`。如需 Docker：
 
 ```dotenv
 SANDBOX_BACKEND=docker
@@ -29,7 +29,7 @@ SANDBOX_IMAGE=agent-sandbox:1
 ```
 
 Compose 的容器部署显式选择 Docker；本地 CLI 和通用装配默认选择 local。
-也可以在 plugins.yaml 中显式覆盖默认实例：
+也可以在 `config/plugins.yaml` 中显式覆盖默认实例：
 
 ```yaml
 version: 1

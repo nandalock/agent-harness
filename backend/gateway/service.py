@@ -19,9 +19,9 @@ import logging
 from collections.abc import Awaitable, Callable
 
 from backend.agents.base import BaseAgent, AgentReply
-from backend.agents.runtime.loop import RunConflict, get_run_registry
-from backend.agents.runtime.loop.events import EventSink
-from backend.agents.runtime.loop.inbox import NEXT_STEP, NEXT_TURN
+from agent_platform_agents import RunConflict
+from backend.agents.runtime.services import get_agent_runs
+from agent_platform_agents import EventSink, NEXT_STEP, NEXT_TURN
 from backend.agents.runtime.session import SessionEvent
 from backend.gateway.context import RequestContext
 from backend.gateway.errors import AgentBusy, AgentNotFound, InvalidGatewayContext, NoActiveRun
@@ -112,7 +112,7 @@ class AgentGateway:
         它只是把「找到那一轮、投一条进去」这两次同步调用接起来。
         """
         session_id = rctx.session_id or ""
-        run = get_run_registry().get(session_id)
+        run = get_agent_runs().get(session_id)
         if run is None:
             raise NoActiveRun(f"会话 {session_id or '(空)'} 上没有正在运行的轮次")
         return run.followup(text) if target == NEXT_TURN else run.steer(text)

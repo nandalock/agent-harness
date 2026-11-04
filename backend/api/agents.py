@@ -2,8 +2,8 @@
 import asyncio
 import json
 
-from fastapi import APIRouter, Body, Header, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Body, Header, HTTPException, Query
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from backend.agents import list_agents, get_agent, register, create_agent
@@ -30,7 +30,8 @@ from backend.agents.config_service import get_agent_config, save_agent_config, g
 from backend.agents.config_service import list_l1_keywords, create_l1_keyword, update_l1_keyword, delete_l1_keyword
 from backend.core.connection import get_conn
 from backend.services.chat import service as chat_service
-from backend.agents.runtime.loop import NEXT_STEP, NEXT_TURN
+from backend.services.chat.live import LiveRun, LiveRunConflict, get_live_runs
+from agent_platform_agents import NEXT_STEP, NEXT_TURN
 from backend.gateway import AgentNotFound, NoActiveRun, RequestContext, get_gateway
 from backend.agents.runtime.session.checkpoint import CheckpointError
 from backend.agents.runtime.session.recovery import CONTINUE_TASK, recovery_status, prepare_session
@@ -123,6 +124,7 @@ def agent_create(body: dict = Body(...)) -> dict:
         }
     else:
         config = {
+            "provider": (body.get("provider") or "deepseek").strip(),
             "system_prompt": body.get("system_prompt", ""),
             "fallback_reply": body.get("fallback_reply", "抱歉，我暂时无法处理。"),
             "max_steps": body.get("max_steps", 5),
@@ -180,10 +182,16 @@ def agent_get_config(agent_key: str) -> dict:
     overrides = get_agent_config(agent_key) or {}
     config = {**base, **overrides}
     cache_policy = definition.get("cache_policy") or _default_cache_policy(agent_key)
+    # Effective provider view (never includes a credential): lets callers tell
+    # whether the model comes from DB, env, or is missing without re-implementing
+    # the merge in the UI.
+    from backend.agents.runtime.llm.providers import resolve_model_config
+    model_config = resolve_model_config(config).public()
     return {
         "agent_key": agent_key,
         "config": config,
         "cache_policy": cache_policy,
+        "model_config": model_config,
     }
 
 
@@ -324,6 +332,120 @@ def _session_ready_callback(tenant_id, conversation_id, *, resume=False):
     return ready
 
 
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+
+
+def _sse_frame(event: dict) -> str:
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
+def _live_stream(run: LiveRun, queue: asyncio.Queue, initial: list[str] | None = None):
+    """Yield pre-rendered frames (attach snapshot), then live frames until done.
+
+    Closing the response only detaches this viewer.  It deliberately does not
+    signal ``run.cancel_event``: navigation must not stop the agent.
+    """
+    async def event_gen():
+        try:
+            for frame in initial or ():
+                yield frame
+            while True:
+                event = await queue.get()
+                if event is None:          # run finished while we were detached
+                    break
+                yield _sse_frame(event)
+                if event.get("type") in ("done", "error"):
+                    break
+        finally:
+            run.unsubscribe(queue)
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers=_SSE_HEADERS)
+
+
+async def _execute_live_run(
+    run: LiveRun,
+    gateway,
+    agent,
+    rctx: RequestContext,
+    body: ChatRequest,
+    conversation_id: int,
+    tenant_id: int,
+) -> None:
+    """Drive the agent independently of any SSE viewer; persist on completion."""
+    projector = TrajectoryProjection()
+    thinking_parts: list[str] = []
+
+    def publish(event: dict) -> None:
+        kind = event.get("type")
+        # thinking 累积双路径兼容：Session 开启 → traj/delta(field=thinking)；
+        # session=None 遗留 → legacy thinking
+        if kind == "thinking":
+            thinking_parts.append(event.get("delta", ""))
+        elif kind == "traj/delta" and event.get("field") == "thinking":
+            thinking_parts.append(event.get("delta", ""))
+        # 会话 id 随 done/session_ready 回传：前端据此恢复历史消息
+        if kind in ("done", "session/ready"):
+            event = {**event, "conversation_id": conversation_id}
+        run.publish(event)
+
+    async def on_event(event: dict):
+        # AgentRuntime 在返回前会先发一帧 done；那帧早于消息落库。这里吞掉，
+        # 等 persist 完成后再发权威 done，避免前端刷新历史时还看不到这条回复。
+        if event.get("type") == "done":
+            return
+        publish(event)
+
+    # Session.append 同步内联触发（无 await 间隙，与 log seq 严格保序）
+    def on_session_event(event):
+        for ui_event in projector.handle(event):
+            publish(ui_event)
+
+    run.set_snapshot(lambda: projector.finish())
+
+    def persist(reply: AgentReply) -> None:
+        """落库 agent 回复：写回 conversation → session 映射 + 消息（thinking 进 metadata）"""
+        if reply.session_id:
+            chat_service.save_conversation_session_id(tenant_id, conversation_id, reply.session_id)
+        thinking = "".join(thinking_parts)[:6000]  # 截断保护
+        chat_service.create_message(
+            tenant_id, conversation_id,
+            chat_service.MessageCreate(
+                role="agent",
+                sender_name=agent.name,
+                content=reply.answer,
+                metadata={
+                    "tier": reply.tier, "sources": reply.sources, "trace": reply.trace,
+                    "thinking": thinking or None,
+                },
+            ),
+        )
+
+    try:
+        reply = await gateway.chat(
+            rctx, body.question,
+            on_event=on_event, session_event_sink=on_session_event,
+            cancel=run.cancel_event,
+            resume_from=body.resume_from,
+            on_session_ready=_session_ready_callback(
+                tenant_id, conversation_id, resume=body.resume_from is not None,
+            ),
+        )
+        # 没有观看者也要落库：后台跑完的这一轮在会话历史里必须看得到。
+        await asyncio.to_thread(persist, reply)
+        publish({
+            "type": "done", "answer": reply.answer, "tier": reply.tier,
+            "trace": reply.trace, "session_id": reply.session_id,
+        })
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        code = getattr(exc, "code", "agent/error")
+        message = str(exc) if code != "agent/error" else "任务执行失败，请稍后重试"
+        publish({"type": "error", "code": code, "message": message})
+    finally:
+        get_live_runs().finish(run)
+
+
 @router.post("/{agent_key}/chat")
 async def agent_chat(
     agent_key: str,
@@ -401,6 +523,10 @@ async def agent_chat_stream(
       {"type":"usage","step":1,"prompt_tokens":...}  LLM usage（观测）
       {"type":"done","answer":"...","tier":"llm"} 结束（answer 为最终权威文本）
     session=None 遗留路径：AgentLoop 直接 on_event 推 legacy thinking/text/tool_* 事件。
+
+    本轮 Agent 跑在 LiveRunRegistry 的后台 task 里；这条 SSE 只是**观看者**。
+    关闭连接（切页面 / 刷新 / abort fetch）只 detach，不取消任务；要停止本轮
+    必须显式 POST /chat/cancel。切回会话时 GET /chat/live 重新接上（快照 + 增量）。
     """
     gateway = get_gateway()
     # 0. 入口存在性检查（与旧行为一致：Agent 不存在 → 404，且不创建会话/不落库）
@@ -410,11 +536,6 @@ async def agent_chat_stream(
         raise HTTPException(404, str(e))
 
     conv = _resolve_conversation(agent_key, body, x_tenant_id)
-    if body.resume_from is None:
-        chat_service.create_message(
-            x_tenant_id, conv.id,
-            chat_service.MessageCreate(role="customer", content=body.question),
-        )
 
     # 统一经 Gateway 驱动 AgentRuntime；SSE 帧格式/事件翻译仍在本层（Gateway 不感知 HTTP）
     rctx = RequestContext(
@@ -424,116 +545,74 @@ async def agent_chat_stream(
         visitor_id=body.visitor_id,
     )
 
-    async def event_gen():
-        queue: asyncio.Queue = asyncio.Queue()
-        thinking_parts: list[str] = []  # 累积思考过程，随消息落库持久化（旧数据/无轨迹回退兜底）
-        projector = TrajectoryProjection()  # Session typed events → UI trajectory node 事件
+    live_key = rctx.session_id or f"conversation:{conv.id}"
+    if get_live_runs().get(live_key) is not None:
+        raise HTTPException(409, "该会话正在后台运行，请等待完成或先停止当前任务")
 
-        async def on_event(ev: dict):
-            await queue.put(ev)
+    if body.resume_from is None:
+        chat_service.create_message(
+            x_tenant_id, conv.id,
+            chat_service.MessageCreate(role="customer", content=body.question),
+        )
 
-        # session 事件桥：Session.append 同步内联触发（无 await 间隙，与 log seq 严格保序）
-        # → projector 投影 → 产物入队（put_nowait：同一事件循环内无背压风险）
-        def on_session_event(ev):
-            for uev in projector.handle(ev):
-                queue.put_nowait(uev)
+    try:
+        run = get_live_runs().start(
+            session_id=live_key, tenant_id=x_tenant_id, agent_key=agent_key,
+            conversation_id=conv.id, agent_name=agent.name, question=body.question,
+        )
+    except LiveRunConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
 
-        # 取消信号：生成器被关闭 = 客户端断开（关标签页 / 前端 abort fetch）→ set 信号，
-        # Agent 在下一个检查点收口成 stop_reason=cancelled 的**正常结束**（不是异常），
-        # 于是下面的 flush / 消息落库照常执行：停下来的一轮也留得下事实。
-        cancel = asyncio.Event()
-        async def run_agent():
-            try:
-                return await gateway.chat(
-                    rctx, body.question,
-                    on_event=on_event, session_event_sink=on_session_event, cancel=cancel,
-                    resume_from=body.resume_from,
-                    on_session_ready=_session_ready_callback(x_tenant_id, conv.id, resume=body.resume_from is not None),
-                )
-            except Exception as exc:
-                code = getattr(exc, "code", "agent/error")
-                message = str(exc) if code != "agent/error" else "任务执行失败，请稍后重试"
-                await on_event({"type": "error", "code": code, "message": message})
-                return None
-
-        task = asyncio.create_task(run_agent())
-
-        def _persist(reply) -> None:
-            """落库 agent 回复：写回 conversation → session 映射 + 消息（thinking 进 metadata）"""
-            if reply.session_id:
-                chat_service.save_conversation_session_id(x_tenant_id, conv.id, reply.session_id)
-            thinking = "".join(thinking_parts)[:6000]  # 截断保护
-            chat_service.create_message(
-                x_tenant_id, conv.id,
-                chat_service.MessageCreate(
-                    role="agent",
-                    sender_name=agent.name,
-                    content=reply.answer,
-                    metadata={
-                        "tier": reply.tier, "sources": reply.sources, "trace": reply.trace,
-                        "thinking": thinking or None,
-                    },
-                ),
-            )
-
-        try:
-            while True:
-                try:
-                    ev = await asyncio.wait_for(queue.get(), timeout=0.5)
-                except asyncio.TimeoutError:
-                    if task.done():
-                        break
-                    continue
-                # thinking 累积双路径兼容：Session 开启 → traj/delta(field=thinking)；
-                # session=None 遗留 → legacy thinking
-                if ev.get("type") == "thinking":
-                    thinking_parts.append(ev.get("delta", ""))
-                elif ev.get("type") == "traj/delta" and ev.get("field") == "thinking":
-                    thinking_parts.append(ev.get("delta", ""))
-                # 会话 id 随 done 事件回传：前端据此恢复历史消息（conv_id 属于 API 层概念，
-                # AgentRuntime 不感知 conversation — 分层保持 Runtime 无状态）
-                if ev.get("type") in ("done", "session/ready"):
-                    ev = {**ev, "conversation_id": conv.id}
-                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
-                if ev.get("type") in ("done", "error"):
-                    break
-        finally:
-            # 生成器被关闭（客户端断开 / 前端 abort fetch）= 取消本轮：**同步** set 信号。
-            # Agent 跑在独立的 task 里，它会在下一个检查点收口成 stop_reason=cancelled 的
-            # 正常结束，并由它自己完成 flush（被停止的这轮照样留下事件事实）。
-            #
-            # 这里**刻意不 await task**：断开时外层生成器任务正被取消，而它正等在这个 task
-            # 上 —— asyncio 的 Task.cancel() 会连被等待的任务一起取消（_fut_waiter 就是它），
-            # 协作取消会被换成硬取消，还会多出 "ASGI callable returned without completing
-            # response" 的噪音。同步 set 已经把取消送达，收尾交给下面两条路。
-            cancel.set()
-            try:
-                reply = task.result()
-            except Exception:
-                # 任务仍在跑（断开，本轮已被取消）或已异常：回复不写进 conversation，
-                # 但轨迹/事件仍在 Session Event Log 里（由 Agent 那边 flush）
-                reply = None
-
-            if reply is not None:
-                _persist(reply)
-            elif not task.done():
-                # 被停止的这一轮还没收完口：挂个完成回调补写，别让它刷新后就从对话历史里
-                # 消失（协作取消是毫秒级的，回调马上就会跑）。回调是同步的 —— 不在收尾路径
-                # 上阻塞，也不与连接的取消语义纠缠。
-                def _persist_later(t) -> None:
-                    if t.cancelled():
-                        return
-                    try:
-                        _persist(t.result())
-                    except Exception:
-                        return   # 异常收场：不写消息（与上面的 reply=None 同义）
-                task.add_done_callback(_persist_later)
-
-    return StreamingResponse(
-        event_gen(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    # 先订阅、再起 task：两者之间没有 await，task 的早期事件不会丢。
+    queue = run.subscribe()
+    run.task = asyncio.create_task(
+        _execute_live_run(run, gateway, agent, rctx, body, conv.id, x_tenant_id)
     )
+    return _live_stream(run, queue)
+
+
+@router.get("/{agent_key}/chat/live")
+async def agent_chat_live(
+    agent_key: str,
+    session_id: str = Query(min_length=1),
+    conversation_id: int | None = Query(default=None),
+    x_tenant_id: int = Header(alias="X-Tenant-ID"),
+):
+    """Re-attach to a running turn; 204 when nothing is running.
+
+    A snapshot (current trajectory nodes + pending approvals) is sent first,
+    followed by live UI events.  This is what makes leaving the workspace safe:
+    the agent task never depended on the old SSE connection.
+    """
+    run = get_live_runs().get(session_id)
+    if (
+        run is None or run.done or run.agent_key != agent_key
+        or run.tenant_id != x_tenant_id
+        or (conversation_id is not None and run.conversation_id != conversation_id)
+    ):
+        return Response(status_code=204)
+    # 快照与订阅之间没有 await：不会漏掉两者之间的增量。
+    initial = [_sse_frame(run.snapshot())]
+    queue = run.subscribe()
+    return _live_stream(run, queue, initial)
+
+
+class CancelRequest(BaseModel):
+    session_id: str
+
+
+@router.post("/{agent_key}/chat/cancel")
+async def agent_chat_cancel(
+    agent_key: str,
+    body: CancelRequest,
+    x_tenant_id: int = Header(alias="X-Tenant-ID"),
+):
+    """Explicit cancel.  Disconnecting the SSE viewer is *not* a cancel."""
+    run = get_live_runs().get(body.session_id)
+    if run is None or run.agent_key != agent_key or run.tenant_id != x_tenant_id:
+        return {"cancelled": False}
+    run.cancel()
+    return {"cancelled": True}
 
 
 @router.post("/{agent_key}/chat/resume/stream")
@@ -661,11 +740,15 @@ async def agent_session_recovery(session_id: str, x_tenant_id: int = Header(alia
     persistence = get_session_persistence()
     if not persistence.durable:
         return {"session_id": session_id, "status": "temporary", "can_resume": False}
-    loaded = await asyncio.to_thread(persistence.load, session_id)
+    loaded = await asyncio.to_thread(persistence.load_recovery, session_id)
     if loaded is None:
         raise HTTPException(404, "执行记录不存在")
+    events, last_durable_seq = loaded
     busy = await asyncio.to_thread(persistence.is_busy, session_id)
-    return {"session_id": session_id, **recovery_status(loaded[1], busy=busy)}
+    return {
+        "session_id": session_id,
+        **recovery_status(events, busy=busy, last_durable_seq=last_durable_seq),
+    }
 
 
 @router.get("/sessions/{session_id}/trajectory")

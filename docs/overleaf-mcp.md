@@ -8,7 +8,8 @@
 后端镜像将服务安装在 `/opt/overleaf-mcp` 独立 Python 环境中，同时安装 Git。
 项目继续使用 MCP SDK 1，Overleaf 服务使用 SDK 2，两者通过 stdio 通信。
 启动时自动登记名为 `overleaf` 的 MCP 服务，已有同名服务的配置会保留。
-凭据不写入 MCP 数据库记录；在项目根目录被 Git 忽略的 `.env` 中填写：
+凭据不写入 MCP 数据库记录；在 `config/docker.env`（Docker）或
+`config/local.env`（本地）中填写：
 
 ```dotenv
 OVERLEAF_SESSION=你的_overleaf_session2_cookie
@@ -19,11 +20,12 @@ Cookie 在登录 Overleaf 后，通过浏览器开发者工具的 Application �
 `https://www.overleaf.com` → `overleaf_session2` 获取。Git Token 可选，在 Overleaf
 账户设置的 Git Integration 中创建；上游说明 Git 编辑功能需要支持 Git Integration 的套餐。
 不填凭据仍可发现工具，但访问账户时会返回缺少凭据的提示。
-完整变量示例见 [`.env.overleaf.example`](../.env.overleaf.example)。
+完整变量示例见 [`config/docker.env.example`](../config/docker.env.example) 与
+[`config/local.env.example`](../config/local.env.example)。
 
 ```powershell
 docker compose build backend
-docker compose up -d backend
+docker compose --env-file config/docker.env up -d backend
 ```
 
 打开 `/dashboard/mcp` 可查看 `overleaf` 工具组，在 Agent 编辑页的工具绑定中选择需要的工具。
@@ -37,9 +39,10 @@ docker compose up -d backend
 
 本机安装位于 `~/.codex/mcp/overleaf/venv`，全局 MCP 配置位于
 `~/.codex/config.toml` 的 `[mcp_servers.overleaf]`，启动入口位于
-`~/.codex/mcp/overleaf/entrypoint.py`。入口仅从本项目的 `.env` 读取 Overleaf
-账户变量，已有进程环境变量优先。缓存位于 `~/.codex/mcp/overleaf/cache`。
-修改 `.env` 后，重连 Overleaf MCP；初次安装后重启 Codex 或新开聊天加载工具。
+`~/.codex/mcp/overleaf/entrypoint.py`。入口仅从 `OVERLEAF_ENV_FILE` 指定的配置文件
+读取 Overleaf 账户变量（本地默认 `config/local.env`），已有进程环境变量优先。
+缓存位于 `~/.codex/mcp/overleaf/cache`。修改配置后，重连 Overleaf MCP；
+初次安装后重启 Codex 或新开聊天加载工具。
 
 其他电脑可按同样方式创建独立环境：
 

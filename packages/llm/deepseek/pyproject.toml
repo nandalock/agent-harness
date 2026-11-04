@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-llm-deepseek"
+version = "0.1.0"
+description = "DeepSeek provider plugin: API key via environment, Base URL, model defaults"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-llm>=0.1,<0.2",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.llm-deepseek" = "agent_platform_llm_deepseek:DeepSeekProviderPlugin"
+
+[tool.setuptools]
+packages = ["agent_platform_llm_deepseek"]
+
+[tool.setuptools.package-dir]
+agent_platform_llm_deepseek = "src"

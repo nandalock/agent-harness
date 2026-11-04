@@ -9,6 +9,7 @@ import json
 import logging
 import hashlib
 import threading
+from collections import OrderedDict
 from contextlib import contextmanager
 
 from backend.agents.runtime.session.events import SessionEvent, SessionHeader
@@ -30,8 +31,22 @@ class PostgresSessionPersistence(SessionPersistence):
         self._guard = threading.RLock()
         self._locks: dict[str, threading.RLock] = {}
         self._leases: dict[str, object] = {}
+        # 历史页会并发读同一份 Event Log（轨迹 + recovery + 沙箱模式）；缓存最近
+        # 几个 session 的 durable 读取，写入 flush 时失效。只缓存读结果，待写缓冲
+        # 仍在 _pending 中，语义与原来一致。
+        self._read_cache: OrderedDict[str, tuple[SessionHeader, list[SessionEvent]]] = OrderedDict()
+        self._read_cache_limit = 8
+        self._cache_epoch = 0
 
     durable = True
+
+    def _invalidate_read_cache(self, session_id: str | None = None) -> None:
+        with self._guard:
+            self._cache_epoch += 1
+            if session_id is None:
+                self._read_cache.clear()
+            else:
+                self._read_cache.pop(session_id, None)
 
     def reset_pending(self, session_id):
         with self._lock(session_id):
@@ -48,7 +63,7 @@ class PostgresSessionPersistence(SessionPersistence):
     @contextmanager
     def write_owner(self, session_id):
         """Advisory ownership held on a dedicated pooled connection until teardown."""
-        from backend.agents.runtime.loop.registry import RunConflict
+        from agent_platform_agents import RunConflict
         with super().write_owner(session_id):
             with get_conn() as conn:
                 with conn.cursor() as cur:
@@ -86,6 +101,7 @@ class PostgresSessionPersistence(SessionPersistence):
     def create(self, session_id: str, header: SessionHeader) -> None:
         """注册 Session 元信息。ON CONFLICT DO NOTHING:已存在的 header 不覆盖
         (同一 session_id 不应有第二个 header,防进程重启后重复 create 破坏首版)。"""
+        self._invalidate_read_cache(session_id)
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -173,8 +189,49 @@ class PostgresSessionPersistence(SessionPersistence):
             raise
         self._pending.pop(sid, None)
         self._written[sid] = max((e.seq for e in events), default=self._written.get(sid, 0))
+        self._invalidate_read_cache(sid)
 
     # ── 读路径(冷恢复 replay 源) ──
+
+    @staticmethod
+    def _event(row) -> SessionEvent:
+        return SessionEvent(
+            type=row["event_type"],
+            seq=row["seq"],
+            time=row["event_time"],
+            data=row["data"],  # psycopg2 自动反序列化 JSONB → dict
+            source_event_seqs=row["source_event_seqs"],
+        )
+
+    def load_recovery(self, session_id: str) -> tuple[list[SessionEvent], int] | None:
+        """Tail from the last ``turn/start`` only.
+
+        Recovery polling used to load the entire event log every 5 seconds just
+        to inspect the last turn.  On long sessions that turned into persistent
+        CPU/DB churn; the status calculation only needs the open (or last) turn.
+        """
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """SELECT MAX(seq) AS last_seq,
+                              MAX(seq) FILTER (WHERE event_type = 'turn/start') AS start_seq
+                       FROM session_events WHERE session_id = %s""",
+                    (session_id,),
+                )
+                summary = cur.fetchone()
+                if summary is None or summary["last_seq"] is None:
+                    cur.execute(
+                        "SELECT 1 FROM session_headers WHERE session_id = %s", (session_id,),
+                    )
+                    return ([], 0) if cur.fetchone() is not None else None
+                # 没有 turn/start：状态必为 idle，不需要任何事件行，只要高水位。
+                start = summary["start_seq"] if summary["start_seq"] is not None else summary["last_seq"] + 1
+                cur.execute(
+                    "SELECT * FROM session_events WHERE session_id = %s AND seq >= %s ORDER BY seq",
+                    (session_id, start),
+                )
+                events = [self._event(row) for row in cur.fetchall()]
+        return events, summary["last_seq"]
 
     def load(self, session_id: str) -> tuple[SessionHeader, list[SessionEvent]] | None:
         """读 durable 完整 Event Log(ORDER BY seq);无 header(或 header 已被删)返回 None。
@@ -182,6 +239,13 @@ class PostgresSessionPersistence(SessionPersistence):
         load 后把 DB 最大 seq 记为已写游标:恢复出的 Session 在内存继续 append → flush,
         只会写入该 Session 新产生的事件(旧事件已在 DB,无需重写)。
         """
+        with self._guard:
+            cached = self._read_cache.get(session_id)
+            epoch = self._cache_epoch
+            if cached is not None:
+                self._read_cache.move_to_end(session_id)
+                return cached
+
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -204,18 +268,15 @@ class PostgresSessionPersistence(SessionPersistence):
             seed_length=h["seed_length"],
             delegation_depth=h["delegation_depth"],
         )
-        events = [
-            SessionEvent(
-                type=r["event_type"],
-                seq=r["seq"],
-                time=r["event_time"],
-                data=r["data"],  # psycopg2 自动反序列化 JSONB → dict
-                source_event_seqs=r["source_event_seqs"],
-            )
-            for r in rows
-        ]
+        events = [self._event(r) for r in rows]
         with self._lock(session_id):
             self._written[session_id] = events[-1].seq if events else 0
+        with self._guard:
+            if self._cache_epoch == epoch:
+                self._read_cache[session_id] = (header, events)
+                self._read_cache.move_to_end(session_id)
+                while len(self._read_cache) > self._read_cache_limit:
+                    self._read_cache.popitem(last=False)
         logger.info(f"PostgresSessionPersistence load: session_id={session_id}, events={len(events)}")
         return header, events
 

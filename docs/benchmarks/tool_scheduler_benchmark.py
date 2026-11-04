@@ -73,7 +73,7 @@ async def benchmark(args: argparse.Namespace) -> dict:
             samples[label].append(await measure(args.calls, args.delay, parallel))
     serial = statistics.median(row["seconds"] for row in samples["serial"])
     parallel = statistics.median(row["seconds"] for row in samples["default_parallel"])
-    scheduler_file = ROOT / "packages/tool-system/src/agent_platform_tool_system/scheduler.py"
+    scheduler_file = ROOT / "packages/tools/system/src/scheduler.py"
     return {
         "scope": "simulated I/O; real ToolScheduler; no LLM/network/DB/Docker work",
         "measured_at": datetime.now(timezone(timedelta(hours=8))).isoformat(),

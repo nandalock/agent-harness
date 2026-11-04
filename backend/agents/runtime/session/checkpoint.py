@@ -3,6 +3,7 @@ import asyncio
 import copy
 
 from backend.agents.runtime.session.persistence.base import SessionPersistence
+from agent_platform_session.checkpoint import CheckpointError
 
 
 async def drain_io(task):
@@ -13,15 +14,6 @@ async def drain_io(task):
         except asyncio.CancelledError:
             if task.cancelled():
                 raise
-
-
-class CheckpointError(RuntimeError):
-    code = "session/checkpoint-failed"
-
-    def __init__(self, session_id: str, reason: str):
-        self.session_id = session_id
-        self.reason = reason
-        super().__init__("进度保存失败，任务已停止。请稍后重试继续。")
 
 
 class SessionCheckpoint:

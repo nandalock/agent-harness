@@ -1,0 +1,70 @@
+# 复制为 config/plugins.yaml 后自动生效（backend 会自动发现，无需设置 PLUGIN_CONFIG）。
+# Docker 中对应容器内的 /app/config/plugins.yaml，同样会被自动发现。
+# 默认服务和功能插件会自动补上；mcp_servers 表里的
+# MCP server 也会自动转换成 agent-platform.mcp-client 实例
+# （PLUGIN_MCP_AUTO=false 可关闭）。
+# 默认装配清单来自 packages/plugin/default。每条配置是一个插件实例，
+# 不是一个工具：skill-tools 提供两个工具，mcp-client 提供服务器的 0～N 个工具，
+# tools-default 只提供服务。显式 disabled: true 会禁止补入对应默认插件。
+#
+# 下面这些默认实例会自动补入，不需要在这里重复：
+#   tools-default        id: tools
+#   agents               id: agents
+#   agent-loop           id: agent-loop
+#   llm-deepseek         id: llm-deepseek
+#   mcp-manager          id: mcp-manager
+#   skills-default       id: skills
+#   skills-filesystem    id: skills-filesystem
+#   skill-tools          id: skill-tools
+#   sandbox-tools        id: sandbox-tools
+#   sandbox-local        id: sandbox-provider
+#   builtin-mcp          id: builtin-mcp
+#   paper-mcp            id: paper-mcp
+#   overleaf-mcp         id: overleaf-mcp
+#   overleaf-rt-mcp      id: overleaf-rt-mcp
+#
+# 这个文件只用来“追加/覆盖”实例。plugins: [] 表示不额外追加，默认实例仍然启动。
+# 完整默认清单在：
+#   packages/plugin/default/src/plugins.yaml
+#
+# DeepSeek 连接默认从环境变量读取（DEEPSEEK_API_KEY / DEEPSEEK_BASE_URL /
+# DEEPSEEK_MODEL）；要固定 Base URL 或模型时，覆盖 llm-deepseek 这一行：
+#
+# plugins:
+#   - id: llm-deepseek
+#     name: agent-platform.llm-deepseek
+#     config:
+#       apiKeyEnv: DEEPSEEK_API_KEY
+#       baseURL: https://api.deepseek.com
+#       model: deepseek-flash
+#
+# 本地技能来源（与内置、聊天安装目录一起发现；path 必须是绝对路径）：
+# plugins:
+#   - id: skills-filesystem
+#     name: agent-platform.skills-filesystem
+#     config:
+#       builtin: true
+#       include_installed: true
+#       sources:
+#         - name: local
+#           path: D:/my-skills
+#           tenant_ids: [1]
+#           agent_keys: [assistant]
+#
+# 禁用技能对话入口（技能中心和目录仍可作为服务使用）：
+# plugins:
+#   - id: skill-tools
+#     name: agent-platform.skill-tools
+#     disabled: true
+#
+# 下面是一个示例插件。取消注释前先安装：
+#   pip install -r requirements-plugins.txt
+#   pip install -e ./packages/plugin/examples/echo-plugin
+#
+# plugins:
+#   - id: echo
+#     name: example.echo
+#     config:
+#       prefix: "收到："
+version: 1
+plugins: []

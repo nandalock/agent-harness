@@ -30,6 +30,24 @@
 - **执行权限控制：** 设计 3 种文件权限模式，受限 Bash / Python 调用通过 Docker 控制工作区访问与资源占用；超出当前权限的执行须人工审批，授权仅作用于单次调用，控制工具执行的文件访问边界。
 - **运行中交互控制：** 优化长任务的指令调整流程，通过 2 条输入队列区分当前轮修正与下一轮追加，在步骤边界注入上下文；使用 SSE 回执同步投递状态，支持运行中调整任务方向，并防止同一进程内重复启动会话任务。
 
+## 项目二：强调 MCP 开发的岗位版本（2026-10-14）
+
+**智能体运行平台（Agent Harness）｜个人项目｜独立开发**
+
+**技术栈：** Python、FastAPI、FastMCP、asyncio、PostgreSQL、Docker、Next.js。
+
+**项目描述：** 面向业务查询与论文阅读等多步任务，构建支持 MCP 工具扩展的智能体运行平台，提供工具服务管理、按 Agent 配置工具绑定、流式执行追踪与沙箱权限控制。
+
+- **MCP 服务开发：** 基于 FastMCP 开发业务查询、论文处理 2 个 MCP Server，共提供 10 项工具；封装订单查询、订单详情、物流追踪、FAQ 检索、标签查询、用户画像，以及论文搜索、PDF 解析分块、长文摘要和处理记录查询，使 Agent 能够通过统一协议调用业务数据与文档处理能力。
+- **MCP 接入与扩展：** 实现 Streamable HTTP、stdio 两种传输方式，通过会话初始化与 tools/list 获取工具描述和参数 Schema，转换为模型可调用的工具定义；支持 MCP 配置导入、工具发现与按 Agent 绑定，统一管理连接生命周期、调用超时和返回结果，减少新增工具时对 Agent 执行逻辑的修改。
+- **长文处理优化：** 在论文 MCP 内实现分块 Map-Reduce 摘要，并以 2 路并发处理文本块；缓存 PDF 解析结果与摘要，重复请求复用已有结果，将摘要中间过程留在工具内部，向主 Agent 返回结构化 Markdown。
+- **工具调度优化：** 基于 asyncio 实现默认 4 路滚动并发、独占屏障与结果按序提交；在 12 次 × 100ms 本地模拟 I/O 基准中，中位耗时由串行的 1.33s 降至 0.35s，减少约 74%，降低独立工具调用的串行等待。
+- **沙箱与权限控制：** 为受限工具调用构建 Docker 执行环境，通过目录挂载限定文件访问范围；设计只读、工作区可写、完全访问 3 种模式与单次升权审批，拒绝或超时维持原权限，授权仅对当前调用生效。
+
+**工具数量核对：** `packages/mcp/builtin` 定义 6 项工具，`packages/mcp/paper` 定义 4 项工具。这里是 2 个 MCP Server、10 项 MCP 工具，不是 10 个独立 MCP 服务。Bash / Python 当前走内建沙箱执行器，不计入上述数量。论文处理记录是进程内状态，不将其描述为持久化会话隔离。
+
+**参考写法：** [daoge668/template 的简历示例](https://github.com/daoge668/template/blob/main/resume.md)。采用项目描述与主要工作结构，技术和数字以本项目代码及已有基准为准。
+
 ## 简历空间紧张时的压缩版
 
 **智能体运行平台（Agent Harness）｜个人项目｜独立开发**
@@ -64,7 +82,7 @@
 | 中断恢复 | 12/12 自检通过，包含已发起调用结果未知、未发起调用、轮次闭合、重复修复和合法消息派生 | 表述为恢复边界测试通过，不能作为线上恢复成功率 |
 | 执行预算与资源 | Runtime 默认 5 步、30 次工具调用、300 秒；Docker 默认 1 CPU、1GiB 内存、256 PID | 是可配置默认限制，不是业务规模、资源利用率或端到端性能实测 |
 
-复现脚本：[tool_scheduler_benchmark.py](benchmarks/tool_scheduler_benchmark.py)；原始样本及环境记录：[tool_scheduler_benchmark.json](benchmarks/tool_scheduler_benchmark.json)。安装脚本注明的隔离环境依赖后，在仓库根目录运行 `python docs/benchmarks/tool_scheduler_benchmark.py`。现有自检分别运行 `python backend/tool_system/runtime/test_scheduler.py` 与 `python backend/agents/runtime/session/tests/test_repair.py`。
+复现脚本：[tool_scheduler_benchmark.py](benchmarks/tool_scheduler_benchmark.py)；原始样本及环境记录：[tool_scheduler_benchmark.json](benchmarks/tool_scheduler_benchmark.json)。安装脚本注明的隔离环境依赖后，在仓库根目录运行 `python docs/benchmarks/tool_scheduler_benchmark.py`。现有自检分别运行 `python backend/tests/test_scheduler.py` 与 `python backend/agents/runtime/session/tests/test_repair.py`。
 
 本基准不包含模型推理、真实网络、数据库或 Docker 执行，也没有独占工具调用；它比较同一调度器的 1 路与 4 路配置，不表示历史上线版本的前后变化。代码优化解决的是独立工具调用的串行等待问题，实际任务收益取决于工具依赖、独占调用比例和外部服务延迟。
 
@@ -94,8 +112,8 @@ Harvard 的现行简历指南与要点模板建议：采用具体、主动且以
 | 追问 | 回答重点 | 代码依据 |
 | --- | --- | --- |
 | 为什么说这是 Harness？ | 平台实现了模型外部的执行循环、工具调度、状态记录、权限控制和运行中干预；可视化工作流是另一个配置入口。 | `backend/agents/runtime/agent_runtime.py`、`backend/agents/runtime/loop/agent_loop.py` |
-| 为什么并发执行还要按序提交？ | 区分实际执行顺序与日志提交顺序；结果先进入缓冲，再按模型给出的调用顺序提交，使上下文和轨迹顺序稳定。不要把“所有模型协议都禁止乱序工具结果”说成通用结论。 | `backend/tool_system/runtime/scheduler.py` |
-| 独占屏障用来解决什么？ | Bash / Python 等工具可能共享会话工作区；独占调用启动前排空在途任务，并在执行期间阻止新任务进入。 | `backend/tool_system/registry/descriptor.py`、`backend/tool_system/runtime/scheduler.py` |
+| 为什么并发执行还要按序提交？ | 区分实际执行顺序与日志提交顺序；结果先进入缓冲，再按模型给出的调用顺序提交，使上下文和轨迹顺序稳定。不要把“所有模型协议都禁止乱序工具结果”说成通用结论。 | `packages/tools/system/src/scheduler.py` |
+| 独占屏障用来解决什么？ | Bash / Python 等工具可能共享会话工作区；独占调用启动前排空在途任务，并在执行期间阻止新任务进入。 | `packages/tools/system/src/descriptor.py`、`packages/tools/system/src/scheduler.py` |
 | 重启后怎么恢复？ | 读取持久化事件并回放；若日志尾部存在未结束轮次，补记工具结果未知或未执行的事件，再闭合步骤和轮次。恢复不等于重新启动原来被中断的工具进程。 | `backend/agents/runtime/session/persistence/postgres.py`、`backend/agents/runtime/session/repair.py` |
 | 用户中途发消息怎么办？ | 当前步骤修正进入 next-step 队列，追加任务进入 next-turn 队列；在步骤边界认领并追加 user/message 事件，使用 msg_id 将 SSE 回执与前端气泡对齐。 | `backend/agents/runtime/loop/inbox.py`、`backend/api/agents.py` |
 | 提示词与工具定义怎么同步？ | 一次求值获得实际可见的工具 Schema 和 guidance，先确定工具集合，再组装工具指导段，避免分别维护两份工具说明。 | `backend/agents/runtime/system_prompt/assembler.py` |

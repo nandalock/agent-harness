@@ -1,19 +1,24 @@
-# Agent Platform Skills
+# Skill plugins
 
-技能与 Markdown 命令的发现、加载、安装和会话注入。发行包名为 `agent-platform-skills`，导入名为 `agent_platform_skills`。
+Three independently owned runtime plugins:
 
-这个包不导入 `backend`：
+| Package | Entry point | Responsibility |
+| --- | --- | --- |
+| `default` | `agent-platform.skills-default` | Provides `skills.v1` |
+| `filesystem` | `agent-platform.skills-filesystem` | Registers local, bundled and installed sources |
+| `tools` | `agent-platform.skill-tools` | Registers `skill`, `skill_install` and agent conversation extensions |
 
-- `registry.py`：从内置/自定义目录发现技能，解析 YAML front matter；
-- `runtime.py`：渲染技能正文、生成目录、`SkillPreStep` 会话注入；
-- `installer.py`：从公开 GitHub 仓库安装技能包（不执行其中的代码）；
-- `builtin/`：平台内置技能与命令（`platform`、`overleaf_rt`）。
+`core` is a shared library, not a fourth plugin. It contains contracts,
+scope/document validation and installation helpers. Each package maps its Python
+import name to `src/` using `pyproject.toml`; no repeated module directory is needed.
 
-内置数据默认从包目录加载；可用 `SKILL_PACKAGES_ROOT` 指向其他目录，用 `SKILL_SOURCES` 追加自定义来源，用 `SKILL_INSTALL_ROOT` 指定安装目录。
+The default composition enables all three. Configure sources or disable consumers
+in `config/plugins.yaml`; see `filesystem/README.md` and `config/plugins.yaml.example`.
 
-工具入口由独立插件包 `agent-platform-skill-tools` 提供：
+```text
+filesystem → skills.v1 ← skill-tools → tools.v1 + agent.extensions.v1
+```
 
-- `agent_platform_skill_tools` 通过 `agents.v1` 读取生效配置，把 `skill` /
-  `skill_install` 注册进 `tools.v1`；
-- backend 只保留宿主适配：`backend/agents/runtime/agent_runtime.py` 在会话注入
-  路径上构造 `SkillScope`，`backend/host_services.py` 实现 `agents.v1`。
+AgentRuntime executes generic plugin contributions and does not import skill
+implementations. Registrations, tools, providers and hooks are removed through
+plugin context disposal. Skills do not grant permissions to their referenced tools.
