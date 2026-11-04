@@ -39,6 +39,10 @@ _temp_*
 
 # 临时截图 / 图片素材（用户随手放根目录的照片）
 images/
+# Versioned documentation screenshots.
+!docs/images/
+!docs/images/*.png
+!docs/images/README.md
 
 # OS
 .DS_Store

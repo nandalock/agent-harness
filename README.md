@@ -1,359 +1,314 @@
 <div align="center">
 
-# 🤖 minidsh
+# minidsh
 
-**支持受控工具执行、会话持久化与人工审批的minidsh。**
+**一个可本地部署、按插件装配的 AI Agent 工作台。**
 
-通过统一的执行循环、并发工具调度、会话恢复与权限审批运行智能体。
-结合可视化工作流和 FAQ 检索增强生成（RAG），构建客服与知识助手等应用。
+在同一个工作区里对话、使用工具、加载技能、浏览文件，并把智能体连接成工作流。
 
-![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python&logoColor=white)
+[快速开始](#快速开始) · [界面演示](#界面演示) · [插件架构](#插件架构) · [开发与文档](#开发与文档)
+
+![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-18-149ECA?logo=react&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-5-646CFF?logo=vite&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)
-![Next.js](https://img.shields.io/badge/Next.js-14-black?logo=next.js&logoColor=white)
-![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+_pgvector-4169E1?logo=postgresql&logoColor=white)
-![Redis](https://img.shields.io/badge/Redis-7-red?logo=redis&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-%E6%94%AF%E6%8C%81-2496ED?logo=docker&logoColor=white)
-![许可证](https://img.shields.io/badge/%E8%AE%B8%E5%8F%AF%E8%AF%81-MIT-green)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?logo=postgresql&logoColor=white)
 
 </div>
 
----
+![minidsh 会话工作区：项目会话、对话记录和文件面板](docs/images/workspace.png)
 
-## ✨ 功能特性
+<p align="center"><sub>当前界面截图，使用固定演示数据；新安装不预置图中的 Agent 和会话。</sub></p>
 
-- 🎨 **可视化工作流**：在 React Flow 画布上拖放并连接智能体，一键保存和运行完整流程。
-- 🤖 **多智能体运行时**：所有智能体均由用户配置创建；通用运行时支持工具调用，
-  路由类型支持三级级联意图路由，不预置业务 Agent。
-- 🧩 **分段系统提示词**：每轮对话按已注册的内容组装提示词，涵盖身份、角色、各工具的使用指导
-  与运行时上下文；配置修改立即生效，工具说明与工具实现保持一致。
-- 📚 **RAG 知识库**：结合 `pg_trgm`、Ollama 向量模型（`bge-m3`）、`pgvector`、
-  CrossEncoder 重排模型和大语言模型（LLM）润色，实现 FAQ 管理与检索。
-- ⚡ **语义缓存**：基于 Redis 的缓存中间件，配合策略引擎管理缓存有效期（TTL）、置信度评分
-  和可缓存意图，让重复问题得到快速响应。
-- 🧠 **长期记忆**：支持按用户管理会话上下文、摘要、压缩与经验记忆，持续积累可复用的信息。
-- 🔧 **工具系统**：分为注册表、运行时和执行器三层，统一接入内置工具与 MCP 工具；
-  并发调度器支持滚动任务池、独占屏障和有序提交，各工具可声明超时、执行模式与使用指导。
-- 🔒 **沙箱执行**：本地默认宿主机操作系统沙箱，Windows 支持 PowerShell，可切换 Docker；支持只读（`read-only`）、
-  工作区可写（`workspace-write`）与完全访问（`danger-full-access`）三种文件权限模式；
-  超出当前模式的操作需经过**人工审批**，无法确认权限时默认拒绝执行。
-- 🔌 **MCP 支持**：内置模型上下文协议（MCP）服务与注册表，可在控制台导入和管理外部 MCP 服务。
-- 📖 **技能与斜杠命令**：在工作区输入 `/` 选择技能或命令，支持参数展开、模型按需加载、
-  运行中调用与会话恢复；通过 `/skill-installer` 按技能名称或公开 GitHub 地址在聊天中安装完整技能包，
-  详见[技能与命令说明](docs/skills-commands.md)。
-- 🗂️ **会话工作区**：每个会话拥有独立工作目录，可在控制台浏览、预览 PDF、图片与文本，
-  并上传文件；工作区与沙箱使用同一路径。
-- 🧾 **事件日志会话**：会话事件日志是单一事实源，对话历史、执行轨迹与冷恢复均由它派生。
-- 💬 **实时对话**：支持控制台 SSE 流式响应与 WebSocket 对话。
-- 🏢 **多租户**：基于 `X-Tenant-ID` 实现隔离，支持 SaaS 场景。
+minidsh 把 Agent 执行循环、模型接入、工具、技能、会话持久化和 HTTP API 拆成可以组合的包。
+通过 YAML 选择插件，由运行时发现包、解析服务依赖并管理启动与关闭。
+默认提供浏览器工作台，也可以使用无 HTTP 的命令行入口执行 Agent。
 
-## 🧱 技术栈
+项目参考 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的插件与客户端模块设计，
+使用 Python 实现服务端，React + Vite 实现默认前端。
 
-| 层级 | 技术 |
-| ---- | ---- |
-| 前端 | Next.js 14 · React 18 · TypeScript · React Flow（`@xyflow/react`）· TanStack Query |
-| 后端 | FastAPI · Python 3.12 · uvicorn · 基于 `psycopg2` 的原生 SQL |
-| 数据库 | PostgreSQL 16 + `pgvector`（向量检索）+ `pg_trgm`（模糊匹配）|
-| 缓存 | Redis 7（redis-stack）|
-| 大语言模型 | 各智能体独立配置，支持任意 OpenAI 兼容网关（`/v1/chat/completions`）|
-| 向量与重排模型 | Ollama `bge-m3` + `BAAI/bge-reranker-v2-m3`（CrossEncoder）|
-| 沙箱 | 默认宿主机原生限制；可选 Docker 容器 |
-| 协议 | 模型上下文协议（MCP）· SSE · WebSocket |
-| 基础设施 | Docker Compose |
+## 能做什么
 
-## 🚀 快速开始
+| 能力 | 使用方式 |
+| --- | --- |
+| 会话工作区 | 按项目组织会话，查看对话与工具轨迹，浏览、上传和预览文件 |
+| 自定义 Agent | 配置模型、系统提示词、工具和技能；新安装由使用者创建自己的 Agent |
+| 工具执行 | 通过统一工具服务调用 PowerShell、bash、Python 及 MCP 工具，支持超时、并发和审批 |
+| 渐进式技能加载 | 初始展示技能摘要；任务匹配后读取 `SKILL.md`，再按需加载参考资料 |
+| 会话持久化与恢复 | 以事件日志记录执行事实，从日志派生历史、轨迹和恢复状态 |
+| 可视化工作流 | 在 React Flow 画布上连接 Agent、路由和条件节点，保存、预览与运行流程 |
+| MCP 集成 | 管理外部 MCP 服务，接入论文、Overleaf 等独立配置的集成 |
+| 知识库与缓存 | 管理 FAQ，按需启用向量检索、重排和 Redis 缓存；另有记忆管理页面 |
+| 插件化前端 | 页面功能通过客户端插件和 slots 组合；可通过 profile 更换前端包 |
 
-支持本地、混合和 Docker 三种部署。Python 3.12+、Node.js 20+ 环境下：
+> 仓库正在持续进行插件化与 RPC 迁移。Workspace、Agent 配置和部分 Session 操作已接入
+> JSON-RPC；聊天流、文件传输及部分管理接口仍使用 HTTP/SSE。当前边界见 [RPC API 文档](docs/rpc-api.md)。
+
+## 界面演示
+
+以下图片由当前 React 前端实际渲染，使用固定演示数据截取。图中的 Agent、会话、回复和工作流均为示例，
+不代表新安装预置这些内容，也不代表截图过程调用过在线模型或外部 MCP 服务。
+
+### 工作区：对话与文件放在一起
+
+左侧按 Agent 和项目组织会话，中间查看对话，右侧浏览会话目录中的文件。
+可以切换执行权限模式，并在同一页面上传、预览和处理资料。
+
+### 自己创建需要的智能体
+
+在管理页维护不同用途的 Agent，分别设置模型、提示词和能力。
+
+![Agent 管理演示：研究助手、代码助手和知识库助手](docs/images/agents.png)
+
+### 技能与工具按 Agent 配置
+
+启用技能后自动关联其声明的工具；工具是否可执行，仍取决于对应插件、连接及权限。
+技能说明可以按需读取，安装技能不会自动安装外部服务。
+
+![智能体配置演示：技能绑定与工具配置](docs/images/agent-settings.png)
+
+### 用画布组织处理步骤
+
+将多个处理节点连接成工作流，并从编辑器中保存草稿、预览或运行。
+
+![工作流演示：开始、资料整理、检查与归纳、结束](docs/images/workflow.png)
+
+截图与复现方式见 [演示图片说明](docs/images/README.md)。
+
+## 快速开始
+
+### 环境准备
+
+- **Python 3.12+**：运行服务端及插件。
+- **Node.js 20+ 与 npm**：安装、构建和运行默认前端。
+- **PostgreSQL**：需要 `pgvector` 和 `pg_trgm` 扩展；Compose 使用 PostgreSQL 16。
+- **模型服务配置**：在 Agent 配置页填写 API Key、Base URL 和模型名。
+
+Redis 用于缓存；Ollama 与重排模型用于可选检索能力，普通模型与工具对话不要求先安装这些模型。
 
 ```sh
-python minidsh.py setup              # 安装 .venv、插件和前端依赖，创建 config/local.env
-python minidsh.py web --mode hybrid  # 后端 + Web 插件壳，Docker 只启动数据库和 Redis
-# 已有 PostgreSQL：python minidsh.py web
-# 本地生产：python minidsh.py web --prod
+git clone https://github.com/nandalock/agent-harness.git minidsh
+cd minidsh
+python minidsh.py setup
 ```
 
-配置 `config/local.env` 后也可执行 `python minidsh.py doctor` 检查环境。
-所有配置文件集中在 [`config/`](config/README.md)；Docker 部署使用
-`python minidsh.py docker`（自动读取 `config/docker.env`），或
-`docker compose --env-file config/docker.env up -d --build`。
-完整说明见[部署方式](docs/deployment.md)。
+`setup` 创建或复用 `.venv`，安装插件与前端依赖，并生成 `config/local.env`。
+后续命令由启动器调用虚拟环境，无需手动激活。请在仓库根目录执行。
 
-> FAQ 语义检索需要运行中的 [Ollama](https://ollama.com/) 实例，并安装 `bge-m3` 向量模型
-> （`ollama pull bge-m3`）。开始模型对话前，请在控制台配置智能体的模型地址与 API 密钥。
+### 选择一种部署方式
 
-### 🧩 Web 插件壳（默认前端）
+| 方式 | 应用运行位置 | 数据库与缓存 | 启动命令 |
+| --- | --- | --- | --- |
+| 本地 | 宿主机 Python / Node 进程 | 自行配置本地或远程 PostgreSQL | `python minidsh.py web` |
+| 混合 | 宿主机 Python / Node 进程 | Docker 提供 PostgreSQL 和 Redis | `python minidsh.py web --mode hybrid` |
+| Docker | 前后端均在容器内 | Compose 提供 | `python minidsh.py docker` |
 
-`packages/client` 是按 DeepSeek Harness client-modules 思路实现的浏览器端插件壳。现有的
-Next.js 页面已经全部迁移为独立插件，由启动图 + lazy CommonJS loader 加载：
+**本地部署**：编辑 `config/local.env`，填写自己的数据库连接，例如：
 
-```bash
-python minidsh.py web                   # 后端 8000 + Web 插件壳 4000（开发模式）
-python minidsh.py web --prod            # 构建并启动 Web 插件壳（生产预览）
-python minidsh.py web --mode hybrid     # 使用 Docker 提供数据库/Redis
-python minidsh.py web --profile web2    # 选择 packages/client2（package.json 声明 dsh.frontend）
-python minidsh.py web --dir D:/jk/Code/web2  # 选择仓库外的前端包
-
-# 单独构建/启动
-python minidsh.py build
-python minidsh.py start
-
-# 单独开发插件壳
-cd packages/client && npm run dev          # http://localhost:4100
+```dotenv
+DATABASE_URL=postgresql://saas:your_password@127.0.0.1:5432/saas
+REDIS_URL=redis://127.0.0.1:6379/0
 ```
 
-前端 profile 由前端包自己的 `package.json` 声明 `dsh.frontend`（和 DSH 的
-`dsh.client`、`dsh.bundle` 同为包自描述）。`minidsh` 扫描 `packages/*/package.json`，
-按目录名或包名匹配 `--profile`，或用 `--dir` 指向仓库外目录；不需要中心配置文件。
+数据库与扩展的安装、初始化权限说明见 [部署文档](docs/deployment.md)。然后启动：
 
-聊天、Agent、知识库、集成、MCP、记忆、工作流、工作区、`/agents/*` 均已迁移；
-页面源码在 `packages/client/legacy`，插件在 `packages/client/plugins`。Docker Compose
-的 `frontend` 服务也已切换到 `packages/client`。详见
-[packages/client/README.md](packages/client/README.md)。
+```sh
+python minidsh.py doctor
+python minidsh.py web
+```
 
-```bash
-# 1. 启动全部服务（数据库、Redis、后端和前端）
-cp config/docker.env.example config/docker.env   # 首次
+**混合部署**：安装 Docker 后，确认 `config/local.env` 的数据库连接与
+[基础设施配置](deploy/compose.infra.yaml) 一致，再运行：
+
+```sh
+python minidsh.py web --mode hybrid
+```
+
+它只为数据库和 Redis 启动容器，应用与工具仍可在宿主机运行。
+
+**Docker 部署**：从模板创建配置，调整环境变量与宿主目录挂载：
+
+```sh
+# Linux / macOS
+cp config/docker.env.example config/docker.env
+# Windows PowerShell：Copy-Item config/docker.env.example config/docker.env
+
 python minidsh.py docker
-# 等价：docker compose --env-file config/docker.env up -d --build
-
-# 2. 打开控制台
-open http://localhost:4000
+# 等价于：docker compose --env-file config/docker.env up -d --build
 ```
 
-插件默认零配置：`tools-default` 会自动装配。要额外加载插件，把 `config/plugins.yaml.example` 复制为 `config/plugins.yaml`，重启 backend 即可；不写这个文件也能正常启动。
+当前根目录 Compose 含 Windows 示例挂载（如 `D:/jk/Nexus` 和整盘路径），部署到其他电脑时请按实际目录修改。
+仅需容器数据库时，使用混合部署的跨平台基础设施配置即可。
 
-重排模型会在首次 RAG 请求时下载，并持久化到 `hf_cache` 数据卷。
-如需在构建时预下载，请在 `config/docker.env` 中设置 `PRELOAD_RERANKER=true`，
-然后重新构建后端。后端会等待数据库与 Redis 健康检查通过后启动。
+### 打开工作台，完成第一次对话
 
-| 服务 | 地址 |
-| ---- | ---- |
-| 前端控制台 | http://localhost:4000 |
-| 后端 API | http://localhost:8000 |
-| RedisInsight | http://localhost:5540  |
+1. 访问 **http://localhost:4000**，进入「Agent 管理」，创建自己的智能体。
+2. 填写模型 API Key、Base URL、Model 和系统提示词，选择工具与技能，保存配置。
+3. 进入「工作区」，新建会话并选择项目目录，发送第一条消息。
+4. 需要外部能力时，再配置 MCP 服务、技能来源或知识库。
 
-MCP 服务（`:9001` 为通用服务，`:9002` 为论文服务）仅监听后端容器内网，不映射到宿主机。
-在宿主机上调试可执行：`docker compose exec backend curl localhost:9001/mcp`。
+应用 API 默认使用 **http://localhost:8000**，就绪检查为 `/health`。
+前端独立执行 `npm run dev` 时默认端口为 **4100**。
 
-沙箱需要后端容器能够访问宿主机的 Docker 守护进程（已挂载 `/var/run/docker.sock`），
-并配置独立的工作区根目录，详见下方「配置说明」。
+初次启动没有截图中的演示 Agent。Redis 缓存、论文总结、Overleaf 登录与 FAQ 向量检索各有自己的配置，
+详见 [部署文档](docs/deployment.md) 与 [配置目录](config/README.md)。
 
-## 🏗️ 系统架构
+### 常用命令
+
+```sh
+python minidsh.py doctor                 # 检查环境
+python minidsh.py web                    # 开发模式，启动前后端
+python minidsh.py web --prod             # 构建前端后启动，关闭后端自动重载
+python minidsh.py build                  # 仅构建前端
+python minidsh.py start                  # 使用已有构建启动
+python minidsh.py dev --backend-only     # 仅启动服务端
+python minidsh.py infra                  # 仅启动容器数据库与 Redis
+```
+
+`web --prod` / `start` 的前端由 Vite preview 提供。正式对外部署时，应另行配置反向代理、HTTPS 和进程管理。
+
+更换端口或前端：
+
+```sh
+python minidsh.py web --backend-port 18000 --frontend-port 14000
+python minidsh.py web --profile web2      # 需要先准备声明了该 profile 的前端包
+python minidsh.py web --dir /path/to/your/frontend
+```
+
+无 HTTP 入口：先在工作台创建并保存 Agent，再用虚拟环境解释器执行一轮任务。
+
+```sh
+# Windows
+.venv/Scripts/python.exe -m backend.headless --agent your_agent_key "请介绍当前可用的技能"
+# Linux / macOS
+.venv/bin/python -m backend.headless --agent your_agent_key "请介绍当前可用的技能"
+```
+
+## 插件架构
 
 ```mermaid
-flowchart LR
-    U[👤 用户] -->|HTTP / SSE / WebSocket| F[Next.js 前端 :4000]
-    F -->|REST| G[请求网关]
-    G --> A[智能体运行时]
-    A --> SP[系统提示词<br/>分段组装]
-    A --> AL[智能体执行循环<br/>LLM ↔ 工具]
-    AL --> S[会话<br/>事件日志 = 单一事实源]
-    S --> P[(PostgreSQL + pgvector)]
-    A --> M[记忆系统]
-    A --> C[语义缓存]
-    C --> R[(Redis)]
-    A --> TS[工具系统]
-    TS --> TR[工具注册表<br/>内置工具 + MCP]
-    TS --> EX[工具执行器]
-    EX -->|沙箱工具| SB[宿主机 / Docker 沙箱<br/>PowerShell / bash / python]
-    EX -->|MCP 工具| MCP[MCP 服务<br/>:9001 / :9002]
-    SB -.权限提升.-> AP[人工审批通道]
-    K[RAG · FAQ + 向量模型] --> P
-    K --> O[Ollama :11434]
+flowchart TB
+    CLI["minidsh 启动器"] --> PR["PluginRuntime：配置 / 发现 / 依赖 / 生命周期"]
+    PR --> WEB["HTTP API 插件"]
+    PR --> AR["Agent Runtime / Loop"]
+    PR --> CAP["模型 / 会话 / 工具 / 技能 / 数据库插件"]
+    UI["React + Vite 客户端插件壳"] -->|JSON-RPC / HTTP / SSE| WEB
+    WEB --> GW["RPC Connection / Gateway"]
+    GW --> CT["Agent / Session / Workspace Controller"]
+    CT --> AR
+    CT --> CAP
+    WEB --> HTTP["聊天流 / 文件 HTTP 接口"]
+    HTTP --> AR
+    HTTP --> CAP
+    AR -->|通过 ctx 获取服务| CAP
+    CAP --> LOG["Session 事件日志"]
+    LOG --> VIEW["历史 / 执行轨迹 / 恢复状态"]
 ```
 
-**执行链路的单一事实源**：一次对话产生的所有事件，包括用户消息、助手消息、工具调用与结果、
-运行限制和用量统计，都写入 `Session` 的事件日志。对话历史、执行轨迹与冷恢复均由它派生。
-详见
-[`backend/agents/runtime/session/session.md`](backend/agents/runtime/session/session.md)。
+- **服务端插件**：包用 `pyproject.toml` entry points 声明入口，YAML 选择实例；
+  `setup(ctx, config)` 注册服务、工具或扩展，运行时按依赖排序启动并管理释放。
+- **Agent Runtime 与 Loop**：Runtime 装配一次请求与插件扩展，Loop 执行模型与工具循环；
+  skill-tools 提供 pre-step 钩子，向模型按需注入技能目录和指令。
+- **统一工具服务**：tools-default 持有模型侧工具注册表。一个插件可以提供零个或多个工具，
+  MCP、沙箱和技能工具都接入这条调用链。
+- **技能的渐进式披露**：摘要目录 → `SKILL.md` → 指定参考资料。Overleaf 的说明与其实际 MCP 连接分别配置。
+- **会话事件日志**：用户消息、模型输出、工具调用和结果构成执行事实；历史、轨迹与恢复状态由其派生。
+- **客户端插件**：前端包通过 `dsh.client` 声明入口，Host 组合启动图，浏览器懒加载模块并通过 slots 组合 UI。
 
-**系统提示词的组装**：系统提示词在每轮请求时由 `SystemPrompt` 根据已注册的身份、角色、
-各工具的使用指导与运行时上下文动态生成，渲染后作为 `messages[0]` 注入，不写入事件日志。
-配置修改可立即生效，工具的 JSON 结构定义（通过 `tools` 参数传入）与自然语言使用指导
-（通过提示词传入）来自同一来源，保持一致。详见
-[`backend/agents/runtime/system_prompt/system-prompt.md`](backend/agents/runtime/system_prompt/system-prompt.md)。
+当前 HTTP 插件仍挂载部分 `backend/api` 路由，RPC 已覆盖的操作见 [接口清单](docs/rpc-api.md)。
+完整设计见 [插件运行时架构](docs/plugin-architecture.md)。
 
-## 📁 项目结构
+### 配置插件
 
-```
-minidsh/
-├── backend/
-│   ├── agents/            # 智能体实现与运行时
-│   │   ├── runtime/       #   AgentRuntime · AgentLoop
-│   │   │   ├── session/   #   事件日志 · 对话视图 · 持久化 · 各类投影（见模块内 session.md）
-│   │   │   └── system_prompt/  # 分段注册的提示词组装（见模块内 system-prompt.md）
-│   │   ├── router/        #   三级级联意图路由（关键词 → 向量 → LLM 函数调用）
-│   ├── api/               # REST 与 WebSocket 接口
-│   │   └── workspace.py   #   会话工作区：文件浏览 / 预览 / 上传 / 预创建会话
-│   ├── core/              # 基础设施：数据库连接与表结构、JWT 认证、RAG 向量与重排模型
-│   ├── engine/            # 工作流引擎：LangGraph 构建器、处理器、状态与中间件
-│   ├── interaction/       # 通用人工审批层（沙箱升权等能力的裁决通道）
-│   ├── gateway/           # 请求入口：RequestContext 与通道分发
-│   ├── services/          # 业务服务：FAQ、对话、记忆与缓存
-│   └── integrations/      # 第三方渠道集成（闲鱼）
-├── packages/              # 领域包：plugin（框架）、tools、mcp、sandbox、skills、client（前端）
-│   └── client/            # Web 插件壳：kernel / shell / plugins / legacy（页面源码）
-├── docs/                  # 设计文档（sandbox-design.md 等）
-└── docker-compose.yml     # 数据库、Redis、后端与前端服务编排
+默认实例定义在 [默认插件清单](packages/plugin/default/src/plugins.yaml)。
+日常覆盖写到 `config/plugins.yaml`；不存在该文件时仍加载默认清单。
+例如调整 Loop 的工具并发上限：
+
+```yaml
+version: 1
+plugins:
+  - id: agent-loop
+    name: agent-platform.agent-loop
+    config:
+      max_parallel_tools: 2
 ```
 
-## 📡 API 概览
+可以从 `config/plugins.yaml.example` 复制开始。`PLUGIN_CONFIG` 可指定其他配置路径。
+新增外部插件包时，先安装到应用的 Python 环境，再在 YAML 中声明；YAML 本身不下载代码。
+配置修改后重启应用。详见 [插件 SDK](packages/plugin/sdk/README.md) 和 [插件运行时](packages/plugin/runtime/README.md)。
 
-| 方法 | 接口路径 | 说明 |
-| ---- | -------- | ---- |
-| POST | `/api/auth/login` | JWT 登录（可选接口，前端不再使用） |
-| GET | `/api/agents` | 获取智能体列表 |
-| POST | `/api/agents` | 创建智能体，配置存储在数据库中 |
-| GET | `/api/agents/{key}/config` | 读取合并后的智能体配置 |
-| PUT | `/api/agents/{key}/config` | 更新智能体配置 |
-| GET | `/api/agents/{key}/prompt-preview` | 查看组装后的系统提示词与可用工具 |
-| POST | `/api/agents/{key}/chat` | 与智能体对话 |
-| POST | `/api/agents/{key}/chat/stream` | 通过 SSE 进行流式对话 |
-| POST | `/api/agents/{key}/route-test` | 测试意图路由 |
-| GET | `/api/workflows` | 获取工作流列表 |
-| POST | `/api/workflows` | 创建工作流 |
-| POST | `/api/workflows/{id}/run` | 运行工作流 |
-| GET | `/api/faqs` · POST `/api/faqs` | 知识库增删改查 |
-| GET | `/api/conversations` | 获取会话与消息 |
-| GET | `/api/mcp/servers` · POST `…/import` | 管理 MCP 服务 |
-| GET | `/api/tools/bindings` · PUT `…/{agent_key}` | 为智能体绑定工具 |
-| GET | `/api/workspace/sessions` · POST `/api/workspace/sessions` | 获取或预创建工作区会话 |
-| GET | `/api/workspace/folders` · POST `/api/workspace/folders` | 浏览宿主机目录或在目录中创建空条目 |
-| GET | `/api/workspace/{id}/files` · `/file` | 浏览与预览工作区文件 |
-| POST | `/api/workspace/{id}/files` · `/upload` | 创建空文件或文件夹、上传文件 |
-| PATCH | `/api/workspace/{id}/title` | 重命名会话，记录 `session/title` 事件并固定标题 |
-| GET | `/api/memory/users` | 获取用户长期记忆档案 |
-| GET | `/api/approvals` · POST `…/{id}` | 获取待审批请求或提交审批决定 |
-| WS | `/api/ws/chat` | 实时对话 |
+## 配置与数据放在哪里
 
-完整交互式接口文档：`http://localhost:8000/docs`（Swagger UI）。
+| 位置 | 用途 |
+| --- | --- |
+| `config/local.env` | 本地进程配置，由 setup 生成 |
+| `config/docker.env` | Docker Compose 配置，从模板复制 |
+| `config/plugins.yaml` | 默认插件实例的覆盖或追加配置 |
+| `.venv/` | 仓库中的 Python 虚拟环境 |
+| `packages/client/node_modules/` | 默认前端的 npm 依赖 |
+| `~/.minidsh/workspaces/` | 本地会话工作目录 |
+| `~/.minidsh/skills/` | 本地安装的技能 |
+| `~/.minidsh/cache/paper-mcp/` | 本地论文缓存 |
+| PostgreSQL | Agent 配置、会话持久化和其他业务数据 |
+| Docker volumes | 容器部署的数据与缓存，见 Compose 配置 |
 
-## ⚙️ 配置说明
+本地数据根目录可用 `MINIDSH_HOME` 修改，子目录也可单独配置；Windows 下 `~` 表示当前用户目录。
+`config/local.env`、`config/docker.env` 和用户插件配置不应包含在提交中。
 
-环境变量（详见 `docker-compose.yml`）：
+本地默认使用宿主机沙箱 provider，示例配置为 `workspace-write`；支持只读、工作区可写和完全访问模式，
+也可设置 `SANDBOX_BACKEND=docker` 使用容器。模式、审批与操作系统支持见 [原生沙箱](docs/native-sandbox.md)。
 
-| 变量 | 默认值 | 说明 |
-| ---- | ------ | ---- |
-| `DATABASE_URL` | `postgresql://saas:saas@db:5432/saas` | PostgreSQL 连接地址 |
-| `JWT_SECRET` | `dev-secret` | 令牌签名密钥 |
-| `OLLAMA_HOST` | `http://host.docker.internal:11434` | 向量与重排服务地址 |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | 前端访问后端的基础地址 |
-| `SANDBOX_WORKSPACE_ROOT` | `/srv/agent/workspaces` | 沙箱工作区根目录，需对宿主机可见 |
-| `SANDBOX_DEFAULT_MODE` | `workspace-write` | 文件权限模式：只读（`read-only`）、工作区可写（`workspace-write`）、完全访问（`danger-full-access`）|
-| `SANDBOX_READ_ROOTS` | — | 额外的宿主机**只读**挂载目录，以逗号分隔；`C:/,D:/` 表示可读取对应盘符下的全部内容 |
-| `SANDBOX_WRITE_ROOTS` | — | 额外的宿主机**可写**挂载目录，以逗号分隔 |
+## 开发与文档
 
-**各智能体独立配置模型**：每个智能体通过 `base_url` / `api_key` / `model` 配置模型，
-支持任意 OpenAI 兼容网关，如 DeepSeek、OpenAI、vLLM。可在控制台的智能体配置页填写，
-或通过 `PUT /api/agents/{key}/config` 更新。
-
-### 📄 论文 MCP：模型配置
-
-论文 MCP（`packages/mcp/paper/`，端口 `:9002`）提供 `search_papers` /
-`fetch_paper_text` / `summarize_paper` / `list_papers` 四个工具。总结论文时会在
-**工具内部**调用大语言模型，因此需要配置 OpenAI 兼容网关（`/v1/chat/completions`）。
-
-配置方式（二选一，JSON 文件优先）：
-
-**方式一：JSON 配置文件（推荐）**
-
-```bash
-# 复制配置模板（模板纳入版本管理，真实配置已被 .gitignore 忽略）
-cp packages/mcp/paper/src/llm.config.example.json \
-   packages/mcp/paper/src/llm.config.json
+```text
+minidsh.py             统一安装与启动入口
+packages/
+  plugin/              SDK、加载器与默认插件清单
+  agent/               配置、运行时、Loop 与系统提示词
+  api/                 RPC Connection、Gateway 与业务 Controller
+  host/http-api/       FastAPI 应用与 HTTP 适配
+  session/             事件、存储、持久化、标题、恢复与投影
+  llm/                 模型公共契约与 provider
+  tools/               工具服务、调度与宿主适配
+  skills/              技能中心、文件来源与 skill 工具
+  sandbox/             沙箱 provider、策略与工具
+  mcp/                 MCP 连接与各类集成
+  client/              React + Vite 插件壳与页面
+backend/               宿主入口、兼容路由及待迁移业务
+config/                环境与插件配置模板
+docs/                  部署、架构与使用说明
 ```
 
-编辑 `llm.config.json` 中的以下三项。代码目录以绑定挂载方式接入容器，修改后即时生效，无需重启：
+| 文档 | 内容 |
+| --- | --- |
+| [部署方式](docs/deployment.md) | 本地、混合、Docker、前端 profile 和排查方式 |
+| [配置说明](config/README.md) | 配置文件与覆盖规则 |
+| [插件架构](docs/plugin-architecture.md) | 服务契约、依赖、生命周期与宿主边界 |
+| [RPC API](docs/rpc-api.md) | 方法清单、请求格式、客户端与迁移范围 |
+| [Agent 插件](packages/agent/README.md) | Runtime、Loop、上下文与运行生命周期 |
+| [技能与命令](docs/skills-commands.md) | 技能绑定、安装和按需加载 |
+| [客户端](packages/client/README.md) | 启动图、模块加载与 slots |
+| [原生沙箱](docs/native-sandbox.md) | 宿主机执行与受限模式 |
+| [Overleaf](docs/overleaf-mcp.md) | 可选的 Overleaf 工具集成 |
 
-```json
-{
-  "base_url": "https://api.openai.com/v1",
-  "api_key": "sk-...",
-  "model": "gpt-4o"
-}
+前端构建与交互检查：
+
+```sh
+cd packages/client
+npm run build
+npm run test:e2e
 ```
 
-**方式二：环境变量**（通过 Docker Compose 注入）
+后端示例测试（使用已安装插件的虚拟环境）：
 
-```bash
-# config/docker.env
-PAPER_LLM_BASE_URL=https://api.openai.com/v1
-PAPER_LLM_API_KEY=sk-...
-PAPER_LLM_MODEL=gpt-4o
-# 应用配置
-docker compose --env-file config/docker.env up -d backend
+```sh
+python -m pytest packages/api/gateway/tests packages/agent/runtime/tests -q --import-mode=importlib
 ```
 
-**用户创建的论文研究智能体**还需单独配置编排模型，由 `AgentRuntime` 使用，
-与论文总结层相互独立，可使用不同模型。通过 `PUT /api/agents/{your_agent_key}/config`，
-或在控制台的智能体配置页填写 `base_url` / `api_key` / `model`。
-建议 `max_steps: 8`、`max_tokens: 3000`（默认已内置）。
+Playwright 需要可用的浏览器；可安装 Chromium，或通过 `PLAYWRIGHT_CHANNEL` 指定已安装的浏览器。
+截图脚本的使用见 [演示图片说明](docs/images/README.md)。
 
-### 🍃 Overleaf MCP
+## 致谢
 
-后端自动注册 `overleaf` 工具服务，提供 LaTeX 文件读写、编译、PDF 下载与版面查询。
-`overleaf-mcp-plus[compile]==0.3.1` 使用独立 Python 环境，不影响平台的 MCP SDK 版本。
-账户凭据在 `config/docker.env`（Docker）或 `config/local.env`（本地）中配置：
-`OVERLEAF_GIT_TOKEN` 用于 Git 文件操作，`OVERLEAF_SESSION` 用于项目列表、编译与下载。
-安装和使用见 [Overleaf MCP 文档](docs/overleaf-mcp.md)。
-
-## 🗺️ 开发路线
-
-- [x] 可视化工作流构建与运行
-- [x] 多智能体运行时（FAQ、意图路由、监督编排与人工接管）
-- [x] RAG 知识库与语义缓存
-- [x] 长期记忆系统
-- [x] 支持 MCP、沙箱执行与人工审批的工具系统
-- [x] 分段系统提示词组装
-- [x] 会话工作区（文件管理、预览与上传）
-- [ ] 工作流草稿的版本管理与回滚
-- [ ] MCP 服务插件市场
-- [ ] 数据分析控制台（对话轮次、缓存命中率、人工接管率）
-- [ ] 将记忆系统接入主智能体运行时
-
-## 🤝 参与贡献
-
-欢迎参与贡献！提交合并请求前，请先创建议题讨论改动，也可以从开发路线中选择任务。
-
-1. 派生仓库并创建开发分支（`git checkout -b feat/amazing`）。
-2. 提交改动（`git commit -m 'feat: 添加新功能'`）。
-3. 推送分支并发起合并请求。
-
-### 开发说明
-
-插件公共协议位于独立包 [`packages/plugin/sdk`](packages/plugin/sdk/README.md)，YAML 加载、entry point 发现、依赖排序和生命周期管理位于 [`packages/plugin/runtime`](packages/plugin/runtime/README.md)；默认工具实现仍由后续包提供。
-
-后端启动时总是装配单轨工具运行时：插件侧的 `tools-default` 持有唯一 `tools.v1` 注册表；MCP 工具实现位于 `packages/mcp/`，由 `agent-platform.mcp-client` 插件连接并注册（`agent-platform.mcp-manager` 负责运行时导入/探测/重连）；沙箱 `bash`/`python` 由 `packages/sandbox/tools` 注册，技能 `skill`/`skill_install` 由 `packages/skills/tools` 注册。AgentLoop、系统提示词和工具列表都只读这一个注册表，并只经它执行。`PLUGIN_CONFIG` 只决定额外加载哪些插件，不再决定是否启用工具服务；默认服务和功能插件会自动补上；技能系统由 skills-default、skills-filesystem、skill-tools 三个插件组成，分别负责技能中心、目录来源与工具/对话接入。Docker 镜像已内置 SDK、runtime、tools-default 和示例插件，例如：
-
-默认零配置启动，不需要设置任何插件变量：
-
-```bash
-python minidsh.py docker
-# 或：docker compose --env-file config/docker.env up -d
-```
-
-`mcp_servers` 表里的 MCP server 会自动转换成 `agent-platform.mcp-client` 插件实例，不需要在 YAML 里手写；设置 `PLUGIN_MCP_AUTO=false` 可关闭自动装配。
-
-要额外加载插件时，把 `config/plugins.yaml.example` 复制成 `config/plugins.yaml`（Docker 内是 `/app/config/plugins.yaml`），重启 backend 即可；`PLUGIN_CONFIG` 只用于把配置放到其他路径。本地开发一次安装插件栈：
-
-```bash
-pip install -r requirements-plugins.txt
-```
-
-- 后端改动后若 `--reload` 卡住，可执行 `docker compose restart backend`。
-- 测试与模块位于同一目录（`test_*.py`），自带 `main()` 运行器，容器内未安装 pytest：
-
-  ```bash
-  docker compose exec backend python backend/agents/runtime/system_prompt/test_system_prompt.py
-  docker compose exec backend python backend/tests/test_sandbox.py
-  ```
-
-## 📄 许可证
-
-[MIT](LICENSE) © 2026
-
----
-
-<div align="center">
-⭐ 如果这个项目对你有帮助，欢迎点亮一颗星！
-</div>
+插件装配、Agent Loop 与客户端模块设计参考 DeepSeek Harness；界面使用 React、Vite、React Flow 等开源项目。
+各包附带的第三方技能与集成遵循其来源许可，详见对应目录中的 NOTICE / LICENSE。
