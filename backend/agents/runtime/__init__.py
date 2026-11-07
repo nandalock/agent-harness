@@ -1,6 +1,6 @@
-"""Host request/session assembly; the concrete agent driver belongs to a plugin."""
+"""Host agent metadata views and persistence adapters; runtime/loop are plugins."""
 from agent_platform_agents import EventSink
 from backend.agents.runtime.agent_runtime import AgentRuntime
-from backend.agents.runtime.session import Session
+from agent_platform_session import Session
 
 __all__ = ["AgentRuntime", "EventSink", "Session"]

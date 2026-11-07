@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { createRemote } from '@/lib/remote';
 
 type RecoveryState = { can_resume: boolean; source_turn_start_seq: number | null };
 
@@ -9,22 +10,21 @@ export default function RecoveryBanner({ api, tenantId, sessionId, busy, onConti
   onContinue: (sourceTurn: number) => void;
 }) {
   const [recovery, setRecovery] = useState<RecoveryState | null>(null);
+  const rpc = useMemo(() => createRemote(api, tenantId), [api, tenantId]);
   useEffect(() => {
     setRecovery(null);
     if (!sessionId || busy) return;
     const controller = new AbortController();
     async function refresh() {
       try {
-        const response = await fetch(`${api}/api/agents/sessions/${sessionId}/recovery`, {
-          headers: { 'X-Tenant-ID': String(tenantId) }, signal: controller.signal,
-        });
-        if (response.ok && !controller.signal.aborted) setRecovery(await response.json());
+        const result = await rpc.session.recovery({ session_id: sessionId! });
+        if (!controller.signal.aborted) setRecovery(result as RecoveryState);
       } catch { /* Recheck on the next interval after a temporary connection failure. */ }
     }
     void refresh();
     const interval = setInterval(refresh, 5000);
     return () => { controller.abort(); clearInterval(interval); };
-  }, [api, tenantId, sessionId, busy]);
+  }, [rpc, sessionId, busy]);
 
   if (!recovery?.can_resume || recovery.source_turn_start_seq == null) return null;
   const sourceTurn = recovery.source_turn_start_seq;

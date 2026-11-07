@@ -2,7 +2,6 @@
 import base64
 import hashlib
 import json
-import os
 import random
 import time
 from typing import Any
@@ -19,20 +18,11 @@ def trans_cookies(cookies_str: str) -> dict:
     return cookies
 
 
-def get_session_cookies_str(session) -> str:
-    cookies = session.cookies.get_dict()
-    return "; ".join(f"{k}={v}" for k, v in cookies.items())
-
-
 def generate_mid() -> str:
     """生成消息ID（与参考项目格式一致：random+timestamp空格0）"""
     random_part = int(1000 * random.random())
     timestamp = int(time.time() * 1000)
     return f"{random_part}{timestamp} 0"
-
-
-def generate_uuid() -> str:
-    return f"-{int(time.time() * 1000)}1"
 
 
 def generate_device_id(user_id: str) -> str:

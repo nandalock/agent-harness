@@ -131,21 +131,6 @@ def match_faq(tenant_id: int, question: str, direct_threshold: float = 0.95) -> 
     return None
 
 
-def vector_search(tenant_id: int, query_vector: list[float], top_n: int = 10) -> list[dict]:
-    """pgvector 余弦距离搜索，返回 top-N"""
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """SELECT *, 1 - (embedding <=> %s::vector) AS _score
-                   FROM faqs
-                   WHERE tenant_id = %s AND is_active = true AND embedding IS NOT NULL
-                   ORDER BY embedding <=> %s::vector
-                   LIMIT %s""",
-                (query_vector, tenant_id, query_vector, top_n),
-            )
-            return [dict(r) for r in cur.fetchall()]
-
-
 def import_csv(tenant_id: int, file_content: bytes) -> FAQImportResult:
     reader = csv.DictReader(io.StringIO(file_content.decode("utf-8-sig")))
     required = {"question", "answer"}

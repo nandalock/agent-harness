@@ -25,11 +25,6 @@ EXPIRE_HOURS = 24
 USER = {"username": "jk", "password": "123456", "role": "admin"}
 
 
-def verify_password(plain: str, hashed: str) -> bool:
-    # Placeholder — use bcrypt later
-    return plain == hashed
-
-
 def create_token(username: str, role: str) -> str:
     payload = {
         "sub": username,
@@ -37,13 +32,6 @@ def create_token(username: str, role: str) -> str:
         "exp": datetime.now(timezone.utc) + timedelta(hours=EXPIRE_HOURS),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-
-
-def decode_token(token: str) -> dict | None:
-    try:
-        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    except jwt.PyJWTError:
-        return None
 
 
 def login(username: str, password: str) -> tuple[bool, str, str]:

@@ -215,7 +215,8 @@ flowchart TB
 - **会话事件日志**：用户消息、模型输出、工具调用和结果构成执行事实；历史、轨迹与恢复状态由其派生。
 - **客户端插件**：前端包通过 `dsh.client` 声明入口，Host 组合启动图，浏览器懒加载模块并通过 slots 组合 UI。
 
-当前 HTTP 插件仍挂载部分 `backend/api` 路由，RPC 已覆盖的操作见 [接口清单](docs/rpc-api.md)。
+所有 HTTP/SSE/WebSocket 路由都归 HTTP 插件（`packages/host/http-api/src/routes/`），
+RPC 已覆盖的操作见 [接口清单](docs/rpc-api.md)。
 完整设计见 [插件运行时架构](docs/plugin-architecture.md)。
 
 ### 配置插件

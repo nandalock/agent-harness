@@ -26,7 +26,7 @@ import aiohttp
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
 
-from backend.agents.runtime.llm import (  # noqa: E402
+from agent_platform_llm import (  # noqa: E402
     CHUNK_FINISH,
     CHUNK_TEXT,
     CHUNK_THINKING,
@@ -36,8 +36,7 @@ from backend.agents.runtime.llm import (  # noqa: E402
     RetryDecision,
     StreamChunk,
 )
-from backend.agents.runtime.llm import openai_chat as client_mod  # noqa: E402
-from backend.agents.runtime.llm import retry as retry_mod  # noqa: E402
+from agent_platform_llm import retry as retry_mod  # noqa: E402
 from agent_platform_agent_loop.agent_loop import CANCELLED_REPLY, AgentLoop  # noqa: E402
 from backend.agents.runtime.tests.loop_support import loop_context
 from agent_platform_agent_loop.assistant_stream import AssistantStream  # noqa: E402
@@ -47,7 +46,7 @@ from agent_platform_agent_loop.inbox import (  # noqa: E402
     ReactLoopInbox,
 )
 from agent_platform_agents import RunConflict, RunRegistry  # noqa: E402
-from backend.agents.runtime.session import (  # noqa: E402
+from agent_platform_session import (  # noqa: E402
     ASSISTANT_MESSAGE,
     LLM_ERROR,
     STEP_END,
@@ -60,7 +59,7 @@ from backend.agents.runtime.session import (  # noqa: E402
     Session,
     SessionToolRecorder,
 )
-from backend.agents.runtime.session.projections import TrajectoryProjection  # noqa: E402
+from agent_platform_session_projection import TrajectoryProjection  # noqa: E402
 from agent_platform_tool_system.descriptor import PARALLEL  # noqa: E402
 from agent_platform_tool_host.scheduler import (  # noqa: E402
     ABORTED_STARTED_MESSAGE,
@@ -68,6 +67,13 @@ from agent_platform_tool_host.scheduler import (  # noqa: E402
 )
 
 # ── 测试替身：HTTP ──
+
+_CURRENT_HTTP = None
+
+
+async def _http_factory():
+    return _CURRENT_HTTP
+
 
 
 class _Boom:
@@ -149,17 +155,10 @@ class _FakeHTTP:
 
 
 def _install(responses: list) -> _FakeHTTP:
-    """把 LLM HTTP 调用换成本用例的脚本化假响应
-
-    patch 点是**适配器**（llm/openai_chat.py）—— 它是唯一 import get_http_session 的地方，
-    循环不再碰 HTTP（见 llm/client.py 的契约）。
-    """
+    """Install this test's scripted HTTP responses for the next client."""
+    global _CURRENT_HTTP
     http = _FakeHTTP(responses)
-
-    async def _get_session():
-        return http
-
-    client_mod.get_http_session = _get_session
+    _CURRENT_HTTP = http
     return http
 
 
@@ -239,7 +238,7 @@ def _loop(*, session=None, config=None, llm_params=None, on_event=None, tool_sch
     # 装配 LLM 出口：循环只拿到一个 LlmClient，凭据与端点在这一层搬完就交出去
     llm = OpenAiChatClient(
         api_key=cfg.get("api_key", ""), base_url=cfg.get("base_url", ""),
-        max_llm_retries=params["max_llm_retries"],
+        max_llm_retries=params["max_llm_retries"], http_session_factory=_http_factory,
     )
     loop = AgentLoop(
         loop_context(llm), key="test_agent", llm_params=params, model=cfg.get("model", ""),
@@ -714,7 +713,7 @@ def test_tool_roundtrip_keeps_message_sequence_legal():
     first = _answer("", finish_reason="tool_calls", tool_calls=[
         {"id": "c1", "type": "function", "function": {"name": "echo", "arguments": '{"q": "hi"}'}},
     ])
-    http = _install([first, _answer("工具跑完了")])
+    _install([first, _answer("工具跑完了")])
     loop, session = _loop(tool_schemas=[_TOOL_SCHEMA])
     runtime = _with_fake_tools(loop, session)
 

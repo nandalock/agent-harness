@@ -18,18 +18,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "..
 
 from backend.agents.runtime import agent_runtime as runtime_mod  # noqa: E402
 from backend.agents.runtime.agent_runtime import AgentRuntime  # noqa: E402
-from backend.agents.runtime.llm import openai_chat as client_mod  # noqa: E402
+from agent_platform_llm import OpenAiChatClient  # noqa: E402
 from agent_platform_agents import AgentService
 from agent_platform_agent_loop.plugin import LoopFactory, LoopConfig  # noqa: E402
 from backend.agents.runtime.tests.loop_support import plugin_context
-from backend.agents.runtime.session import (  # noqa: E402
-    NoopPersistence,
-    get_session_title_service,
-    set_session_persistence,
-)
-from backend.agents.runtime.session import store as store_mod  # noqa: E402
+from backend.agents.runtime.tests.runtime_support import runtime_service
 
 captured: list[dict] = []
+definitions: dict[str, dict] = {}
 
 
 class _FakeResp:
@@ -63,18 +59,23 @@ class _FakeSession:
 
 
 def _install_fakes():
-    """拦截 LLM HTTP 调用（patch 点是**适配器**：唯一 import get_http_session 的地方）"""
+    """Install a runtime whose LLM client reads from the scripted fake HTTP."""
     captured.clear()
     runs = AgentService()
     runs.register_factory(LoopFactory(plugin_context(), LoopConfig()))
-    runtime_mod.get_agent_runs = lambda: runs
+    definitions.clear()
+    fake_http = _async_return(_FakeSession())
+    client = OpenAiChatClient(
+        api_key="k", base_url="http://fake", max_llm_retries=2,
+        http_session_factory=fake_http,
+    )
+    service = runtime_service(
+        runs, lambda key: definitions[key]["config"], llm=client,
+    )
+    runtime_mod.get_runtime_service = lambda: service
+    from backend.agents.runtime import extensions
+    extensions.get_agent_extensions = lambda: service.extensions
     runtime_mod.get_agent_config = lambda key: {}
-    fake = _async_return(_FakeSession())
-    client_mod.get_http_session = fake
-    set_session_persistence(NoopPersistence())
-    store_mod._store = store_mod.SessionStore()  # 每个用例干净的 SessionStore
-    # 标题服务的在飞状态也是进程级单例，同样每用例清一遍
-    get_session_title_service().forget_all()
 
 
 def _async_return(value):
@@ -101,6 +102,7 @@ def _runtime(agent_key: str = "test_agent", **config) -> AgentRuntime:
         },
     }
     agent = AgentRuntime(key=agent_key, definition=definition)
+    definitions[agent_key] = definition
     return agent
 
 
@@ -118,7 +120,8 @@ def test_run_registry_is_released_after_the_turn():
 
     reply = _reply(agent)
     assert reply.session_id
-    assert runtime_mod.get_agent_runs().get(reply.session_id) is None
+    from agent_platform_agents import AGENT_RUNS
+    assert runtime_mod.get_runtime_service().ctx.require(AGENT_RUNS).get(reply.session_id) is None
 
     # 注销干净 → 同一个会话还能接着来一轮（不冲突，且继续用同一个 session）
     again = _reply(agent, session_id=reply.session_id)
@@ -242,9 +245,9 @@ def test_no_skill_plugin_means_no_automatic_tools_or_skill_catalog():
 def test_broken_variable_fails_loudly():
     """段里引用不存在的变量 → 本轮报错（不发坏提示词给模型）"""
     _install_fakes()
-    from backend.agents.runtime.system_prompt import PromptSection, get_system_prompt
+    from agent_platform_system_prompt import RUNTIME_PROMPTS, PromptSection
 
-    sp = get_system_prompt()
+    sp = runtime_mod.get_runtime_service().ctx.require(RUNTIME_PROMPTS).sp
     sp.section(PromptSection(name="test:broken", order=700, text="目录 {{不存在的变量}}"))
     try:
         _reply(_runtime(system_prompt="人设"))

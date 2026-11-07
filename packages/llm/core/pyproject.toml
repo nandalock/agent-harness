@@ -5,9 +5,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent-platform-llm"
 version = "0.1.0"
-description = "Provider-neutral model connection registry for the Agent Platform"
+description = "Provider-neutral LLM service, canonical types and OpenAI-compatible adapter"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "aiohttp>=3.9",
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.llm" = "agent_platform_llm:LLMPlugin"
 
 [tool.setuptools]
 packages = ["agent_platform_llm"]

@@ -27,22 +27,21 @@ def _resolve_config_path() -> Path | None:
 @dataclass
 class PluginHost:
     runtime: object
-    unified: object
     tools: object
 
     @property
     def plugins(self):
         return self.runtime.plugins
 
-    async def aclose(self) -> None:
-        from agent_platform_tool_host import close_unified_tools
+    @property
+    def unified(self):
+        from agent_platform_tool_host import UNIFIED_TOOLS
+        return self.runtime.require(UNIFIED_TOOLS)
 
-        try:
-            # Drivers must settle tool results and host checkpoints while tools
-            # are still usable; dependency order closes the loop before tools.
-            await self.runtime.aclose()
-        finally:
-            await close_unified_tools()
+    async def aclose(self) -> None:
+        # Drivers settle tool results and checkpoints during quiesce; the tool
+        # host plugin then closes the unified runtime it owns.
+        await self.runtime.aclose()
 
 
 _host: PluginHost | None = None
@@ -163,10 +162,6 @@ async def init_plugin_host(catalog: object | None = None) -> PluginHost | None:
     try:
         from agent_platform_plugin_runtime import PluginRuntime
         from agent_platform_plugin_sdk import TOOLS
-        from agent_platform_tools_default import TOOL_CATALOG
-        from agent_platform_tool_host import UnifiedToolsRuntime, set_unified_tools
-        from agent_platform_tool_system.registry import ToolRegistry
-        from agent_platform_tool_system.runtime import ToolRuntime
     except ImportError as exc:
         raise RuntimeError(
             "插件 SDK/runtime/tools-default 未安装，无法装配单轨工具运行时"
@@ -183,36 +178,17 @@ async def init_plugin_host(catalog: object | None = None) -> PluginHost | None:
         config = PluginConfiguration()
     config = _compose_plugins(config)
 
-    from backend.host_services import host_services, read_tool_bindings
-    from agent_platform_tool_system.registry import configure_bindings
-    configure_bindings(read_tool_bindings)
-
     runtime = None
     try:
-        runtime = PluginRuntime(
-            config, catalog=catalog, host_services=host_services()
-        )
+        runtime = PluginRuntime(config, catalog=catalog)
         await runtime.start()
         tools = runtime.require(TOOLS)
-        catalog_service = runtime.require(TOOL_CATALOG)
-        # No native registry: every tool is owned by a plugin. The empty
-        # registry/runtime keep the bridge's generic native hooks available for
-        # tests and embedded hosts without creating a second live source.
-        native_registry = ToolRegistry(providers=[])
-        unified = UnifiedToolsRuntime(
-            native_registry,
-            ToolRuntime(registry=native_registry, executors={}),
-            tools,
-            catalog_service,
-        )
-        await unified.start()
-        set_unified_tools(unified)
     except BaseException:
         if runtime is not None:
             await runtime.aclose()
         raise
 
-    _host = PluginHost(runtime=runtime, unified=unified, tools=tools)
+    _host = PluginHost(runtime=runtime, tools=tools)
     logger.info(
         "单轨工具运行时已启动，插件: %s",
         [(plugin.instance_id, plugin.name) for plugin in runtime.plugins],

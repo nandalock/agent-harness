@@ -1,18 +1,12 @@
-"""Shared provider registry: dispatch, ownership, and URL normalization."""
+"""Runtime-scoped provider registry: dispatch, ownership, and URL normalization."""
 import unittest
 
-from agent_platform_llm import (
-    ModelConfig,
-    openai_base_url,
-    register_provider,
-    resolve_model_config,
-)
+from agent_platform_llm import LLMService, ModelConfig, fallback_model_config, openai_base_url
 
 
 class RegistryTests(unittest.TestCase):
     def test_unknown_provider_is_db_only(self):
-        model = resolve_model_config({
-            "provider": "openai",
+        model = fallback_model_config("openai", {
             "model": "gpt-4o",
             "base_url": "https://api.openai.com/v1",
             "api_key": "db-key",
@@ -22,29 +16,39 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(model.source, "db")
 
     def test_registered_provider_dispatches_and_closes(self):
-        registration = register_provider(
+        service = LLMService()
+        remove = service.register_provider(
             "test-provider",
             lambda config: ModelConfig("test-provider", "m", "https://example.test", "k", "provider"),
         )
         try:
-            model = resolve_model_config({"provider": "test-provider"})
+            model = service.resolve({"provider": "test-provider"})
             self.assertEqual(model.provider, "test-provider")
             self.assertEqual(model.source, "provider")
         finally:
-            registration.close()
+            remove()
         # After close the same config falls back to DB-only (unconfigured).
-        self.assertFalse(resolve_model_config({"provider": "test-provider"}).configured)
+        self.assertFalse(service.resolve({"provider": "test-provider"}).configured)
+
+    def test_two_services_do_not_share_providers(self):
+        first, second = LLMService(), LLMService()
+        first.register_provider(
+            "scoped", lambda config: ModelConfig("scoped", "m", "https://example.test", "k")
+        )
+        self.assertEqual(first.resolve({"provider": "scoped"}).provider, "scoped")
+        self.assertEqual(second.resolve({"provider": "scoped"}).source, "none")
 
     def test_duplicate_provider_registration_is_rejected(self):
-        registration = register_provider(
+        service = LLMService()
+        remove = service.register_provider(
             "test-duplicate",
             lambda config: ModelConfig("test-duplicate", "m", "https://example.test", "k"),
         )
         try:
             with self.assertRaisesRegex(ValueError, "already registered"):
-                register_provider("test-duplicate", registration.resolver)
+                service.register_provider("test-duplicate", remove)
         finally:
-            registration.close()
+            remove()
 
     def test_public_view_hides_the_credential(self):
         model = ModelConfig("deepseek", "deepseek-flash", "https://api.deepseek.com", "secret")

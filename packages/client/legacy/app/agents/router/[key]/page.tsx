@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Brain, Play, Save, Settings, Trash2 } from 'lucide-react';
 import { T, S } from '@/app/theme';
+import { remote } from '@/lib/remote';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -98,14 +99,14 @@ export default function RouterAgentPage() {
     const load = async () => {
       try {
         const [agentsR, configR, l1R] = await Promise.all([
-          fetch(`${API}/api/agents`).then(r => r.json()),
-          fetch(`${API}/api/agents/${key}/config`).then(r => r.json()),
+          remote.agent.list(),
+          remote.agent.getConfig({ agent_key: key }),
           fetch(`${API}/api/agents/${key}/l1-keywords`).then(r => r.json()),
         ]);
 
-        setAgentList((agentsR as any[]).filter((a: any) => a.agent_type !== 'router').map((a: any) => ({ key: a.key, name: a.name })));
+        setAgentList(agentsR.items.filter(a => a.agent_type !== 'router').map(a => ({ key: a.key, name: a.name })));
 
-        const cfg = configR.config || {};
+        const cfg = (configR.config || {}) as Record<string, any>;
         // L1 — from dedicated table
         setL1Enabled(cfg.l1_enabled !== false);
         setL1Rules((l1R as any[]).map((r: any) => ({ id: r.id, keywords: (r.keywords || []).join(', '), target: r.target || '' })));
@@ -171,11 +172,7 @@ export default function RouterAgentPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await fetch(`${API}/api/agents/${key}/config`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildConfig()),
-      });
+      await remote.agent.saveConfig({ agent_key: key, config: buildConfig() });
     } catch {}
     setSaving(false);
   };

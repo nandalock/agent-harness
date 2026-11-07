@@ -1,14 +1,5 @@
-"""Host services shared by native-capability plugins.
+"""Service contracts shared by capability plugins and host adapters."""
 
-These contracts invert the old dependency direction: a sandbox or skill plugin
-declares the capability it needs (approval, settings, agent configuration) and
-the host supplies an implementation at runtime. The plugin never imports the
-backend.
-
-Only the vocabulary a plugin actually consumes lives here. Implementations
-(DB-backed settings, the in-process approval channel, agent loading) belong to
-the host.
-"""
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 import uuid
@@ -53,7 +44,7 @@ class ApprovalChannel(Protocol):
 
 
 class ApprovalService(Protocol):
-    """Host-supplied approval decision authority.
+    """Approval decision authority.
 
     ``available`` reports whether a decision authority exists. When it is
     false, callers must fail closed rather than assume approval.
@@ -93,11 +84,51 @@ SETTINGS: ServiceKey[SettingsService] = ServiceKey(
 # ── agents.v1 ──
 
 class AgentConfigService(Protocol):
-    """Read the effective configuration for one agent key."""
+    """Read and update agent definitions/configs for one runtime."""
 
     async def get_config(self, agent_key: str) -> dict[str, Any] | None: ...
+
+    async def get_definition(self, agent_key: str) -> dict[str, Any] | None: ...
+
+    async def list_definitions(self) -> list[dict[str, Any]]: ...
+
+    async def save_config(self, agent_key: str, config: dict[str, Any]) -> dict[str, Any]: ...
+
+    async def list_l1_keywords(self, router_key: str) -> list[dict[str, Any]]: ...
+
+    async def create_l1_keyword(self, router_key: str, keywords: list[str], target: str) -> dict[str, Any]: ...
+
+    async def update_l1_keyword(self, rule_id: int, router_key: str, keywords: list[str], target: str) -> dict[str, Any] | None: ...
+
+    async def delete_l1_keyword(self, rule_id: int, router_key: str) -> bool: ...
 
 
 AGENTS: ServiceKey[AgentConfigService] = ServiceKey(
     ServiceRef(name="agents", api_version=1)
+)
+
+
+# ── tool-bindings.v1 ──
+
+class ToolBindingsService(Protocol):
+    """Read the explicitly bound tool names for one agent key."""
+
+    def get_bindings(self, agent_key: str) -> list[str]: ...
+
+
+TOOL_BINDINGS: ServiceKey[ToolBindingsService] = ServiceKey(
+    ServiceRef(name="tool-bindings", api_version=1)
+)
+
+
+# ── database.v1 ──
+
+class Database(Protocol):
+    """Host-provided pooled connection factory (context manager)."""
+
+    def get_conn(self): ...
+
+
+DATABASE: ServiceKey[Database] = ServiceKey(
+    ServiceRef(name="database", api_version=1)
 )

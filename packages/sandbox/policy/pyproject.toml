@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-sandbox-policy"
+version = "0.1.0"
+description = "Per-session sandbox policy bound to a provider plugin"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-sandbox>=0.1,<0.2",
+    "agent-platform-session-projection>=0.1,<0.2",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.sandbox-policy" = "agent_platform_sandbox_policy:SandboxPolicyPlugin"
+
+[tool.setuptools]
+packages = ["agent_platform_sandbox_policy"]
+
+[tool.setuptools.package-dir]
+agent_platform_sandbox_policy = "src"

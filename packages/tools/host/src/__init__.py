@@ -5,6 +5,8 @@ from .unified import (
     NativeToolExecutor,
     UnifiedToolsRuntime,
 )
+from .services import UNIFIED_TOOLS, UnifiedToolsService
+from .plugin import ToolHostPlugin
 from .unified_state import (
     close_unified_tools,
     get_unified_tools,
@@ -19,6 +21,9 @@ __all__ = [
     "AgentToolDescriptor",
     "NativeToolExecutor",
     "UnifiedToolsRuntime",
+    "UNIFIED_TOOLS",
+    "UnifiedToolsService",
+    "ToolHostPlugin",
     "close_unified_tools",
     "get_unified_tools",
     "get_unified_tools_optional",

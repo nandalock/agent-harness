@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-agent-entry"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-agent-runtime>=0.1,<0.2",
+    "agent-platform-agents>=0.1,<0.2",
+    "agent-platform-llm>=0.1,<0.2",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.agent-entry" = "agent_platform_agent_entry:AgentEntryPlugin"
+
+[tool.setuptools]
+packages = ["agent_platform_agent_entry"]
+
+[tool.setuptools.package-dir]
+agent_platform_agent_entry = "src"

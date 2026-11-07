@@ -14,13 +14,11 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from backend.interaction.approval import (  # noqa: E402
-    ApprovalRequest,
+from agent_platform_user_approval import (  # noqa: E402
     ApprovalService,
     InProcessApprovalChannel,
-    new_approval_id,
 )
-from backend.interaction.approval.models import ALLOWED  # noqa: E402
+from agent_platform_plugin_sdk import ALLOWED, ApprovalRequest, new_approval_id  # noqa: E402
 
 
 def _req(approval_id="a1", **kw) -> ApprovalRequest:
@@ -139,7 +137,9 @@ def test_approval_never_imports_a_domain_package():
     """
     import pathlib
 
-    here = pathlib.Path(__file__).parent
+    import agent_platform_user_approval
+
+    here = pathlib.Path(agent_platform_user_approval.__file__).parent
     offenders = []
     for f in here.glob("*.py"):
         if f.name == "test_approval.py":
@@ -149,7 +149,7 @@ def test_approval_never_imports_a_domain_package():
             "agent_platform_sandbox",
             "agent_platform_skill_tools",
             "backend.agents",
-            "backend.api",
+            "agent_platform_http_api",
             "backend.services",
         ):
             if module in text:

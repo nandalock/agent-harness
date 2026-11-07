@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-session-projection"
+version = "0.1.0"
+description = "Read-only session event projections for trace, trajectory and sandbox mode"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-sandbox>=0.1,<0.2",
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-session>=0.1,<0.2",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.session-projection" = "agent_platform_session_projection:SessionProjectionPlugin"
+
+[tool.setuptools]
+packages = ["agent_platform_session_projection"]
+
+[tool.setuptools.package-dir]
+agent_platform_session_projection = "src"

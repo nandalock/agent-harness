@@ -1,7 +1,6 @@
-import asyncio
 import unittest
 
-from backend.services.chat.live import LiveRun, LiveRunConflict, LiveRunRegistry
+from agent_platform_chat.live import LiveRun, LiveRunConflict, LiveRunRegistry
 
 
 def _run(**overrides) -> LiveRun:

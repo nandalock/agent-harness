@@ -122,7 +122,7 @@ def resolve_workspace_root(configured: str | None = None) -> str:
 def session_workspace_path(root: str, session_id: str) -> Path:
     """某会话的工作区目录 ``<root>/<session_id>`` —— **纯路径，不触盘**。
 
-    读路径（``api/workspace.py``）必须用这个：它只想知道「沙箱会写到哪」，
+    读路径（``packages/host/http-api/src/routes/workspace.py``）必须用这个：它只想知道「沙箱会写到哪」，
     不该因为有人打开了一下工作区页面就凭空造出目录来。
 
     Raises:
@@ -164,7 +164,7 @@ def to_container_path(host_path: str, root: str) -> str:
 def resolve_workspace_member(root: str, rel: str) -> Path:
     """把工作区内的**相对路径**解析为宿主绝对路径；越界一律拒绝。
 
-    读工作区的调用方（当前是 ``api/workspace.py``）必须走这里，不能自己
+    读工作区的调用方（当前是 ``packages/host/http-api/src/routes/workspace.py``）必须走这里，不能自己
     ``os.path.join`` —— 工作区里的内容是**模型**写的，模型是不可信输入源。
     本函数同时收两道口，缺一不可：
 

@@ -82,7 +82,7 @@
 | 中断恢复 | 12/12 自检通过，包含已发起调用结果未知、未发起调用、轮次闭合、重复修复和合法消息派生 | 表述为恢复边界测试通过，不能作为线上恢复成功率 |
 | 执行预算与资源 | Runtime 默认 5 步、30 次工具调用、300 秒；Docker 默认 1 CPU、1GiB 内存、256 PID | 是可配置默认限制，不是业务规模、资源利用率或端到端性能实测 |
 
-复现脚本：[tool_scheduler_benchmark.py](benchmarks/tool_scheduler_benchmark.py)；原始样本及环境记录：[tool_scheduler_benchmark.json](benchmarks/tool_scheduler_benchmark.json)。安装脚本注明的隔离环境依赖后，在仓库根目录运行 `python docs/benchmarks/tool_scheduler_benchmark.py`。现有自检分别运行 `python backend/tests/test_scheduler.py` 与 `python backend/agents/runtime/session/tests/test_repair.py`。
+复现脚本：[tool_scheduler_benchmark.py](benchmarks/tool_scheduler_benchmark.py)；原始样本及环境记录：[tool_scheduler_benchmark.json](benchmarks/tool_scheduler_benchmark.json)。安装脚本注明的隔离环境依赖后，在仓库根目录运行 `python docs/benchmarks/tool_scheduler_benchmark.py`。现有自检分别运行 `python backend/tests/test_scheduler.py` 与 `python backend/tests/session/test_repair.py`。
 
 本基准不包含模型推理、真实网络、数据库或 Docker 执行，也没有独占工具调用；它比较同一调度器的 1 路与 4 路配置，不表示历史上线版本的前后变化。代码优化解决的是独立工具调用的串行等待问题，实际任务收益取决于工具依赖、独占调用比例和外部服务延迟。
 
@@ -111,12 +111,12 @@ Harvard 的现行简历指南与要点模板建议：采用具体、主动且以
 
 | 追问 | 回答重点 | 代码依据 |
 | --- | --- | --- |
-| 为什么说这是 Harness？ | 平台实现了模型外部的执行循环、工具调度、状态记录、权限控制和运行中干预；可视化工作流是另一个配置入口。 | `backend/agents/runtime/agent_runtime.py`、`backend/agents/runtime/loop/agent_loop.py` |
+| 为什么说这是 Harness？ | 平台实现了模型外部的执行循环、工具调度、状态记录、权限控制和运行中干预；可视化工作流是另一个配置入口。 | `backend/agents/runtime/agent_runtime.py`、`packages/agent/loop/src/agent_loop.py` |
 | 为什么并发执行还要按序提交？ | 区分实际执行顺序与日志提交顺序；结果先进入缓冲，再按模型给出的调用顺序提交，使上下文和轨迹顺序稳定。不要把“所有模型协议都禁止乱序工具结果”说成通用结论。 | `packages/tools/system/src/scheduler.py` |
 | 独占屏障用来解决什么？ | Bash / Python 等工具可能共享会话工作区；独占调用启动前排空在途任务，并在执行期间阻止新任务进入。 | `packages/tools/system/src/descriptor.py`、`packages/tools/system/src/scheduler.py` |
-| 重启后怎么恢复？ | 读取持久化事件并回放；若日志尾部存在未结束轮次，补记工具结果未知或未执行的事件，再闭合步骤和轮次。恢复不等于重新启动原来被中断的工具进程。 | `backend/agents/runtime/session/persistence/postgres.py`、`backend/agents/runtime/session/repair.py` |
-| 用户中途发消息怎么办？ | 当前步骤修正进入 next-step 队列，追加任务进入 next-turn 队列；在步骤边界认领并追加 user/message 事件，使用 msg_id 将 SSE 回执与前端气泡对齐。 | `backend/agents/runtime/loop/inbox.py`、`backend/api/agents.py` |
-| 提示词与工具定义怎么同步？ | 一次求值获得实际可见的工具 Schema 和 guidance，先确定工具集合，再组装工具指导段，避免分别维护两份工具说明。 | `backend/agents/runtime/system_prompt/assembler.py` |
+| 重启后怎么恢复？ | 读取持久化事件并回放；若日志尾部存在未结束轮次，补记工具结果未知或未执行的事件，再闭合步骤和轮次。恢复不等于重新启动原来被中断的工具进程。 | `packages/session/persistence-postgres/src/postgres.py`、`packages/session/core/src/repair.py` |
+| 用户中途发消息怎么办？ | 当前步骤修正进入 next-step 队列，追加任务进入 next-turn 队列；在步骤边界认领并追加 user/message 事件，使用 msg_id 将 SSE 回执与前端气泡对齐。 | `backend/agents/runtime/loop/inbox.py`、`packages/host/http-api/src/routes/agents.py` |
+| 提示词与工具定义怎么同步？ | 一次求值获得实际可见的工具 Schema 和 guidance，先确定工具集合，再组装工具指导段，避免分别维护两份工具说明。 | `packages/agent/system-prompt/src/assembler.py` |
 
 ## 当前实现边界与数据口径
 

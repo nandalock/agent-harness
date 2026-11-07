@@ -12,8 +12,8 @@ from agent_platform_plugin_sdk import (
 )
 from agent_platform_skills import SKILLS, SkillRegistry, SkillScope, SkillSource, SkillError
 from agent_platform_skills_filesystem import FilesystemSkillProvider
-from backend.agents.runtime.extensions import AgentExtensionRegistry
-from backend.agents.runtime.session import Session
+from agent_platform_agent_runtime import AgentExtensionRegistry
+from agent_platform_session import Session
 
 
 class Agents:

@@ -9,12 +9,16 @@ from .host import (
     ALLOWED,
     APPROVAL,
     SETTINGS,
+    TOOL_BINDINGS,
+    DATABASE,
     AgentConfigService,
     ApprovalChannel,
     ApprovalOutcome,
     ApprovalRequest,
     ApprovalService,
+    Database,
     SettingsService,
+    ToolBindingsService,
     new_approval_id,
 )
 from .lifecycle import CleanupCallback, Plugin, PluginContext, Registration, ServiceKey
@@ -31,8 +35,9 @@ __version__ = "0.1.0"
 
 __all__ = [
     "AGENT_EXTENSIONS", "AgentRunContext", "AgentRunContribution", "AgentExtensionsService",
-    "AGENTS", "ALLOWED", "APPROVAL", "SETTINGS", "AgentConfigService", "ApprovalChannel",
-    "ApprovalOutcome", "ApprovalRequest", "ApprovalService", "SettingsService", "new_approval_id",
+    "AGENTS", "ALLOWED", "APPROVAL", "SETTINGS", "TOOL_BINDINGS", "DATABASE", "AgentConfigService", "ApprovalChannel",
+    "ApprovalOutcome", "ApprovalRequest", "ApprovalService", "Database", "SettingsService",
+    "ToolBindingsService", "new_approval_id",
     "CleanupCallback", "ExecutionScope", "JsonObject", "JsonValue", "PLUGIN_ENTRY_POINT_GROUP",
     "Plugin", "PluginCompatibilityError", "PluginConfiguration", "PluginContext", "PluginEntry",
     "PluginSdkError", "PluginSpec", "Registration", "RegistrationConflictError", "SDK_API_VERSION",

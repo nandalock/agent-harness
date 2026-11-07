@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | `core/` | `agent-platform.agents` | 提供 `agent.runs.v1`，管理工厂、活动句柄、会话单飞和运行作用域 |
 | `loop/` | `agent-platform.agent-loop` | 注册默认工厂，实现 inbox、LLM → 工具 → LLM、流式装配、重试、取消和执行限制 |
+| `runtime/` | `agent-platform.agent-runtime` | 提供 `agent.runtime.v1` 和 `agent.extensions.v1`；装配提示词、技能等扩展、LLM 和 Loop，管理一次 reply 的完整生命周期 |
 
 默认装配在 `packages/plugin/default/src/plugins.yaml`，本地和 Docker 都加载它们。现有安装更新一次：
 
@@ -14,26 +15,33 @@ python -m pip install -r requirements-plugins.txt
 python minidsh.py web
 ```
 
-循环实现位于 `loop/src/agent_loop.py`。两个插件均使用平铺 `src/` 和 `pyproject.toml` 的包名映射，不导入 `backend`。依赖的 LLM 公共类型位于 `packages/llm/core`；会话事件、消息派生和工具事实记录位于 `packages/session/core`。
+循环实现位于 `loop/src/agent_loop.py`，运行时实现位于 `runtime/src/runtime.py`。三个插件均使用平铺 `src/` 和 `pyproject.toml` 的包名映射，不导入 `backend`。依赖的 LLM 公共类型位于 `packages/llm/core`；会话事件、消息派生、trace 投影和工具事实记录位于 `packages/session/core`。
 
 实际调用链：
 
 ```text
-后端请求 → 提示词 / 工具可见性 / LLM 客户端装配
-         → runtime.require(AGENT_RUNS).open(...)
+后端请求 → runtime.require(AGENT_RUNTIME).reply(...)
+         → 运行时插件装配提示词 / 工具 / 扩展钩子 / LLM 客户端
+         → ctx.require(AGENT_RUNS).open(...)
          → 插件工厂绑定 LoopContext(ctx, llm, policy)，创建循环
          → followup → when_idle → answer_text
          → loop_ctx.tools 执行工具，Session 记录事实
-         → 后端保存检查点、清理监听器
+         → 运行时插件等待宿主检查点保存、清理监听器
          → 退出运行作用域，释放活动句柄
 ```
 
-后端通过 `backend/agents/runtime/services.py` 查公共服务，不构造默认循环。数据库持久化、HTTP 客户端、提示词装配和会话沙箱策略适配仍在宿主；审批服务和工具执行适配由循环插件注入。所有工具仍来自同一个 `tools.v1` 注册表，循环插件不依赖后端的全局工具运行时。
+后端通过 `backend/agents/runtime/services.py` 查公共服务，不再收集 pre-step 钩子或创建 LoopHooks。
+`runtime/src/extensions.py` 的扩展注册表由运行时插件创建；skill-tools 通过 `ctx.require(AGENT_EXTENSIONS).register(...)` 登记扩展。
+运行时插件收集这些扩展，把合并后的 pre-step 钩子交给循环。注册表按 PluginRuntime 隔离，卸载后撤销。
+
+提示词、LLM、会话恢复/标题、沙箱策略和智能体配置都由各自插件通过服务表提供，
+Runtime 在 `ctx.require(...)` 中解析；仓库里不再有 `backend/agents/runtime/host.py`
+这类中转适配器。所有工具仍来自同一个 `tools.v1` 注册表。
 
 `loop/src/context.py` 定义 `LoopContext`，保留插件启动时收到的原始 `PluginContext`。
 `tools`、`tool_catalog`、`approval` 属性在使用时从这个上下文的服务表解析，
 没有复制注册表，也不把服务分别塞进 Loop 构造参数。
-LLM 客户端和会话策略由宿主为每次运行传入，绑定到该次运行的上下文，避免不同会话串配置。
+LLM 客户端和会话策略由运行时服务为每次运行创建，绑定到该次运行的上下文，避免不同会话串配置。
 
 对照 DSH `agent.ts` 保存 `loopCtx`、`tool-calls.ts` 访问 `ctx.tools` 的方式：
 
@@ -103,8 +111,9 @@ ctx.track(registration)
 
 ```bash
 python -m unittest discover -s packages/agent/loop/tests -v
+python -m unittest discover -s packages/agent/runtime/tests -v
 python -m unittest discover -s packages/plugin/runtime/tests -v
 python -m backend.agents.runtime.tests.test_agent_loop
 python -m backend.agents.runtime.tests.test_agent_runtime_prompt
-python -m pytest backend/agents/runtime/session/tests/test_checkpoint.py -q
+python -m pytest backend/tests/session/test_checkpoint.py -q
 ```

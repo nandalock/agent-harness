@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-api-sessions"
+version = "0.1.0"
+description = "Session controller and RPC methods"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-rpc-gateway>=0.1,<0.2",
+    "agent-platform-sandbox>=0.1,<0.2",
+    "agent-platform-session>=0.1,<0.2",
+    "agent-platform-session-persistence>=0.1,<0.2",
+    "agent-platform-session-recovery>=0.1,<0.2",
+    "agent-platform-session-projection>=0.1,<0.2",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.api-sessions" = "agent_platform_api_sessions:SessionApiPlugin"
+
+[tool.setuptools]
+packages = ["agent_platform_api_sessions"]
+
+[tool.setuptools.package-dir]
+agent_platform_api_sessions = "src"

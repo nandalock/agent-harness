@@ -264,7 +264,7 @@ class SandboxExecutor(ToolExecutor):
             }
 
         confined = None
-        provider = self._provider or get_sandbox_provider()
+        provider = self._provider
         local = getattr(provider, "backend", None) == "local"
         if local:
             from .backends.local import host_argv
@@ -407,10 +407,3 @@ async def _kill_process(proc, local: bool) -> None:
         except ProcessLookupError:
             pass
     await proc.wait()
-
-
-def get_sandbox_provider() -> SandboxProvider | None:
-    """装配层 provider（延迟导入，避免执行器与装配层互相依赖）。"""
-    from .runtime import get_sandbox_provider as _get
-
-    return _get()

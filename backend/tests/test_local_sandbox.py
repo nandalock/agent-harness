@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 import shutil
 import sys
-import tempfile
 import unittest
 import uuid
 from unittest.mock import patch
@@ -115,15 +114,12 @@ class NativeSandboxTests(unittest.IsolatedAsyncioTestCase):
 
 class BackendSelectionTests(unittest.TestCase):
     def test_init_defaults_to_native_and_does_not_probe_docker(self):
-        from agent_platform_sandbox.runtime import get_sandbox_provider, init_sandbox, set_sandbox_provider
-        previous = get_sandbox_provider()
-        try:
-            with patch.dict(os.environ, {}, clear=True), patch("agent_platform_sandbox.runtime.resolve_workspace_root", return_value=str(Path.cwd())), patch("agent_platform_sandbox.runtime.probe_workspace_root") as probe:
-                self.assertIsInstance(init_sandbox(), LocalProvider)
-                probe.assert_not_called()
-                self.assertEqual(init_sandbox(backend="docker", probe=False).backend, "docker")
-        finally:
-            set_sandbox_provider(previous)
+        from agent_platform_sandbox.runtime import init_sandbox
+
+        with patch.dict(os.environ, {}, clear=True), patch("agent_platform_sandbox.runtime.resolve_workspace_root", return_value=str(Path.cwd())), patch("agent_platform_sandbox.runtime.probe_workspace_root") as probe:
+            self.assertIsInstance(init_sandbox(), LocalProvider)
+            probe.assert_not_called()
+            self.assertEqual(init_sandbox(backend="docker", probe=False).backend, "docker")
 
     def test_native_and_docker_publish_the_same_service(self):
         self.assertEqual(LocalSandboxPlugin.spec.provides, (SANDBOX.ref,))

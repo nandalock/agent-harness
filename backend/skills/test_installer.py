@@ -3,7 +3,6 @@ import asyncio
 from dataclasses import replace
 import io
 import json
-from pathlib import Path
 import stat
 import tempfile
 import unittest
@@ -170,16 +169,16 @@ class InstallerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_api_catalog_exposes_installer_without_manual_bindings(self):
         from types import SimpleNamespace
-        from backend.agents.runtime import AgentRuntime
-        from backend.api.skills import list_skills
+        from agent_platform_plugin_sdk import AGENTS
+        from agent_platform_http_api.routes.skills import list_skills
         from backend.skills.support import installed_skill_runtime
-        agent = AgentRuntime("assistant", {"config": {}})
         async with installed_skill_runtime() as (runtime, extensions):
-            with patch("backend.api.skills.get_agent", return_value=agent), \
-                    patch("backend.api.skills._bindings", return_value=[]), \
+            async def definition(key):
+                return {"agent_key": key}
+            with patch.object(runtime.require(AGENTS), "get_definition", definition, create=True), \
+                    patch("agent_platform_http_api.routes.skills._bindings", return_value=[]), \
                     patch("backend.plugin_host.get_plugin_host", return_value=SimpleNamespace(runtime=runtime)), \
-                    patch("backend.agents.runtime.extensions.get_agent_extensions", return_value=extensions), \
-                    patch.object(agent, "_cfg", return_value={}):
+                    patch("backend.agents.runtime.extensions.get_agent_extensions", return_value=extensions):
                 result = await list_skills("assistant", x_tenant_id=7)
         entry = next(row for row in result["skills"] if row["key"] == "platform:skill-installer")
         self.assertIsNone(entry["unavailable_reason"])
@@ -212,10 +211,10 @@ class InstallerTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_chat_loop_installs_and_loads_skill_in_the_same_turn(self):
         from agent_platform_tools_default import ToolsDefaultService
-        from backend.agents.runtime.llm import LoopHooks
-        from backend.agents.runtime.llm.types import LlmResponse
+        from agent_platform_llm import LoopHooks
+        from agent_platform_llm.types import LlmResponse
         from agent_platform_agent_loop.agent_loop import AgentLoop
-        from backend.agents.runtime.session import Session
+        from agent_platform_session import Session
         from agent_platform_skill_tools import SkillExecutor
 
         descriptors = [skill_descriptor(), skill_install_descriptor()]

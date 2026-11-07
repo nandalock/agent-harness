@@ -5,7 +5,7 @@ import unittest
 import httpx
 from fastapi import FastAPI
 
-from backend.embedded_mcp import close_servers, start_server
+from agent_platform_managed_mcp.http import close_servers, start_server
 
 
 class EmbeddedMcpTests(unittest.IsolatedAsyncioTestCase):

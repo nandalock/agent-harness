@@ -42,6 +42,21 @@ def _get_pool():
 
 @contextmanager
 def get_conn():
+    # After the plugin runtime starts, legacy backend services use the same
+    # database.v1 connection factory as plugin consumers.
+    try:
+        from backend.plugin_host import get_plugin_host
+        from agent_platform_plugin_sdk import DATABASE
+
+        host = get_plugin_host()
+        database = host.runtime.require(DATABASE) if host is not None else None
+    except Exception:  # noqa: BLE001 — startup and tests may not have a plugin host
+        database = None
+    if database is not None:
+        with database.get_conn() as conn:
+            yield conn
+        return
+
     pool = _get_pool()
     conn = None
     last_err = None

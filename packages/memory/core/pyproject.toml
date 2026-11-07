@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-memory"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-chat>=0.1,<0.2",
+    "langchain-core>=1,<2",
+    "langchain-openai>=1,<2",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.memory" = "agent_platform_memory:MemoryPlugin"
+
+[tool.setuptools]
+packages = ["agent_platform_memory"]
+
+[tool.setuptools.package-dir]
+agent_platform_memory = "src"

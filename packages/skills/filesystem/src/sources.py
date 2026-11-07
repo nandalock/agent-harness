@@ -12,15 +12,11 @@ def default_sources(*, include_builtin: bool = True) -> list[SkillSource]:
     root = packages_root / "overleaf_rt"
     sources = [
         SkillSource("platform", packages_root / "platform"),
-        SkillSource("overleaf-rt", root / "skills", requirements={
-            "overleaf-setup": ("overleaf_list_hosts", "overleaf_list_projects"),
-            "overleaf-editing": ("overleaf_read_doc", "overleaf_edit_doc"),
-            "overleaf-latex-workflow": ("overleaf_compile", "overleaf_read_compile_log"),
-            "overleaf-comments": ("overleaf_list_comments",),
-        }),
-        SkillSource("overleaf-rt", root / "commands", kind="command", requirements={
-            "overleaf-login": ("overleaf_list_hosts", "overleaf_list_projects"),
-            "overleaf-status": ("overleaf_list_hosts", "overleaf_list_projects"),
+        SkillSource("overleaf-rt", root / "skills", package_key="overleaf-rt", package_name="overleaf", aliases={
+            "overleaf": tuple(name for old in (
+                "overleaf-comments", "overleaf-editing", "overleaf-latex-workflow",
+                "overleaf-setup", "overleaf-login", "overleaf-status",
+            ) for name in (old, f"overleaf-rt:{old}")),
         }),
     ]
     if not include_builtin:
@@ -38,5 +34,6 @@ def default_sources(*, include_builtin: bool = True) -> list[SkillSource]:
             source["name"], path, source.get("kind", "skill"),
             tuple(source["tenant_ids"]),
             tuple(source["agent_keys"]) if "agent_keys" in source else None,
+            package_key=source.get("package_key"), package_name=source.get("package_name"),
         ))
     return sources

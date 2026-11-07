@@ -4,7 +4,7 @@ from typing import AsyncGenerator
 
 from backend.engine.state import WorkflowState
 from backend.engine.builder import build_workflow, MAX_TOTAL_STEPS
-from backend.engine.handlers import reset_visit_counts, _visit_counts
+from backend.engine.handlers import reset_visit_counts
 
 logger = logging.getLogger(__name__)
 

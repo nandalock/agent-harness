@@ -8,20 +8,43 @@
 # tools-default 只提供服务。显式 disabled: true 会禁止补入对应默认插件。
 #
 # 下面这些默认实例会自动补入，不需要在这里重复：
-#   tools-default        id: tools
-#   agents               id: agents
-#   agent-loop           id: agent-loop
+#   database-postgres    id: database
+#   settings-postgres    id: settings
+#   agent-config         id: agent-config
+#   session              id: session
+#   session-persistence-postgres id: session-persistence-postgres
+#   llm                  id: llm
 #   llm-deepseek         id: llm-deepseek
+#   session-title        id: session-title
+#   session-recovery     id: session-recovery
+#   session-projection   id: session-projection
+#   tools-default        id: tools
+#   tool-host            id: tool-host
+#   system-prompt        id: system-prompt
+#   agents               id: agents
+#   user-approval        id: user-approval
+#   agent-loop           id: agent-loop
+#   agent-runtime        id: agent-runtime
+#   agent-entry          id: agent-entry
+#   chat                 id: chat
+#   memory               id: memory
 #   mcp-manager          id: mcp-manager
 #   skills-default       id: skills
 #   skills-filesystem    id: skills-filesystem
 #   skill-tools          id: skill-tools
 #   sandbox-tools        id: sandbox-tools
 #   sandbox-local        id: sandbox-provider
+#   sandbox-policy       id: sandbox-policy
 #   builtin-mcp          id: builtin-mcp
 #   paper-mcp            id: paper-mcp
 #   overleaf-mcp         id: overleaf-mcp
 #   overleaf-rt-mcp      id: overleaf-rt-mcp
+#   rpc-gateway          id: rpc-gateway
+#   rpc-connection       id: rpc-connection
+#   api-workspace        id: api-workspace
+#   api-agents           id: api-agents
+#   api-sessions         id: api-sessions
+#   http-api             id: http-api
 #
 # 这个文件只用来“追加/覆盖”实例。plugins: [] 表示不额外追加，默认实例仍然启动。
 # 完整默认清单在：

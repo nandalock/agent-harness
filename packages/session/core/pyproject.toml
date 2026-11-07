@@ -7,7 +7,13 @@ name = "agent-platform-session"
 version = "0.1.0"
 description = "Storage-independent session events and model-visible history"
 requires-python = ">=3.12"
-dependencies = ["agent-platform-tool-system>=0.1,<0.2"]
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-tool-system>=0.1,<0.2",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.session" = "agent_platform_session:SessionPlugin"
 
 [tool.setuptools]
 packages = ["agent_platform_session"]

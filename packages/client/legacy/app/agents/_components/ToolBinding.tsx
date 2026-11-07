@@ -17,7 +17,7 @@
 //
 // 绑定走 /api/tools/bindings/{agentKey}（全量替换语义，每次提交完整列表）。
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { T, S } from '@/app/theme';
 
@@ -31,37 +31,45 @@ interface ToolInfo {
   plugin_name?: string;
 }
 
-interface Props { agentKey: string; }
+interface Props { agentKey: string; onChange?: () => void; revision?: number; tenantId?: number; }
 
-export default function ToolBinding({ agentKey }: Props) {
+export default function ToolBinding({ agentKey, onChange, revision = 0, tenantId = 1 }: Props) {
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [bound, setBound] = useState<string[]>([]);
+  const [automatic, setAutomatic] = useState<Record<string, string[]>>({});
+  const requestRevision = useRef(0);
   const [sandboxOn, setSandboxOn] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   // 只记**展开**的组：默认空集 = 全部收起，且新导入的 MCP 自动是收起的
   const [open, setOpen] = useState<Set<string>>(new Set());
 
-  useEffect(() => { fetchData(); }, [agentKey]);
+  useEffect(() => { fetchData(); return () => { requestRevision.current++; }; }, [agentKey, revision, tenantId]);
 
   async function fetchData() {
+    const request = ++requestRevision.current;
     try {
       const read = async (path: string) => {
-        const response = await fetch(`${API}${path}`);
+        const response = await fetch(`${API}${path}`, { headers: { 'X-Tenant-ID': String(tenantId) } });
         if (!response.ok) throw new Error(`工具配置加载失败（HTTP ${response.status}），请检查后端插件服务`);
         return response.json();
       };
       const [tr, br, cr] = await Promise.all([
         read('/api/mcp/tools/all'),
-        read('/api/tools/bindings'),
+        read(`/api/tools/bindings/${encodeURIComponent(agentKey)}`),
         read('/api/tools/capabilities/sandbox'),
       ]);
       if (!Array.isArray(tr)) throw new Error('工具列表响应格式异常，请重试');
+      if (!Array.isArray(br.manual_tools) || !br.automatic_tools || typeof br.automatic_tools !== 'object') {
+        throw new Error('工具绑定响应格式异常，请重试');
+      }
+      if (request !== requestRevision.current) return;
       setTools(Array.isArray(tr) ? tr : []);
-      setBound(br[agentKey] || []);
+      setBound(br.manual_tools);
+      setAutomatic(br.automatic_tools);
       setSandboxOn(cr?.enabled !== false);
       setLoadError(null);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : '工具配置加载失败，请重试');
+      if (request === requestRevision.current) setLoadError(error instanceof Error ? error.message : '工具配置加载失败，请重试');
     }
   }
 
@@ -73,16 +81,18 @@ export default function ToolBinding({ agentKey }: Props) {
       body: JSON.stringify({ enabled: on }),
     });
     await fetchData();
+    onChange?.();
   }
 
   // 全量替换。走 Set 去重：同名工具重复出现会把列表写重，而绑定是集合语义
   async function save(next: Iterable<string>) {
     const list = [...new Set(next)];
     setBound(list);
-    await fetch(`${API}/api/tools/bindings/${agentKey}`, {
+    const response = await fetch(`${API}/api/tools/bindings/${agentKey}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(list),
     });
+    if (response.ok) onChange?.();
   }
 
   function toggle(toolName: string, on: boolean) {
@@ -93,6 +103,7 @@ export default function ToolBinding({ agentKey }: Props) {
   function toggleGroup(list: ToolInfo[], on: boolean) {
     const next = new Set(bound);
     for (const t of list) {
+      if (automatic[t.name]) continue;
       if (on) next.add(t.name);
       else next.delete(t.name);
     }
@@ -116,6 +127,8 @@ export default function ToolBinding({ agentKey }: Props) {
   }, {});
   const sources = Object.keys(groups);
   const allOpen = sources.length > 0 && sources.every(s => open.has(s));
+  const effective = new Set([...bound, ...Object.keys(automatic)]);
+  const pendingTools = Object.keys(automatic).filter(name => !tools.some(tool => tool.name === name));
 
   return (
     <div>
@@ -150,7 +163,7 @@ export default function ToolBinding({ agentKey }: Props) {
           const pluginName = list[0]?.plugin_name?.replace(/^agent-platform\./, '');
           const label = pluginName ? (pluginName === source ? source : `${pluginName} · ${source}`) : source;
           const isOpen = open.has(source);
-          const checkedCount = list.filter(t => bound.includes(t.name)).length;
+          const checkedCount = list.filter(t => effective.has(t.name)).length;
           const allChecked = checkedCount === list.length;
           const partial = checkedCount > 0 && !allChecked;
           return (
@@ -166,10 +179,12 @@ export default function ToolBinding({ agentKey }: Props) {
                   : <ChevronRight size={13} color={T.secondary} />}
                 {/* 组级开关：点它只切换整组绑定，不折叠（stopPropagation） */}
                 <input type="checkbox" checked={allChecked}
+                  disabled={list.every(t => !!automatic[t.name])}
                   ref={el => { if (el) el.indeterminate = partial; }}
                   onClick={e => e.stopPropagation()}
                   onChange={e => toggleGroup(list, e.target.checked)}
-                  title={allChecked ? `取消绑定 ${label} 的全部工具` : `绑定 ${label} 的全部工具`}
+                  title={list.every(t => !!automatic[t.name]) ? '由技能自动绑定，取消技能后自动解除'
+                    : allChecked ? `取消绑定 ${label} 的全部工具` : `绑定 ${label} 的全部工具`}
                   style={{ accentColor:T.accent, width:14, height:14, cursor:'pointer' }} />
                 <span style={{
                   flex:1, fontSize:12, fontWeight:600, color:T.text,
@@ -188,16 +203,21 @@ export default function ToolBinding({ agentKey }: Props) {
                 <div style={{ padding:`${S.xs}px ${S.sm}px ${S.sm}px 26px`, borderTop:`1px solid ${T.border}` }}>
                   <div style={{ display:'flex', flexDirection:'column', gap:S.xs }}>
                     {list.map(t => {
-                      const checked = bound.includes(t.name);
+                      const checked = effective.has(t.name);
+                      const owners = automatic[t.name];
                       return (
                         <label key={t.name} style={{
                           display:'flex', alignItems:'center', gap:6, padding:'3px 0',
                           fontSize:12, cursor:'pointer', color:T.text,
                         }} title={t.description}>
                           <input type="checkbox" checked={checked}
+                            aria-label={t.name}
+                            disabled={!!owners}
                             onChange={e => toggle(t.name, e.target.checked)}
                             style={{ accentColor: T.accent, width:14, height:14, cursor:'pointer' }} />
                           <span style={{ fontFamily:'monospace', fontSize:11 }}>{t.name}</span>
+                          {owners && <span title={`由 ${owners.join('、')} 自动绑定；取消对应技能后自动解除`}
+                            style={{ fontSize:10, color:T.secondary }}>技能自动绑定</span>}
                         </label>
                       );
                     })}
@@ -210,6 +230,11 @@ export default function ToolBinding({ agentKey }: Props) {
         {loadError && <div role="alert" style={{ fontSize:11 }}>
           {loadError} <button type="button" onClick={() => fetchData()}>重试</button>
         </div>}
+        {!loadError && pendingTools.length > 0 && <details style={{ fontSize:11, color:T.warning }}>
+          <summary style={{ cursor:'pointer' }}>{pendingTools.length} 个技能关联工具尚未加载</summary>
+          <div style={{ marginTop:4 }}>启动对应工具插件或连接后自动生效，无需再次绑定。</div>
+          <div style={{ maxHeight:100, overflowY:'auto', overflowWrap:'anywhere' }}>{pendingTools.join('、')}</div>
+        </details>}
         {!loadError && tools.length === 0 && <div style={{ fontSize:11, color:T.tertiary }}>无可用工具</div>}
       </div>
     </div>

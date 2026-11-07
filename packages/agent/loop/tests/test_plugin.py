@@ -320,7 +320,10 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
             "name": "echo", "parameters": {"type": "object"},
         }}]
         calls = []
-        with patch.object(ctx, "require", wraps=ctx.require) as resolve:
+        with (
+            patch.object(ctx, "require", wraps=ctx.require) as resolve,
+            patch.object(ctx, "get", wraps=ctx.get) as optional,
+        ):
             loop = LoopFactory(ctx, LoopConfig()).create(**opts)
             self.assertFalse(resolve.called)
             # The same service table is read at dispatch, so registrations made
@@ -333,7 +336,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(loop.answer_text(), "done")
         self.assertEqual(len(calls), 1)
         self.assertIn(unittest.mock.call(TOOLS), resolve.call_args_list)
-        self.assertIn(unittest.mock.call(APPROVAL), resolve.call_args_list)
+        self.assertIn(unittest.mock.call(APPROVAL), optional.call_args_list)
 
     async def test_run_contexts_share_services_but_isolate_clients_and_policies(self):
         factory = LoopFactory(self.loop_plugin_context(), LoopConfig())

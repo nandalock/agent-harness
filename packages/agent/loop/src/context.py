@@ -32,8 +32,8 @@ class LoopContext:
         return self.plugin_ctx.require(TOOL_CATALOG)
 
     @property
-    def approval(self) -> ApprovalService:
-        return self.plugin_ctx.require(APPROVAL)
+    def approval(self) -> ApprovalService | None:
+        return self.plugin_ctx.get(APPROVAL)
 
     @property
     def sandbox_policy(self) -> Any:

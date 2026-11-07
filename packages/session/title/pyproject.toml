@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-session-title"
+version = "0.1.0"
+description = "Log-backed session title service and automatic title provider"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-llm>=0.1,<0.2",
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-session>=0.1,<0.2",
+    "agent-platform-session-persistence>=0.1,<0.2",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.session-title" = "agent_platform_session_title:SessionTitlePlugin"
+
+[tool.setuptools]
+packages = ["agent_platform_session_title"]
+
+[tool.setuptools.package-dir]
+agent_platform_session_title = "src"
