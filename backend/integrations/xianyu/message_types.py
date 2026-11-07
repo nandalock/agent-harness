@@ -21,11 +21,3 @@ Message = Annotated[
 ]
 
 message_adapter = TypeAdapter(Message)
-
-
-def make_text(text: str) -> TextContent:
-    return {"type": "text", "text": text}
-
-
-def make_image(url: str, width: int = 0, height: int = 0) -> ImageContent:
-    return {"type": "image", "image_url": url, "width": width, "height": height}

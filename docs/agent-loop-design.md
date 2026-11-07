@@ -11,7 +11,7 @@
 > 状态：**§2–§5 全部落地**（循环本体 §8 · LLM 出口 §9 · RunRegistry 与投递端点 §10）；
 > 已落地：`pre_step` 的上下文注入；未做：§3 的持久化队列、`request` / `turn_stopping` 拦截点
 > 参考：DeepSeek Harness `dsh-agent-loop`（`inbox.ts` 双队列 · `agent.ts` 四个 waterfall）· `dsh-agent`（事件契约）
-> 关联代码：`packages/agent/loop/src/agent_loop.py` · `backend/agents/runtime/agent_runtime.py` · `backend/api/agents.py`
+> 关联代码：`packages/agent/loop/src/agent_loop.py` · `backend/agents/runtime/agent_runtime.py` · `packages/host/http-api/src/routes/agents.py`
 > 前置：Phase 1（健壮性：finish_reason / 重试 / 闭合）· Phase 2（取消通道）已落地
 
 ## 1. 问题
@@ -165,7 +165,7 @@ agent_loop.py，解耦只做了一半。对齐 A 的 `RequestErrorAction`（`{ki
 3. **hooks 契约实现**：先做 `request_error`（把现有重试策略搬过去当第一个消费者），
    再用 `turn_stopping` 做"截断后自动续写"验证契约够用
 
-   → `request_error` **已落地**，收在 `backend/agents/runtime/llm/` 子包（对齐 A 的
+   → `request_error` **已落地**，收在 `packages/llm/core/src/` 子包（对齐 A 的
    `packages/llm/`：策略与契约独立成包，执行留在循环）：契约在 `llm/hooks.py`
    （`LoopHooks` / `RetryDecision`），内置策略在 `llm/retry.py`（`retry_delay` /
    `make_retry_policy`），失败类型与分类在 `llm/errors.py`（`LlmError` / 失败码 /
@@ -259,7 +259,7 @@ router / paper 三个仍在裸发 HTTP 的调用方。
 | 件 | 位置 | 关键点 |
 |---|---|---|
 | `RunRegistry` | `loop/registry.py` | session_id → 活动句柄（`RunHandle` 协议：能投递、能取消）；`register` 占用即 `RunConflict`。`AgentRuntime.reply` 登记句柄（flush **之后**才注销），Gateway 把 `RunConflict` 翻成 `AgentBusy` |
-| 投递端点 | `api/agents.py` | 202 已受理 / 400 未知 target / 404 会话不存在 / 409 没有在跑的轮次。受理即落一条会话消息（刷新后仍在对话历史里） |
+| 投递端点 | `packages/host/http-api/src/routes/agents.py` | 202 已受理 / 400 未知 target / 404 会话不存在 / 409 没有在跑的轮次。受理即落一条会话消息（刷新后仍在对话历史里） |
 | 错误映射 | `main.py` | `GatewayError` 的**唯一**状态映射表（400/404/409）—— 各端点不再各写一份 try/except |
 | 认领回帧 | `projections/trajectory.py` | 本轮第二条及以后的 `user/message` → `{"type":"user", …}`；第一条是本轮开启输入（前端已上屏，回帧会重影） |
 | 消息身份 | `loop/inbox.py` | `InboxMessage(id, text)`；`followup/steer/inject` 返回 id，认领时随事件回来 —— UI 靠它对上「待投递」 |
@@ -276,4 +276,4 @@ AgentRuntime 在构造 Loop 前取得 Session 写入所有权，并完成数据�
 
 CheckpointError 从步骤与 driver 传播至 Runtime/Gateway，记录 persistence_error，停止后续派发和自动唤醒。工具调度器保留并发与有序提交；保存失败、等待保存期间取消以及工具已经进入执行的取消，分别保留真实执行状态。
 
-恢复关闭中断旧轮次，新轮次通过 turn/start.resumed_from 关联来源。未知结果由模型结合工具语义先核实，恢复器不自动重复执行工具。状态查询、继续 API、旧日志兼容及验证命令见 [Session 文档](../backend/agents/runtime/session/session.md)。
+恢复关闭中断旧轮次，新轮次通过 turn/start.resumed_from 关联来源。未知结果由模型结合工具语义先核实，恢复器不自动重复执行工具。状态查询、继续 API、旧日志兼容及验证命令见 [Session 文档](../packages/session/README.md)。

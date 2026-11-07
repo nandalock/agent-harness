@@ -17,6 +17,27 @@
   `BACKEND_URL`（默认 `127.0.0.1:8000`）。前端不实现登录/登出，也不依赖 cookie；
   后端保留的 `/api/auth/login` 是可选接口。
 
+## 插件运行时（服务注入）
+
+- 服务实例只存在于 `PluginRuntime`：插件 `setup()` 用 `ctx.require` / `ctx.get`
+  取依赖、`ctx.provide` 发布服务；禁止模块级 `get_*` / `set_*` 服务单例。
+- 导入包不得创建服务实例或注册任何东西；契约、错误、纯函数可以正常 import。
+- session 能力拆在 `packages/session/*`：`SESSIONS`、`SESSION_PERSISTENCE`、
+  `SESSION_TITLE`、`SESSION_RECOVERY`、`SESSION_PROJECTION`。
+  `SessionRecoveryService` / `SessionTitleService` 由插件构造并注入 store、
+  persistence、LLM；后端只剩 `backend/tests/session/` 集成测试。
+- `AgentRuntime` 只依赖 `AGENTS`、`AGENT_RUNS`、`RUNTIME_PROMPTS`、`LLM`、
+  `AGENT_SANDBOX`、`SESSION_RECOVERY`、可选 `SESSION_TITLE`，不再引用 backend
+  适配器或全局单例。细节见 `docs/plugin-architecture.md`。
+- HTTP 由 `packages/host/http-api` 插件提供；REST/SSE/WebSocket 路由定义都在
+  `packages/host/http-api/src/routes/`，`backend/api/` 已不存在。`backend/main.py`
+  只是 ASGI proxy。无 HTTP 入口：`python -m backend.headless --agent default "..."`。
+- 业务接口走 `POST /api/rpc`：`packages/api/gateway`（方法登记/校验）、
+  `packages/api/connection`（JSON-RPC 2.0）、`packages/api/{workspace,agents,sessions}`
+  （Controller 插件）。前端用 `packages/client/legacy/lib/remote/`，TS 类型由
+  `scripts/generate_rpc_contracts.py` 生成。旧 REST 路由（已迁移部分）只转发同一个
+  Controller；聊天 SSE、文件传输保留独立 HTTP。详见 `docs/rpc-api.md`。
+
 ## 参考代码：DeepSeek Harness
 
 本地有一份 DeepSeek Harness 源码，作为前端插件化（client modules / slots）的参考实现：

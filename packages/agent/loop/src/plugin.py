@@ -30,7 +30,10 @@ class LoopFactory:
 class AgentLoopPlugin:
     spec = PluginSpec(
         name="agent-platform.agent-loop", version="0.1.0",
-        requires=tuple(ServiceRequirement(service=key.ref) for key in (AGENT_RUNS, TOOLS, TOOL_CATALOG, APPROVAL)),
+        requires=(
+            *(ServiceRequirement(service=key.ref) for key in (AGENT_RUNS, TOOLS, TOOL_CATALOG)),
+            ServiceRequirement(service=APPROVAL.ref, optional=True),
+        ),
     )
     config_model = LoopConfig
 

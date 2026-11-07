@@ -41,5 +41,5 @@ and existing bindings. These managed rows are excluded from DB client discovery
 to prevent duplicate registration or accidental activation of disabled plugins.
 PLUGIN_MCP_AUTO still controls only other database-discovered MCP clients.
 
-The HTTP helper lives in this package; backend/embedded_mcp.py is a compatibility
-import for older callers. This package does not import backend.
+The HTTP helper lives in this package and is imported directly by its tests.
+This package does not import backend.

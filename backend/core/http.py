@@ -18,12 +18,3 @@ async def get_http_session() -> aiohttp.ClientSession:
         )
         logger.info("创建全局 aiohttp session")
     return _session
-
-
-async def close_http_session():
-    """应用关闭时释放连接池（session.close 会同时关闭 connector，勿重复关闭）"""
-    global _session
-    if _session and not _session.closed:
-        await _session.close()
-        logger.info("已关闭全局 aiohttp session")
-    _session = None

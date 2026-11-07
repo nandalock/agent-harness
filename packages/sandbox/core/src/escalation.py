@@ -29,7 +29,7 @@
 granted mode、不做 approval cache、不写任何持久权限。
 
 **审批能力不在本模块，也不在 sandbox 里**：它归
-:mod:`backend.interaction.approval`（通用的人机确认能力）。本模块只做两件事 ——
+:mod:`agent_platform_user_approval`（通用的人机确认能力）。本模块只做两件事 ——
 判断「这次要升到哪一档」，以及把沙箱的模式信息装进 ``ApprovalRequest.metadata``
 后调用 ``approval.request()``。依赖方向单向：
 **sandbox/escalation → interaction/approval**，反过来不成立。

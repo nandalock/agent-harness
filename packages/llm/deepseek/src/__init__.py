@@ -20,12 +20,13 @@ import os
 
 from pydantic import ConfigDict, Field
 
-from agent_platform_llm import (
-    ModelConfig,
-    openai_base_url,
-    register_provider,
+from agent_platform_llm import LLM, ModelConfig, openai_base_url
+from agent_platform_plugin_sdk import (
+    PluginContext,
+    PluginSpec,
+    SdkModel,
+    ServiceRequirement,
 )
-from agent_platform_plugin_sdk import PluginContext, PluginSpec, SdkModel
 
 DEFAULT_API_KEY_ENV = "DEEPSEEK_API_KEY"
 DEFAULT_BASE_URL = "https://api.deepseek.com"
@@ -84,9 +85,15 @@ class DeepSeekResolver:
 
 
 class DeepSeekProviderPlugin:
-    spec = PluginSpec(name="agent-platform.llm-deepseek", version="0.1.0")
+    spec = PluginSpec(
+        name="agent-platform.llm-deepseek",
+        version="0.1.0",
+        requires=(ServiceRequirement(service=LLM.ref),),
+    )
     config_model = DeepSeekConfig
 
     async def setup(self, ctx: PluginContext, config: DeepSeekConfig) -> None:
-        registration = register_provider(config.provider, DeepSeekResolver(config))
-        ctx.on_dispose(registration.close, label=f"provider route {config.provider}")
+        registration = ctx.require(LLM).register_provider(
+            config.provider, DeepSeekResolver(config)
+        )
+        ctx.on_dispose(registration, label=f"provider route {config.provider}")

@@ -1,6 +1,6 @@
 """Message-page replay must retain event identities across interruption and pagination."""
-from backend.agents.runtime.session.session import Session
-from backend.services.chat.history import attach_trajectories
+from agent_platform_session.session import Session
+from agent_platform_chat.history import attach_trajectories
 from datetime import datetime, timezone
 
 

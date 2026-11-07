@@ -33,7 +33,7 @@
 | `policy.py` | 模式优先级链（纯函数） | `runtime.py`、executor |
 | `escalation.py` | **完整升权链**：严格序表、参数校验、调用 `approval.v1`、两个模型可见标记。不认识 session / agent / **审批实现** | executor、`runtime.py` |
 | `classify.py` | 结果分类：`denied` / `runner_failed` / `normal` | executor |
-| `workspace.py` | 路径映射、工作区根解析与安全校验、**工作区内相对路径的越界校验**、只读挂载构造、功能探测 | 装配层、后端、`api/workspace.py` |
+| `workspace.py` | 路径映射、工作区根解析与安全校验、**工作区内相对路径的越界校验**、只读挂载构造、功能探测 | 装配层、后端、`packages/host/http-api/src/routes/workspace.py` |
 | `errors.py` | `SandboxUnavailableError` —— fail-closed 的唯一出口 | 全层 |
 | `runtime.py` | 装配 + 会话策略 + 内建工具 schema / 注册辅助 | `main.py`、`sandbox-tools` 插件 |
 | `backend/tests/test_sandbox.py` | 自检：纯逻辑 + 真实 docker e2e（docker 不可用时自动跳过） | — |
@@ -63,7 +63,7 @@
    （等价 DSH 的 `approval=never`）—— 没有判定方 ≠ 默认批准。四条 fail-closed
    路径（无通道 / 无 agent / 超时 / 未知裁决值）全部落在「不开门」上。
 9. **工作区只有一个写方（沙箱），读路径必须经 `resolve_workspace_member`**。
-   用户侧的浏览器（`api/workspace.py`）**只读**，不提供写/删/改名 —— 少一个写接口
+   用户侧的浏览器（`packages/host/http-api/src/routes/workspace.py`）**只读**，不提供写/删/改名 —— 少一个写接口
    就少一整类「模型正在写、用户正在删」的竞态。读侧的工作区内容是**模型**写的，
    即不可信输入源：绝对路径、`..`、以及 **`resolve()` 后越界的符号链接**
    （模型可以 `ln -s /etc/passwd evil`，字符串上毫无破绽）全部拒 400。
@@ -291,7 +291,7 @@ interaction/approval    怎么问人、怎么等回答      ← Channel / Servic
   `runner_failure_rules`（**不要**跨后端取并集 —— 并集会声称本后端永远不会产生的拒绝）
 - 改结果格式？→ 更新 `classify.py` 的标记 + `tool/result` 的 sandbox 事实 + 快照测试
 - 动用户侧工作区读接口？→ 路径**只能**经 `resolve_workspace_member`（见不变量 9），
-  别在 `api/workspace.py` 里自己拼路径；租户归属查 `conversations.session_id`，
+  别在 `packages/host/http-api/src/routes/workspace.py` 里自己拼路径；租户归属查 `conversations.session_id`，
   因为 `session_headers` 没有 tenant 列
 - 动 `notice`？→ 记得走一遍「被拒 → 重试 → 再被拒」的时序，回路熔断在 `executor.py`
 - 动升权？→ 三件事必须一起看：**链在 `approve_escalation` 里一次走完**（别拆回

@@ -30,3 +30,15 @@ a replacement service or disabling both its consumers as well.
 
 `pyproject.toml` maps `agent_platform_skills_filesystem` directly to `src/` and
 includes bundled Markdown, notices and licenses in wheels.
+
+Sources can declare `package_key` and `package_name` to identify one downloaded
+bundle across its skill and command directories. Bundled Overleaf has one entry,
+`src/builtin/overleaf_rt/skills/overleaf/SKILL.md`, selected with
+`@package/overleaf-rt`. Its six `references/*.md` files are resources, never
+independently discovered skills. Legacy Overleaf names resolve to this entry.
+Sources without package metadata retain separate
+selectors for each skill, including unrelated installations in the same directory.
+
+`list()` reads frontmatter only and returns summaries without instructions.
+`get()` reads the chosen entry body. Reference files are opened only through an
+explicit `skill(name="overleaf", resource="references/comments.md")` request.

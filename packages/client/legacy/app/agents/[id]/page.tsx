@@ -1,5 +1,6 @@
 'use client';
 
+import { remote } from '@/lib/remote';
 import { useState, useRef, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { T, S, inputField, labelField, btnPrimary } from '@/app/theme';
@@ -9,6 +10,7 @@ import VirtualTranscript, { useRowDisclosure, type TranscriptHandle } from '@/co
 import { useOlderMessages } from '@/components/useOlderMessages';
 import { fetchHistoryPage, messageKey, type ChatMessage } from '@/lib/chatHistory';
 import ToolBinding from '../_components/ToolBinding';
+import SkillBinding, { type SkillBindingConfig } from '../_components/SkillBinding';
 import CachePolicyEditor, { type CachePolicyData } from '../_components/CachePolicyEditor';
 import TrajectoryTimeline from '../_components/TrajectoryTimeline';
 import TraceSummaryRow from '../_components/TraceSummaryRow';
@@ -135,6 +137,8 @@ interface HistConv {
 }
 
 const DEFAULT_CONFIG = { system_prompt: '', fallback_reply: '', api_key: '', base_url: '', model: '', max_steps: 5 };
+type AgentConfig = typeof DEFAULT_CONFIG & SkillBindingConfig & Record<string, unknown>;
+const DEFAULT_AGENT_CONFIG: AgentConfig = { ...DEFAULT_CONFIG, skills_enabled: true, enabled_skills: null };
 
 export default function AgentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -200,7 +204,11 @@ export default function AgentDetailPage() {
   const transcriptRef = useRef<TranscriptHandle>(null);
   const liveId = useRef('');
   const older = useOlderMessages(conversationId, setMessages);
-  const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [config, setConfig] = useState<AgentConfig>(DEFAULT_AGENT_CONFIG);
+  const [configLoading, setConfigLoading] = useState(true);
+  const [configError, setConfigError] = useState('');
+  const [toolRevision, setToolRevision] = useState(0);
+  const [bindingRevision, setBindingRevision] = useState(0);
   const [cachePolicy, setCachePolicy] = useState<Record<string, any> | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
@@ -208,26 +216,45 @@ export default function AgentDetailPage() {
   const VISITOR_ID = getVisitorId(agentKey);
 
   useEffect(() => {
-    fetch(`${API}/api/agents/${agentKey}/config`).then(r => r.json()).then(d => {
-      if (d.config) {
+    const controller = new AbortController();
+    setConfigLoading(true);
+    setConfigError('');
+    setConfig(DEFAULT_AGENT_CONFIG);
+    setSaveMsg('');
+    remote.agent.getConfig({ agent_key: agentKey }).then(d => {
+      if (controller.signal.aborted) return;
+      const cfg = d.config as Record<string, any>;
+      if (cfg) {
+        if (cfg.enabled_skills != null && (!Array.isArray(cfg.enabled_skills)
+          || cfg.enabled_skills.some((name: unknown) => typeof name !== 'string'))) {
+          throw new Error('技能配置格式错误，请检查技能白名单');
+        }
         setConfig({
-          system_prompt: d.config.system_prompt ?? '',
-          fallback_reply: d.config.fallback_reply ?? '',
-          api_key: d.config.api_key ?? '',
-          base_url: d.config.base_url || '',
-          model: d.config.model || '',
-          max_steps: d.config.max_steps ?? 5,
+          ...cfg,
+          system_prompt: cfg.system_prompt ?? '',
+          fallback_reply: cfg.fallback_reply ?? '',
+          api_key: cfg.api_key ?? '',
+          base_url: cfg.base_url || '',
+          model: cfg.model || '',
+          max_steps: cfg.max_steps ?? 5,
+          skills_enabled: cfg.skills_enabled !== false,
+          enabled_skills: cfg.enabled_skills ?? null,
         });
       }
       setCachePolicy(d.cache_policy ?? null);
-    }).catch(() => {});
+    }).catch((reason: any) => {
+      if (!controller.signal.aborted) setConfigError(reason.message || '配置加载失败，请刷新重试');
+    }).finally(() => {
+      if (!controller.signal.aborted) setConfigLoading(false);
+    });
+    return () => controller.abort();
   }, [agentKey]);
 
   useEffect(() => {
     // Load agent info from list
-    fetch(`${API}/api/agents`).then(r => r.json()).then(list => {
-      const a = (list as any[]).find((x: any) => x.key === agentKey);
-      if (a) { setAgentName(a.name); setAgentDesc(a.desc); }
+    remote.agent.list().then(list => {
+      const a = list.items.find((x: any) => x.key === agentKey);
+      if (a) { setAgentName(a.name ?? agentKey); setAgentDesc(a.desc ?? ''); }
     }).catch(() => {});
   }, [agentKey]);
 
@@ -259,12 +286,15 @@ export default function AgentDetailPage() {
   const liveAnsText = answerTextOf(trajNodes);
 
   async function handleSaveConfig() {
+    if (configLoading || configError) return;
     setSaving(true); setSaveMsg('');
     try {
       const body: any = { ...config };
       if (cachePolicy !== null) body.cache_policy = cachePolicy;
-      const r = await fetch(`${API}/api/agents/${agentKey}/config`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-      setSaveMsg(r.ok ? '保存成功' : '保存失败');
+      await remote.agent.saveConfig({ agent_key: agentKey, config: body });
+      setSaveMsg('保存成功');
+      setBindingRevision(value => value + 1);
+      setToolRevision(value => value + 1);
     } catch { setSaveMsg('保存失败'); }
     finally { setSaving(false); }
   }
@@ -481,7 +511,14 @@ export default function AgentDetailPage() {
           </label>
 
           <div style={{ paddingTop:S.sm }}>
-            <ToolBinding agentKey={agentKey} />
+            <ToolBinding agentKey={agentKey} revision={bindingRevision} tenantId={TENANT_ID} onChange={() => setToolRevision(value => value + 1)} />
+          </div>
+
+          <div style={{ paddingTop:S.sm }}>
+            {configLoading ? <div role="status" style={{ fontSize:12, color:T.secondary }}>正在加载配置…</div>
+              : configError ? <div role="alert" style={{ fontSize:12, color:T.danger }}>{configError}</div>
+                : <SkillBinding agentKey={agentKey} value={config} toolRevision={toolRevision} tenantId={TENANT_ID}
+                  onChange={value => { setConfig(previous => ({ ...previous, ...value })); setSaveMsg(''); }} />}
           </div>
 
           <div style={{ fontSize:11, fontWeight:600, color:T.secondary, letterSpacing:'0.04em', textTransform:'uppercase', marginTop:S.sm }}>回复设置</div>
@@ -523,7 +560,7 @@ export default function AgentDetailPage() {
 
         <div style={{ padding:`${S.base}px ${S.xl}px ${S.lg}px` }}>
           {saveMsg && <div style={{ fontSize:12, marginBottom:S.sm, color:saveMsg==='保存成功'?T.success:T.danger }}>{saveMsg}</div>}
-          <button onClick={handleSaveConfig} disabled={saving} style={{...btnPrimary, width:'100%', padding:'10px 0', fontSize:14, opacity:saving?0.5:1 }}>{saving?'保存中...':'保存配置'}</button>
+          <button onClick={handleSaveConfig} disabled={saving || configLoading || !!configError} style={{...btnPrimary, width:'100%', padding:'10px 0', fontSize:14, opacity:saving || configLoading || configError ? 0.5 : 1 }}>{saving?'保存中...':'保存配置'}</button>
         </div>
       </div>
 

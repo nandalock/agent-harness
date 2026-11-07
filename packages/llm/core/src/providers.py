@@ -1,12 +1,8 @@
-"""Provider-neutral model connection registry.
+"""Provider-neutral model configuration vocabulary.
 
-The agent loop only sees a resolved :class:`ModelConfig`. Provider packages
-(``agent-platform-llm-deepseek`` etc.) register a resolver here; the registry
-does not know environment variables or credentials itself.
-
-This is the same seam DSH uses: an LLM service core plus independent provider
-adapters. A provider resolver is a pure callable ``(agent config) -> ModelConfig``;
-the registry only dispatches by ``provider``.
+The routing table itself lives in :class:`agent_platform_llm.service.LLMService`
+(one instance per PluginRuntime). This module only owns pure types and the
+DB-only fallback used when no provider plugin registered the requested route.
 """
 from __future__ import annotations
 
@@ -46,32 +42,6 @@ class ModelConfig:
 ProviderResolver = Callable[[dict], ModelConfig]
 
 
-@dataclass(frozen=True)
-class ProviderRegistration:
-    """The provider package's owned registration; close it on plugin disposal."""
-
-    name: str
-    resolver: ProviderResolver
-
-    def close(self) -> None:
-        if _PROVIDERS.get(self.name) is self.resolver:
-            del _PROVIDERS[self.name]
-
-
-_PROVIDERS: dict[str, ProviderResolver] = {}
-
-
-def register_provider(name: str, resolver: ProviderResolver) -> ProviderRegistration:
-    """Register one provider route; duplicates are a composition error."""
-    key = (name or "").strip().lower()
-    if not key:
-        raise ValueError("provider name is required")
-    if key in _PROVIDERS:
-        raise ValueError(f"provider already registered: {key}")
-    _PROVIDERS[key] = resolver
-    return ProviderRegistration(key, resolver)
-
-
 def openai_base_url(value: str) -> str:
     """Normalize an endpoint to the root the OpenAI client expects.
 
@@ -94,7 +64,8 @@ def _text(value: object) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def _db_only(provider: str, config: dict) -> ModelConfig:
+def fallback_model_config(provider: str, config: dict) -> ModelConfig:
+    """DB-only fields; an unregistered provider never borrows another route."""
     model = _text(config.get("model"))
     base_url = openai_base_url(_text(config.get("base_url")))
     api_key = _text(config.get("api_key"))
@@ -103,12 +74,10 @@ def _db_only(provider: str, config: dict) -> ModelConfig:
 
 
 def resolve_model_config(config: dict) -> ModelConfig:
-    """Dispatch to the registered provider, or use DB-only fields.
+    """Backward-compatible pure fallback (no provider plugin dispatch).
 
-    An unknown/unmounted provider never borrows another provider's credentials.
+    Runtime code must call ``ctx.require(LLM).resolve(config)`` so provider
+    plugins participate; this function only exists for pure helpers and tests.
     """
     provider = (_text(config.get("provider")) or DEFAULT_PROVIDER).lower()
-    resolver = _PROVIDERS.get(provider)
-    if resolver is not None:
-        return resolver(config)
-    return _db_only(provider, config)
+    return fallback_model_config(provider, config)

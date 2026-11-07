@@ -11,17 +11,16 @@ import asyncio
 import json
 import os
 import sys
-import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
-from backend.agents.runtime.session import (  # noqa: E402
+from agent_platform_session import (  # noqa: E402
     ASSISTANT_MESSAGE,
     STEP_START,
     TURN_START,
     Session,
 )
-from backend.agents.runtime.session import SessionToolRecorder  # noqa: E402
+from agent_platform_session import SessionToolRecorder  # noqa: E402
 from agent_platform_tool_system.context import ToolContext  # noqa: E402
 from agent_platform_tool_system.descriptor import (  # noqa: E402
     EXCLUSIVE,
@@ -314,7 +313,7 @@ def test_parallel_batch_survives_projections():
     一并钉死三件事：轨迹投影按 call_id 回填（不依赖到达顺序）、trace 投影
     的 usage/step 结构不变、derive_messages() 的消息序与 assistant.tool_calls 对齐。
     """
-    from backend.agents.runtime.session.projections import TraceProjection, TrajectoryProjection
+    from agent_platform_session_projection import TraceProjection, TrajectoryProjection
 
     session = Session()
     session.append(TURN_START, {"agent": "a", "limits": {"max_steps": 5}})

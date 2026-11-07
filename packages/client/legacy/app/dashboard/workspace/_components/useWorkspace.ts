@@ -1,23 +1,19 @@
 'use client';
 
-// useWorkspace —— 工作区页的数据层（薄封装，全部直连后端 REST）
+// useWorkspace —— 工作区页的数据层（RPC 业务调用 + 传输型 HTTP）
 //
-// 后端端点清单（backend/api/workspace.py + agents.py）：
-//   GET  /api/workspace/sessions                 会话列表（按 agent 分组）
-//   POST /api/workspace/folder                   按名字创建 / 打开工作区文件夹
-//   GET  /api/workspace/{sid}/files?path=        列目录（2000 条截断 + truncated）
-//   POST /api/workspace/{sid}/files              会话工作区里新建空文件 / 目录
-//   GET  /api/workspace/{sid}/file?path=&inline=1  预览 / 下载（inline=0）
-//   POST /api/workspace/{sid}/upload             多文件上传 → .dsh-drops/
-//   GET    /api/workspace/projects               项目注册表（含排序 / 会话数）
-//   POST   /api/workspace/projects               登记一个已存在的目录（幂等）
-//   PATCH  /api/workspace/projects/{id}          改名 / 排序
-//   DELETE /api/workspace/projects/{id}          **移除项目登记**（不删任何文件）
-//   GET  /api/agents/sessions/{sid}/sandbox_mode  读会话沙箱模式
-//   POST /api/agents/sessions/{sid}/sandbox_mode  写会话沙箱模式（覆盖）
+// 业务读写（会话/项目/文件树/文件夹/沙箱模式）走 JSON-RPC：
+//   remote.workspace.* / remote.session.sandboxMode.* → POST /api/rpc
+// 只有浏览器原生的传输型接口保留 HTTP：
+//   GET  /api/workspace/{sid}/file       预览 / 下载
+//   POST /api/workspace/{sid}/upload     多文件上传
+//   GET  /api/workspace/browse           服务端目录浏览
+//   POST /api/workspace/folder-picker    本机系统目录对话框
 //
 // 预览接口需要 X-Tenant-ID 头，<iframe>/<img> 直接指 URL 发不出自定义头，
 // 所以预览一律 fetch → Blob → objectURL（本文件导出 fetchPreview 供分发）。
+
+import { remote } from '@/lib/remote';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const TENANT_ID = 1;
@@ -99,10 +95,8 @@ export const SANDBOX_MODE_LABELS: Record<string, string> = {
 };
 
 export async function fetchWorkspaceSessions(): Promise<WorkspaceSession[]> {
-  const r = await fetch(`${API}/api/workspace/sessions`, { headers: H });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const d = await r.json();
-  return d.items || [];
+  const result = await remote.workspace.sessions.list();
+  return (result.items || []) as WorkspaceSession[];
 }
 
 /** 给会话改名。后端写一条 `user` 源的 `session/title` 事件 —— **改名即钉住**，
@@ -112,23 +106,15 @@ export async function fetchWorkspaceSessions(): Promise<WorkspaceSession[]> {
  *  显示必须用返回值，否则会出现「刚打完是一回事、刷新后变样」。
  *  标题里塞 ANSI / 零宽字符是预期内的输入，后端清洗后 400 才是真错误（净化为空）。 */
 export async function renameWorkspaceSession(sessionId: string, title: string): Promise<string> {
-  const r = await fetch(`${API}/api/workspace/${sessionId}/title`, {
-    method: 'PATCH', headers: { ...H, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title }),
-  });
-  if (!r.ok) await throwHttp(r);
-  return (await r.json()).title as string;
+  const result = await remote.workspace.sessions.rename({ session_id: sessionId, title });
+  return result.title;
 }
 
 /** 给项目改名。返回**服务端规范化之后**的标题 —— 显示必须用它，不能拿用户输入
  *  顶替，否则会出现「刚打完是一回事、刷新后变样」。 */
 export async function renameWorkspaceProject(projectId: number, title: string): Promise<string> {
-  const r = await fetch(`${API}/api/workspace/projects/${projectId}`, {
-    method: 'PATCH', headers: { ...H, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ title }),
-  });
-  if (!r.ok) await throwHttp(r);
-  return (await r.json()).project.label as string;
+  const result = await remote.workspace.projects.update({ project_id: projectId, title });
+  return result.project.label;
 }
 
 /** **移除项目登记**（后端只删账目那一行）。
@@ -137,19 +123,12 @@ export async function renameWorkspaceProject(projectId: number, title: string): 
  *  下。移除可逆（能重新添加同一目录），但旧会话不会回来，手工排序也不再保留。
  *  未知 id / 别的租户 → 404（后端 `throwHttp` 会把人话带出来）。 */
 export async function deleteWorkspaceProject(projectId: number): Promise<void> {
-  const r = await fetch(`${API}/api/workspace/projects/${projectId}`, {
-    method: 'DELETE', headers: H,
-  });
-  if (!r.ok) await throwHttp(r);
+  await remote.workspace.projects.remove({ project_id: projectId });
 }
 
 export async function fetchDir(sessionId: string, path: string): Promise<{ entries: FileEntry[]; truncated: boolean; writable: boolean }> {
-  const q = path ? `?path=${encodeURIComponent(path)}` : '';
-  const r = await fetch(`${API}/api/workspace/${sessionId}/files${q}`, { headers: H });
-  if (!r.ok) await throwHttp(r);
-  const d = await r.json();
-  // writable 缺字段按 true 兜：后端没这个字段时不该把新建入口整个禁掉
-  return { entries: d.entries || [], truncated: !!d.truncated, writable: d.writable !== false };
+  const d = await remote.workspace.files.list({ session_id: sessionId, path });
+  return { entries: (d.entries || []) as FileEntry[], truncated: !!d.truncated, writable: d.writable !== false };
 }
 
 /** 在**会话工作区**的某个目录里新建空文件 / 目录（即时落盘）。返回新建的条目。
@@ -158,12 +137,10 @@ export async function fetchDir(sessionId: string, path: string): Promise<{ entri
 export async function createWorkspaceEntry(
   sessionId: string, dirPath: string, name: string, kind: EntryKind,
 ): Promise<FileEntry> {
-  const r = await fetch(`${API}/api/workspace/${sessionId}/files`, {
-    method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path: dirPath, name, type: kind }),
+  const result = await remote.workspace.files.create({
+    session_id: sessionId, path: dirPath, name, type: kind,
   });
-  if (!r.ok) await throwHttp(r);
-  return (await r.json()).entry as FileEntry;
+  return result.entry as FileEntry;
 }
 
 /** 按名字创建 / 打开工作区文件夹（`showDirectoryPicker()` 的落点）。
@@ -244,16 +221,11 @@ export async function pickHostWorkspaceFolder(): Promise<HostFolderPick> {
 }
 
 export async function ensureWorkspaceFolder(name: string): Promise<WorkspaceFolderChoice> {
-  const r = await fetch(`${API}/api/workspace/folder`, {
-    method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name }),
-  });
-  if (!r.ok) await throwHttp(r);
-  const d = await r.json();
+  const d = await remote.workspace.folder.ensure({ name });
   return {
-    path: d.path as string,
-    hostPath: (d.host_path as string) || (d.path as string),
-    folder: d.folder as string,
+    path: d.path,
+    hostPath: d.host_path || d.path,
+    folder: d.folder,
     writable: d.writable !== false,
   };
 }
@@ -299,12 +271,9 @@ export interface CreatedSession {
 export async function createWorkspaceSession(
   agentKey: string, folder: string | null, folderPath: string | null = null,
 ): Promise<CreatedSession> {
-  const r = await fetch(`${API}/api/workspace/sessions`, {
-    method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ agent_key: agentKey, folder: folder ?? '', folder_path: folderPath ?? '' }),
+  const d = await remote.workspace.sessions.create({
+    agent_key: agentKey, folder: folder ?? '', folder_path: folderPath ?? '',
   });
-  if (!r.ok) await throwHttp(r);
-  const d = await r.json();
   return d.session as CreatedSession;
 }
 
@@ -338,17 +307,16 @@ export async function cancelLiveRun(agentKey: string, sessionId: string): Promis
 }
 
 export async function fetchSandboxMode(sessionId: string): Promise<SandboxModeInfo> {
-  const r = await fetch(`${API}/api/agents/sessions/${sessionId}/sandbox_mode`, { headers: H });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return await r.json();
+  const d = await remote.session.sandboxMode.get({ session_id: sessionId });
+  return {
+    override: d.override ?? null,
+    default: d.default ?? null,
+    effective: d.effective,
+  };
 }
 
 export async function setSandboxMode(sessionId: string, mode: string): Promise<void> {
-  const r = await fetch(`${API}/api/agents/sessions/${sessionId}/sandbox_mode`, {
-    method: 'POST', headers: { ...H, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mode }),
-  });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  await remote.session.sandboxMode.set({ session_id: sessionId, mode });
 }
 
 /** DSH 侧栏风格相对时间：今天 HH:mm / 昨天 / MM-DD / YYYY-MM-DD */

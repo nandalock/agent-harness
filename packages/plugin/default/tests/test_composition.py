@@ -66,7 +66,28 @@ class CompositionTests(unittest.TestCase):
 
     def test_default_packages_and_explicit_disable(self):
         config = compose(PluginConfiguration())
-        self.assertEqual(len(config.plugins), 14)
+        self.assertEqual(len(config.plugins), 37)
+        self.assertIn("agent-platform.memory", {p.name for p in config.plugins})
+        self.assertTrue({"agent-platform.agent-entry", "agent-platform.chat", "agent-platform.user-approval"}
+                        <= {entry.name for entry in config.plugins})
+        self.assertIn("agent-platform.agent-runtime", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.database-postgres", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.agent-config", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.llm", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.tool-host", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.system-prompt", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.sandbox-policy", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.http-api", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.rpc-gateway", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.rpc-connection", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.api-workspace", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.api-agents", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.api-sessions", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.session", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.session-persistence-postgres", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.session-title", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.session-recovery", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.session-projection", {p.name for p in config.plugins})
         self.assertIn("agent-platform.llm-deepseek", {p.name for p in config.plugins})
         override = PluginConfiguration.model_validate({"plugins": [
             {"id": "custom-tools", "name": "agent-platform.tools-default", "disabled": True},

@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-session-recovery"
+version = "0.1.0"
+description = "Session checkpoint, recovery and exclusive preparation service"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-session>=0.1,<0.2",
+    "agent-platform-session-persistence>=0.1,<0.2",
+    "agent-platform-session-title>=0.1,<0.2",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.session-recovery" = "agent_platform_session_recovery:SessionRecoveryPlugin"
+
+[tool.setuptools]
+packages = ["agent_platform_session_recovery"]
+
+[tool.setuptools.package-dir]
+agent_platform_session_recovery = "src"

@@ -18,8 +18,8 @@ import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from backend.agents.runtime.session.events import SANDBOX_MODE, TOOL_CALL, TOOL_RESULT, SessionEvent  # noqa: E402
-from backend.agents.runtime.session.projections import (  # noqa: E402
+from agent_platform_session.events import SANDBOX_MODE, TOOL_CALL, TOOL_RESULT, SessionEvent  # noqa: E402
+from agent_platform_session_projection import (  # noqa: E402
     SandboxModeProjection,
     TrajectoryProjection,
     project_sandbox_mode,
@@ -29,6 +29,7 @@ from agent_platform_tool_system.events import APPROVAL_REQUEST as APPROVAL_REQUE
 from agent_platform_tool_system.events import SANDBOX_ESCALATION as SANDBOX_ESCALATION_EVENT  # noqa: E402
 from agent_platform_tool_system.events import ToolEvent  # noqa: E402
 from agent_platform_tool_system.descriptor import SandboxToolConfig, ToolDescriptor  # noqa: E402
+from agent_platform_sandbox.backends.local import host_argv
 from agent_platform_sandbox.executor import SandboxExecutor, build_sandbox_argv  # noqa: E402
 from agent_platform_sandbox import (  # noqa: E402
     SandboxPolicy,
@@ -45,10 +46,9 @@ from agent_platform_sandbox.backends.docker import (  # noqa: E402
     DockerProvider,
     assert_no_isolation_injection,
 )
-from backend.interaction.approval import (  # noqa: E402
+from agent_platform_user_approval import (  # noqa: E402
     ApprovalService,
     InProcessApprovalChannel,
-    set_approval_service,
 )
 from agent_platform_sandbox.escalation import (  # noqa: E402
     ESCALATION_TARGETS,
@@ -435,8 +435,9 @@ def test_mounts_note_carries_both_root_axes():
     """
     from agent_platform_sandbox.runtime import _BASH_SCHEMA, mounts_note
 
-    saved = {k: os.environ.get(k) for k in (READ_ROOTS_ENV, WRITE_ROOTS_ENV)}
+    saved = {k: os.environ.get(k) for k in (READ_ROOTS_ENV, WRITE_ROOTS_ENV, "SANDBOX_BACKEND")}
     try:
+        os.environ["SANDBOX_BACKEND"] = "docker"
         os.environ[READ_ROOTS_ENV] = "D:/jk/Papers"
         os.environ[WRITE_ROOTS_ENV] = "D:/jk/Nexus"
         desc = mounts_note()
@@ -476,6 +477,18 @@ def test_mounts_note_reports_workspace_host():
     """
     from agent_platform_sandbox.runtime import mounts_note
 
+    old_backend = os.environ.get("SANDBOX_BACKEND")
+    os.environ["SANDBOX_BACKEND"] = "docker"
+    try:
+        _assert_mounts_note_workspace_host(mounts_note)
+    finally:
+        if old_backend is None:
+            os.environ.pop("SANDBOX_BACKEND", None)
+        else:
+            os.environ["SANDBOX_BACKEND"] = old_backend
+
+
+def _assert_mounts_note_workspace_host(mounts_note):
     # 首句即工作区（整段是一行，句子之间以句号相连）
     assert mounts_note("D:/jk/Nexus/test1").startswith(
         f"\n可写位置：会话工作区 {CONTAINER_WORKSPACE}（宿主 D:/jk/Nexus/test1）。"
@@ -644,7 +657,7 @@ def test_resolve_workspace_member_handles_broken_input():
 def test_api_preview_binary_sniff():
     """预览的二进制嗅探：内容由模型书写，猜错类型就是把 API 源当 XSS 宿主。"""
     try:
-        from backend.api.workspace import _content_disposition, _looks_binary, _sniff_image
+        from agent_platform_http_api.routes.workspace import _content_disposition, _looks_binary, _sniff_image
     except ImportError:
         return  # 本机缺 fastapi 等依赖：跳过（容器内必跑）
 
@@ -688,7 +701,7 @@ def test_api_preview_binary_sniff():
 def test_api_pdf_sniff():
     """PDF 魔数判定：只看内容、最小完整前缀、必须贴头部。"""
     try:
-        from backend.api.workspace import _sniff_pdf
+        from agent_platform_http_api.routes.workspace import _sniff_pdf
     except ImportError:
         return  # 本机缺 fastapi 等依赖：跳过（容器内必跑）
 
@@ -704,7 +717,7 @@ def test_api_upload_name_sanitize():
     """上传文件名 → 纯 basename。浏览器可改、请求可重放，按不可信输入处理。"""
     try:
         from fastapi import HTTPException
-        from backend.api.workspace import _sanitize_upload_name
+        from agent_platform_http_api.routes.workspace import _sanitize_upload_name
     except ImportError:
         return  # 本机缺 fastapi 等依赖：跳过（容器内必跑）
 
@@ -725,7 +738,7 @@ def test_save_upload_replace_semantics():
     """
     try:
         from pathlib import Path
-        from backend.api.workspace import _save_upload
+        from agent_platform_http_api.routes.workspace import _save_upload
     except ImportError:
         return  # 本机缺 fastapi 等依赖：跳过（容器内必跑）
 
@@ -777,7 +790,7 @@ def test_api_new_name_validation():
     """
     try:
         from fastapi import HTTPException
-        from backend.api.workspace import _sanitize_upload_name, _validate_new_name
+        from agent_platform_http_api.routes.workspace import _sanitize_upload_name, _validate_new_name
     except ImportError:
         return  # 本机缺 fastapi 等依赖：跳过（容器内必跑）
 
@@ -797,7 +810,7 @@ def test_api_validate_kind():
     """type 只认 "file" / "dir"；缺失或拼错一律 400，**不默认成文件**。"""
     try:
         from fastapi import HTTPException
-        from backend.api.workspace import _validate_kind
+        from agent_platform_http_api.routes.workspace import _validate_kind
     except ImportError:
         return  # 本机缺 fastapi 等依赖：跳过（容器内必跑）
 
@@ -812,7 +825,7 @@ def test_api_create_child_on_disk():
     try:
         from fastapi import HTTPException
         from pathlib import Path
-        from backend.api.workspace import _create_child, _entry
+        from agent_platform_http_api.routes.workspace import _create_child, _entry
     except ImportError:
         return  # 本机缺 fastapi 等依赖：跳过（容器内必跑）
 
@@ -859,7 +872,7 @@ def test_api_create_child_symlink_fail_closed():
     try:
         from fastapi import HTTPException
         from pathlib import Path
-        from backend.api.workspace import _create_child
+        from agent_platform_http_api.routes.workspace import _create_child
     except ImportError:
         return  # 本机缺 fastapi 等依赖：跳过（容器内必跑）
 
@@ -897,7 +910,7 @@ def test_api_create_target_prefers_write_mount():
     """
     try:
         from pathlib import Path
-        from backend.api.workspace import _BrowseRoot, _create_target
+        from agent_platform_http_api.routes.workspace import _BrowseRoot, _create_target
     except ImportError:
         return  # 本机缺 fastapi 等依赖：跳过（容器内必跑）
 
@@ -935,7 +948,7 @@ def test_api_mount_read_only_probe():
     """
     try:
         from pathlib import Path
-        from backend.api.workspace import _mount_is_read_only
+        from agent_platform_http_api.routes.workspace import _mount_is_read_only
     except ImportError:
         return  # 本机缺 fastapi 等依赖：跳过（容器内必跑）
 
@@ -1033,7 +1046,7 @@ def test_browse_root_folder_mapping():
     from pathlib import Path  # noqa: PLC0415
 
     try:
-        from backend.api.workspace import (
+        from agent_platform_http_api.routes.workspace import (
             _BrowseRoot,
             _backend_visible,
             _browse_root_by_name,
@@ -1164,7 +1177,7 @@ def test_resolve_policy_carries_root_and_session():
 
 
 class _IdentityProvider(SandboxProvider):
-    """把 argv 原样返回的 provider：只验证执行链与分类，不做真实约束。"""
+    """Run the host interpreter so tests can exercise classification without confinement."""
 
     def __init__(self, signatures=(), rules=(), fail_with=None):
         self._signatures = tuple(signatures)
@@ -1175,7 +1188,7 @@ class _IdentityProvider(SandboxProvider):
         if self._fail_with is not None:
             raise SandboxUnavailableError(policy.mode, self._fail_with)
         return ConfinedArgv(
-            argv=list(argv),
+            argv=host_argv(argv),
             enforcement="full",
             denial_signatures=self._signatures,
             runner_failure_rules=self._rules,
@@ -1265,9 +1278,12 @@ def test_executor_provider_unavailable():
 
 
 def test_executor_danger_full_access_bypasses_provider():
-    ex = SandboxExecutor(provider=_IdentityProvider(fail_with="provider 不应被调用"))
-    policy = SandboxExecutionPolicy(mode="danger-full-access", workspace_root="/tmp/ws")
-    res = asyncio.run(ex.execute(_descriptor(), {"command": "echo hi"}, _ctx(policy)))
+    provider = _IdentityProvider(fail_with="provider 不应被调用")
+    provider.backend = "local"
+    ex = SandboxExecutor(provider=provider)
+    with tempfile.TemporaryDirectory() as workspace:
+        policy = SandboxExecutionPolicy(mode="danger-full-access", workspace_root=workspace)
+        res = asyncio.run(ex.execute(_descriptor(), {"command": "echo hi"}, _ctx(policy)))
     assert res["exit_code"] == 0
     assert "sandbox" not in res
 
@@ -1612,22 +1628,15 @@ def test_tool_schema_carries_escalation_params():
 
 
 class _Channel:
-    """临时装配审批服务（测试用）。退出时清空，避免测试间串味。
-
-    返回的是通道本身（供测试直接 resolve/pending）；挂到 ToolContext 上的
-    则是 ApprovalService —— 消费者拿到的是服务，不是裸通道。
-    """
+    """Supply a test-owned approval service to the executor."""
 
     def __init__(self, timeout_s=5.0):
-        self.channel = InProcessApprovalChannel(timeout_s=timeout_s)
-        self.service = ApprovalService(self.channel)
+        self.service = ApprovalService(InProcessApprovalChannel(timeout_s=timeout_s))
 
     def __enter__(self):
-        set_approval_service(self.service)
-        return self.channel
+        return self.service
 
     def __exit__(self, *exc):
-        set_approval_service(None)
         return False
 
 
@@ -1640,11 +1649,9 @@ def _exec_ctx(policy, *, approval=None, sink=None):
 
 async def _execute_with_decision(ex, args, policy, ch, decision, sink):
     """跑一次执行；出现待批准申请就按 ``decision`` 裁决（None = 不裁决）。"""
-    from backend.interaction.approval import get_approval_service
-
     task = asyncio.create_task(ex.execute(
         _descriptor(), dict(args),
-        _exec_ctx(policy, approval=get_approval_service(), sink=sink),
+        _exec_ctx(policy, approval=ch, sink=sink),
     ))
     if decision is not None:
         for _ in range(200):
@@ -1705,7 +1712,7 @@ def test_executor_invalid_escalation_fails_the_call():
         res = asyncio.run(SandboxExecutor(provider=_IdentityProvider()).execute(
             _descriptor(),
             {"command": "echo hi", "sandbox_permissions": "read-only"},   # 缺 justification
-            _exec_ctx(_policy("workspace-write"), approval=ApprovalService(ch), sink=sink),
+            _exec_ctx(_policy("workspace-write"), approval=ch, sink=sink),
         ))
     assert "error" in res
     assert "stdout" not in res          # 命令根本没跑
@@ -1718,19 +1725,16 @@ def test_executor_invalid_escalation_fails_the_call():
 
 
 def test_executor_denied_notice_carries_escalation_hint():
-    from backend.interaction.approval import get_approval_service
-
     ex = SandboxExecutor(provider=_IdentityProvider(signatures=("read-only file system",)))
-    with _Channel():
+    with _Channel() as ch:
         res = asyncio.run(ex.execute(
             _descriptor(), {"command": "echo 'Read-only file system' >&2; exit 1"},
-            _exec_ctx(_policy("read-only"), approval=get_approval_service()),
+            _exec_ctx(_policy("read-only"), approval=ch),
         ))
     assert res["notice"].startswith(sandbox_denial_marker("read-only"))
     assert "escalation available" in res["notice"]
 
     # 没有审批通道时不提示 —— 升权恒不可用，提示只会让模型白烧一轮
-    set_approval_service(None)
     res = asyncio.run(ex.execute(
         _descriptor(), {"command": "echo 'Read-only file system' >&2; exit 1"},
         _exec_ctx(_policy("read-only")),
@@ -1758,10 +1762,10 @@ def test_executor_suppresses_hint_after_refused_escalation():
 
 def test_escalation_event_lands_in_session_log():
     """装配层出口：sandbox.escalation → Event Log（**记录**，不被任何投影折叠）。"""
-    from backend.agents.runtime.session import SessionStore
-    from backend.agents.runtime.session.events import SANDBOX_ESCALATION
-    from backend.agents.runtime.session.projections import project_sandbox_mode
-    from backend.agents.runtime.session import SessionToolEventSink
+    from agent_platform_session import SessionStore
+    from agent_platform_session.events import SANDBOX_ESCALATION
+    from agent_platform_session_projection import project_sandbox_mode
+    from agent_platform_session import SessionToolEventSink
 
     session = SessionStore().create()
     sink = SessionToolEventSink(session, "call_1")

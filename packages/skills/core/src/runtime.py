@@ -13,13 +13,17 @@ def scope_for(tenant_id, agent_key, tool_names, config):
                       enabled_names=tuple(names) if names is not None else None)
 
 
-def render_skill(skill: Skill, arguments: str = "") -> str:
+def render_skill(skill: Skill, arguments: str = "", *, scope: SkillScope | None = None) -> str:
     # 参数仅进行文本替换，永远不作为 shell 命令或文件路径求值。
     body = skill.content.replace("$ARGUMENTS", arguments)
+    missing = sorted(set(skill.bound_tools) - scope.tool_names) if scope is not None else []
+    status = ("当前声明的工具尚未就绪：" + "、".join(missing)
+              + "。可以读取本技能和设置参考资料；具体业务操作须等待对应工具就绪。\n") if missing else ""
     return (f'<skill_content name="{html.escape(skill.key, quote=True)}">\n'
             f"技能资源根目录：{skill.resource_base}\n"
             f"附属文本资源用 skill 工具读取：name={skill.key}，resource=相对路径；不要假设该目录已挂载到 shell 沙箱。\n"
-            f"<skill_instructions>\n{body}\n</skill_instructions>\n</skill_content>")
+            + status
+            + f"<skill_instructions>\n{body}\n</skill_instructions>\n</skill_content>")
 
 
 def catalog_entries(registry: SkillsService, scope: SkillScope) -> list[dict]:
@@ -28,6 +32,12 @@ def catalog_entries(registry: SkillsService, scope: SkillScope) -> list[dict]:
     return [{
         "key": s.key, "name": s.name if counts[s.name] == 1 else s.key,
         "description": s.description, "source": s.source, "kind": s.kind,
+        "package_key": s.package_key or s.key,
+        "package_name": s.package_name or s.package_key or (s.name if counts[s.name] == 1 else s.key),
+        "binding_key": s.binding_key,
+        "tools": list(s.bound_tools),
+        "tools_ready": set(s.bound_tools).issubset(scope.tool_names),
+        "aliases": list(s.aliases),
         "argument_hint": s.argument_hint, "model_invocable": s.model_invocable,
         "user_invocable": s.user_invocable, "unavailable_reason": s.unavailable_reason(scope),
     } for s in skills]
@@ -55,4 +65,4 @@ def load_model_skill(name: str, scope: SkillScope, registry: SkillsService, reso
         except UnicodeError as exc:
             raise SkillError("技能资源必须为 UTF-8 文本") from exc
         return {"name": skill.key, "resource": resource, "text": text}
-    return {"name": skill.key, "content_hash": skill.content_hash, "text": render_skill(skill)}
+    return {"name": skill.key, "content_hash": skill.content_hash, "text": render_skill(skill, scope=scope)}

@@ -29,49 +29,41 @@ from .workspace import (
 
 logger = logging.getLogger(__name__)
 
-_provider: SandboxProvider | None = None
-
 #: 内建沙箱工具名（停用时注销它们）
 BUILTIN_SANDBOX_TOOLS = ("bash", "python")
 
 
-# ── provider 单例 ──
+# ── provider 构造（实例归插件所有，没有进程级单例）──
 
 
-def set_sandbox_provider(provider: SandboxProvider | None) -> None:
-    global _provider
-    _provider = provider
-
-
-def get_sandbox_provider() -> SandboxProvider | None:
-    """当前 provider；未装配返回 None（沙箱工具将 fail-closed）。"""
-    return _provider
-
-
-def init_sandbox(*, image: str | None = None, probe: bool = True, backend: str | None = None) -> SandboxProvider:
-    """装配沙箱：校验工作区根 → 功能探测 → 构造 provider。
-
-    Raises:
-        SandboxUnavailableError: 工作区未配置 / 在 daemon 侧不可见。
-        ValueError: 工作区根配置不安全。
-    """
-    root = resolve_workspace_root()
+def create_provider(
+    *, image: str | None = None, probe: bool = True,
+    backend: str | None = None, initialize_root: bool = True,
+) -> SandboxProvider:
+    """Build one provider instance for a plugin runtime."""
+    if initialize_root:
+        root = resolve_workspace_root()
+    else:
+        root = None
     selected = backend or os.environ.get("SANDBOX_BACKEND", "local")
     if selected == "local":
         from .backends.local import LocalProvider
         provider: SandboxProvider = LocalProvider()
-        set_sandbox_provider(provider)
         logger.info("宿主机沙箱已装配：root=%s；受限执行不可用时拒绝执行", root)
         return provider
     if selected != "docker":
         raise ValueError("SANDBOX_BACKEND must be local or docker")
     img = image or DEFAULT_SANDBOX_IMAGE
-    if probe:
+    if probe and root is not None:
         probe_workspace_root(root, image=img)
     provider = DockerProvider(image=img)
-    set_sandbox_provider(provider)
     logger.info(f"沙箱已装配：root={root} image={img}")
     return provider
+
+
+def init_sandbox(*, image: str | None = None, probe: bool = True, backend: str | None = None) -> SandboxProvider:
+    """Backward-compatible provider factory (no process-global registration)."""
+    return create_provider(image=image, probe=probe, backend=backend)
 
 
 # ── 会话策略 ──
@@ -141,20 +133,21 @@ def session_default_mode(cwd: str | None) -> SandboxMode | None:
 
 
 def session_policy(
+    provider: SandboxProvider | None,
     session_id: str,
     cwd: str | None = None,
     session_override: SandboxMode | None = None,
 ) -> SandboxExecutionPolicy | None:
-    """解析本会话一次工具调用的执行策略；沙箱未装配时返回 None。
+    """解析本会话一次工具调用的执行策略；provider 缺失时返回 None。
 
     ``session_override`` 来自 ``sandbox/mode`` 事件的投影（调用方提供，
     本层不依赖 agents 层）；优先级见 :mod:`.policy`。
 
     默认值走 :func:`session_default_mode`（读根 cwd → read-only），不是裸的
-    ``default_mode()``——两个消费方（执行侧与 ``api/agents.py`` 的模式端点）
+    ``default_mode()``——两个消费方（执行侧与 HTTP 插件的模式端点）
     必须用同一个函数，否则页面上显示的模式和沙箱实际用的是两回事。
     """
-    if _provider is None:
+    if provider is None:
         return None
     root = cwd or workspace_for_session(session_id)
     return resolve_policy(
@@ -281,9 +274,13 @@ def mounts_note(workspace_host: str | None = None) -> str:
     不给 host（无 cwd 的自动工作区，且首次工具调用之前）时只报容器内路径——
     与本参数出现之前的行为一致。
     """
-    if getattr(get_sandbox_provider(), "backend", None) == "local":
-        root = workspace_host or resolve_workspace_root()
-        return f"\n执行环境：宿主机进程（操作系统沙箱）。工作目录：{root}。使用宿主机路径，无 /workspace 或 /mnt 路径映射；受限模式不限制读取和网络，全权限模式不施加沙箱限制。"
+    if os.environ.get("SANDBOX_BACKEND", "local") == "local":
+        try:
+            root = workspace_host or resolve_workspace_root()
+        except Exception:  # noqa: BLE001 — prompt assembly must never fail for a missing deployment root
+            root = workspace_host
+        where = f"工作目录：{root}。" if root else "工作目录：会话工作区（尚未绑定）。"
+        return f"\n执行环境：宿主机进程（操作系统沙箱）。{where}使用宿主机路径，无 /workspace 或 /mnt 路径映射；受限模式不限制读取和网络，全权限模式不施加沙箱限制。"
     head = f"可写位置：会话工作区 {CONTAINER_WORKSPACE}"
     head += f"（宿主 {workspace_host}）。" if workspace_host else "。"
     lines = [head]

@@ -2,7 +2,7 @@
 import json
 import unittest
 
-from backend.core.default_agent import (
+from agent_platform_database_postgres.default_agent import (
     DEFAULT_AGENT_CONFIG,
     DEFAULT_AGENT_KEY,
     DEFAULT_AGENT_NAME,

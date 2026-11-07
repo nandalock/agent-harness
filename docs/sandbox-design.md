@@ -2,7 +2,7 @@
 
 > 状态：设计已定稿，待实现
 > 参考：DeepSeek Harness `dsh-sandbox`（seam / 词汇 / fail-closed / 分类方言）
-> 关联代码：`packages/sandbox/core/`、`packages/sandbox/tools/`、`backend/agents/runtime/session/`
+> 关联代码：`packages/sandbox/core/`、`packages/sandbox/tools/`、`packages/session/`
 
 ## 1. 背景与威胁模型
 
@@ -38,7 +38,7 @@
 
 | 偏离 | 原因 |
 |---|---|
-| `policy.py` 做成纯函数而非服务 | `packages/sandbox/core/` 不应依赖 `agents/runtime/session/` |
+| `policy.py` 做成纯函数而非服务 | `packages/sandbox/core/` 不应依赖 `packages/session/` |
 | 后端用 Docker 而非 bwrap/Landlock | 见 §2.1 |
 
 ### 2.1 为什么第一阶段用 Docker
@@ -185,21 +185,21 @@ packages/tools/system/src/descriptor.py  # SandboxToolConfig
 packages/tools/system/src/registry.py  # 工具描述索引
 packages/tools/system/src/providers.py  # ToolProvider / BuiltinToolProvider
 packages/tools/system/src/context.py  # sandbox_policy（策略下传）
-backend/agents/runtime/loop/agent_loop.py       # 解析策略 + 落地 SessionHeader.cwd
-backend/api/mcp.py                              # 工具列表/详情含原生工具
+packages/agent/loop/src/agent_loop.py       # 解析策略 + 落地 SessionHeader.cwd
+packages/host/http-api/src/routes/mcp.py         # 工具列表/详情含原生工具
 backend/main.py                                 # 装配：init_sandbox + 注册 bash/python
 docker-compose.yml / backend/Dockerfile         # socket + docker CLI + 工作区同路径挂载
 ```
 
 阶段 1c 追加：`session/events.py`（`SANDBOX_MODE` 常量）、`session/projections/sandbox.py`
 （find-last fold + 回放同构）、`session/projections/trajectory.py`（tool node 携带 sandbox 事实
-与状态归类）、`agent_loop.py`（读取覆盖 + `tool/result` 结构化字段）、`api/agents.py`
+与状态归类）、`agent_loop.py`（读取覆盖 + `tool/result` 结构化字段）、`packages/host/http-api/src/routes/agents.py`
 （`GET/POST /sessions/{sid}/sandbox_mode`）、`packages/client/legacy/lib/trajectory.ts` +
 `TrajectoryTimeline.tsx`（轨迹里显示沙箱状态）。
 
 ### 5.1 关于 `policy.py` 的偏离
 
-DeepSeek 的 `ctx.sandboxPolicy.resolve()` 是服务，直接读会话。我们的 `packages/sandbox/core/` 不应依赖 `agents/runtime/session/`，所以 `policy.py` 是**纯函数**：
+DeepSeek 的 `ctx.sandboxPolicy.resolve()` 是服务，直接读会话。我们的 `packages/sandbox/core/` 不应依赖 `packages/session/`，所以 `policy.py` 是**纯函数**：
 
 ```python
 def resolve_policy(
@@ -402,7 +402,7 @@ Seatbelt 的 `allow default` + `deny file-write*`。它们的 `roots.ts` 只派�
 
 只读轴与模式无关，`read-only` 下整盘也是可读的——模式词汇只描述写效果（见 §3）。
 
-**读根可以当工作区**（`api/workspace.py` 的选择器里能列出的目录都能选，读根不例外）。
+**读根可以当工作区**（`packages/host/http-api/src/routes/workspace.py` 的选择器里能列出的目录都能选，读根不例外）。
 这不等于把读授权当写授权：docker 后端把 cwd 挂成 `/workspace`，而它的 rw/ro **由模式
 决定**，所以那种会话的默认模式被收窄为 `read-only`（`sandbox/runtime.py` 的
 `session_default_mode`）——不收窄就等于「在文件夹选择器里点一下 = 整个盘可写」。

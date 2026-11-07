@@ -12,7 +12,6 @@ from backend.integrations.xianyu.utils import (
     decrypt,
     generate_device_id,
     generate_mid,
-    generate_uuid,
     trans_cookies,
 )
 

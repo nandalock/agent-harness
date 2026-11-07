@@ -19,20 +19,17 @@ from .providers import BuiltinToolProvider, ToolProvider
 
 logger = logging.getLogger(__name__)
 
-#: Host-injected binding lookup (Agent key → bound tool names).
-_binding_provider: Callable[[str], list[str]] | None = None
-
-
-def configure_bindings(provider: Callable[[str], list[str]] | None) -> None:
-    """Install the host's agent_tool_bindings reader (keeps this package DB-free)."""
-    global _binding_provider
-    _binding_provider = provider
-
-
 class ToolRegistry:
     """工具来源的收集器 + 统一索引 + Agent 绑定查询"""
 
-    def __init__(self, providers: list[ToolProvider] | None = None):
+    def __init__(
+        self,
+        providers: list[ToolProvider] | None = None,
+        *,
+        bindings: Callable[[str], list[str]] | None = None,
+    ):
+        #: Per-instance host binding reader (Agent key → bound tool names).
+        self._binding_provider = bindings
         # name → ToolDescriptor（所有来源合并后的唯一索引）
         self._by_name: dict[str, ToolDescriptor] = {}
         # 原生工具来源；SDK 插件工具由插件侧 tools-default 持有。
@@ -250,14 +247,10 @@ class ToolRegistry:
 
     # ── Agent 绑定查询 ──
 
-    @staticmethod
-    def get_bindings(agent_key: str) -> list[str]:
-        """Return the host's bound tool names for one Agent.
-
-        The host installs the actual reader with :func:`configure_bindings`;
-        without one this returns an empty list.
-        """
-        return list(_binding_provider(agent_key)) if _binding_provider else []
+    def get_bindings(self, agent_key: str) -> list[str]:
+        """Return this host's bound tool names for one Agent."""
+        reader = self._binding_provider
+        return list(reader(agent_key)) if reader else []
 
     async def get_schemas_for(self, agent_key: str) -> list[dict]:
         """返回该 agent 绑定工具的 OpenAI function calling 格式 schemas"""

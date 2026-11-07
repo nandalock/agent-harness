@@ -72,5 +72,5 @@ npm run build
 ```powershell
 # 在项目根目录；DSN 必须指向你明确选择的测试 PostgreSQL
 $env:CHECKPOINT_TEST_DSN = 'postgresql://user@127.0.0.1:55432/postgres'
-python -m pytest backend/services/chat/test_history.py backend/services/chat/test_history_postgres.py backend/agents/runtime/session/tests/test_session.py backend/agents/runtime/session/tests/test_checkpoint.py -q
+python -m pytest backend/services/chat/test_history.py backend/services/chat/test_history_postgres.py backend/tests/session/test_session.py backend/tests/session/test_checkpoint.py -q
 ```

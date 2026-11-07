@@ -3,8 +3,8 @@ from agent_platform_skills import SkillRegistry
 from agent_platform_skills_filesystem import FilesystemSkillProvider
 from contextlib import asynccontextmanager
 from agent_platform_plugin_runtime import PluginRuntime
+from agent_platform_agent_runtime import AgentExtensionRegistry
 from agent_platform_plugin_sdk import AGENTS, AGENT_EXTENSIONS
-from backend.agents.runtime.extensions import AgentExtensionRegistry
 
 
 def filesystem_registry(sources, *, include_installed=False):

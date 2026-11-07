@@ -4,8 +4,6 @@ import logging
 import random
 import time
 
-import aiohttp
-
 from backend.integrations.xianyu.utils import generate_sign
 
 logger = logging.getLogger(__name__)

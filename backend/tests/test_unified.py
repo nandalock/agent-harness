@@ -21,6 +21,7 @@ os.environ.setdefault("MANAGED_MCP_ENABLED", "false")
 try:
     from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
     from agent_platform_plugin_sdk import (
+        DATABASE,
         PluginSpec,
         SdkModel,
         ServiceRequirement,
@@ -35,13 +36,36 @@ try:
     from agent_platform_skills_default import SkillsDefaultPlugin
     from agent_platform_skills_filesystem import SkillsFilesystemPlugin
     from agent_platform_plugin_sdk import AGENT_EXTENSIONS
-    from backend.agents.runtime.extensions import AgentExtensionRegistry
+    from agent_platform_agent_runtime import AgentExtensionRegistry
     from agent_platform_llm_deepseek import DeepSeekProviderPlugin
     from agent_platform_agents import AgentsPlugin
     from agent_platform_agent_loop import AgentLoopPlugin
+    from agent_platform_agent_runtime import AgentRuntimePlugin
+    from agent_platform_agent_entry import AgentEntryPlugin
+    from agent_platform_chat import ChatPlugin
+    from agent_platform_memory import MemoryPlugin
+    from agent_platform_user_approval import UserApprovalPlugin
+    from agent_platform_session import SessionPlugin
+    from agent_platform_session_persistence_postgres import PostgresPersistencePlugin
+    from agent_platform_session_title import SessionTitlePlugin
+    from agent_platform_session_recovery import SessionRecoveryPlugin
+    from agent_platform_session_projection import SessionProjectionPlugin
+    from agent_platform_database_postgres import PostgresDatabasePlugin
+    from agent_platform_settings_postgres import PostgresSettingsPlugin
+    from agent_platform_agent_config import AgentConfigPlugin
+    from agent_platform_llm import LLMPlugin
+    from agent_platform_tool_host import ToolHostPlugin
+    from agent_platform_system_prompt import SystemPromptPlugin
+    from agent_platform_sandbox_policy import SandboxPolicyPlugin
+    from agent_platform_http_api import HttpApiPlugin
+    from agent_platform_rpc_gateway import RpcGatewayPlugin
+    from agent_platform_rpc_connection import RpcConnectionPlugin
+    from agent_platform_api_workspace import WorkspaceControllerPlugin
+    from agent_platform_api_agents import AgentApiPlugin
+    from agent_platform_api_sessions import SessionApiPlugin
     from agent_platform_managed_mcp import BuiltinPlugin, PaperPlugin, OverleafPlugin, OverleafRtPlugin
     from agent_platform_sandbox_tools import SandboxToolsPlugin
-    from agent_platform_sandbox.plugin import LocalSandboxPlugin, SANDBOX
+    from agent_platform_sandbox.plugin import LocalSandboxPlugin
 
     PLUGIN_STACK_AVAILABLE = True
 except ImportError:  # pragma: no cover
@@ -55,7 +79,6 @@ from agent_platform_tool_system.runtime import ToolRuntime
 from agent_platform_tool_host import (
     UnifiedToolsRuntime,
     close_unified_tools,
-    get_unified_tools_optional,
     set_unified_tools,
 )
 
@@ -172,6 +195,20 @@ class _LazyProvider:
 
     async def lazy_load(self, name):
         return _native_descriptor(name) if name == "lazy_native" else None
+
+
+class _NoopDatabasePlugin:
+    """Database provider that never touches a real server during composition tests."""
+
+    spec = PostgresDatabasePlugin.spec
+    config_model = PostgresDatabasePlugin.config_model
+
+    async def setup(self, ctx, config):
+        class _Db:
+            def get_conn(self):
+                raise RuntimeError("database access is not expected in this test")
+
+        ctx.provide(DATABASE, _Db())
 
 
 class _Recorder:
@@ -499,27 +536,23 @@ def test_system_prompt_provider_reads_the_unified_registry():
     if _skip():
         return
 
-    from backend.agents.runtime.system_prompt.assembler import AssembleContext
-    from backend.agents.runtime.system_prompt.platform_sections import (
-        _platform_tool_provider,
-    )
+    from agent_platform_system_prompt import AssembleContext
+    from agent_platform_system_prompt.platform_sections import unified_tool_provider
 
     async def case():
         _registry, _runtime, tools, _plugin, _native, unified = await _setup()
-        set_unified_tools(unified)
         original = ToolRegistry.get_bindings
         ToolRegistry.get_bindings = staticmethod(lambda key: ["echo", "native_echo"])
         try:
-            result = await _platform_tool_provider(
+            result = await unified_tool_provider(unified)(
                 AssembleContext(tenant_id=1, agent_key="agent")
             )
         finally:
             ToolRegistry.get_bindings = original
-            await close_unified_tools()
+            await _teardown(unified, tools)
         assert [schema.name for schema in result.schemas] == ["echo", "native_echo"]
         native = next(s for s in result.schemas if s.name == "native_echo")
         assert native.function["description"] == "Native echo"
-        await tools.aclose()
 
     asyncio.run(case())
 
@@ -550,19 +583,42 @@ def test_config_auto_appends_mcp_client_entries_and_dedupes():
         names = [entry.name for entry in config.plugins]
         assert names == [
             "agent-platform.tools-default",
-            "agent-platform.agents",
-            "agent-platform.agent-loop",
+            "agent-platform.database-postgres",
+            "agent-platform.settings-postgres",
+            "agent-platform.agent-config",
+            "agent-platform.session",
+            "agent-platform.session-persistence-postgres",
+            "agent-platform.llm",
             "agent-platform.llm-deepseek",
+            "agent-platform.session-title",
+            "agent-platform.session-recovery",
+            "agent-platform.session-projection",
+            "agent-platform.tool-host",
+            "agent-platform.system-prompt",
+            "agent-platform.agents",
+            "agent-platform.user-approval",
+            "agent-platform.agent-loop",
+            "agent-platform.agent-runtime",
+            "agent-platform.agent-entry",
+            "agent-platform.chat",
+            "agent-platform.memory",
             "agent-platform.mcp-manager",
             "agent-platform.skills-default",
             "agent-platform.skills-filesystem",
             "agent-platform.skill-tools",
             "agent-platform.sandbox-tools",
             "agent-platform.sandbox-local",
+            "agent-platform.sandbox-policy",
             "agent-platform.builtin-mcp",
             "agent-platform.paper-mcp",
             "agent-platform.overleaf-mcp",
             "agent-platform.overleaf-rt-mcp",
+            "agent-platform.rpc-gateway",
+            "agent-platform.rpc-connection",
+            "agent-platform.api-workspace",
+            "agent-platform.api-agents",
+            "agent-platform.api-sessions",
+            "agent-platform.http-api",
             "agent-platform.mcp-client",
         ], names
 
@@ -586,19 +642,42 @@ def test_config_auto_appends_mcp_client_entries_and_dedupes():
         assert [entry.id for entry in deduped.plugins] == [
             "tools",
             "custom",
-            "agents",
-            "agent-loop",
+            "database",
+            "settings",
+            "agent-config",
+            "session",
+            "session-persistence-postgres",
+            "llm",
             "llm-deepseek",
+            "session-title",
+            "session-recovery",
+            "session-projection",
+            "tool-host",
+            "system-prompt",
+            "agents",
+            "user-approval",
+            "agent-loop",
+            "agent-runtime",
+            "agent-entry",
+            "chat",
+            "memory",
             "mcp-manager",
             "skills",
             "skills-filesystem",
             "skill-tools",
             "sandbox-tools",
             "sandbox-provider",
+            "sandbox-policy",
             "builtin-mcp",
             "paper-mcp",
             "overleaf-mcp",
             "overleaf-rt-mcp",
+            "rpc-gateway",
+            "rpc-connection",
+            "api-workspace",
+            "api-agents",
+            "api-sessions",
+            "http-api",
         ]
     finally:
         plugin_host._mcp_plugin_entries = original
@@ -659,6 +738,7 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
                     "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
                     "agent-platform.agents": AgentsPlugin,
                     "agent-platform.agent-loop": AgentLoopPlugin,
+                    "agent-platform.agent-runtime": AgentRuntimePlugin,
                     "agent-platform.sandbox-tools": SandboxToolsPlugin,
                     "agent-platform.sandbox-local": LocalSandboxPlugin,
                     'agent-platform.builtin-mcp': BuiltinPlugin,
@@ -745,13 +825,36 @@ def test_plugin_host_always_assembles_tools_default_and_unified_runtime():
                     catalog=MappingCatalog(
                         {
                             "agent-platform.tools-default": ToolsDefaultPlugin,
+                            "agent-platform.database-postgres": _NoopDatabasePlugin,
+                            "agent-platform.settings-postgres": PostgresSettingsPlugin,
+                            "agent-platform.agent-config": AgentConfigPlugin,
+                            "agent-platform.llm": LLMPlugin,
+                            "agent-platform.tool-host": ToolHostPlugin,
+                            "agent-platform.system-prompt": SystemPromptPlugin,
+                            "agent-platform.sandbox-policy": SandboxPolicyPlugin,
+                            "agent-platform.rpc-gateway": RpcGatewayPlugin,
+                            "agent-platform.rpc-connection": RpcConnectionPlugin,
+                            "agent-platform.api-workspace": WorkspaceControllerPlugin,
+                            "agent-platform.api-agents": AgentApiPlugin,
+                            "agent-platform.api-sessions": SessionApiPlugin,
+                            "agent-platform.http-api": HttpApiPlugin,
                             "agent-platform.mcp-manager": McpManagerPlugin,
+                            "agent-platform.session": SessionPlugin,
+                            "agent-platform.session-persistence-postgres": PostgresPersistencePlugin,
+                            "agent-platform.session-title": SessionTitlePlugin,
+                            "agent-platform.session-recovery": SessionRecoveryPlugin,
+                            "agent-platform.session-projection": SessionProjectionPlugin,
                             "agent-platform.skill-tools": SkillToolsPlugin,
                             "agent-platform.skills-default": SkillsDefaultPlugin,
                             "agent-platform.skills-filesystem": SkillsFilesystemPlugin,
                             "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
                             "agent-platform.agents": AgentsPlugin,
                             "agent-platform.agent-loop": AgentLoopPlugin,
+                            "agent-platform.agent-runtime": AgentRuntimePlugin,
+                            "agent-platform.agent-entry": AgentEntryPlugin,
+                            "agent-platform.chat": ChatPlugin,
+                            "agent-platform.memory": MemoryPlugin,
+                            "agent-platform.user-approval": UserApprovalPlugin,
                             "agent-platform.sandbox-tools": SandboxToolsPlugin,
                             "agent-platform.sandbox-local": LocalSandboxPlugin,
                             'agent-platform.builtin-mcp': BuiltinPlugin,
@@ -763,13 +866,13 @@ def test_plugin_host_always_assembles_tools_default_and_unified_runtime():
                     )
                 )
                 assert host is not None
-                unified = get_unified_tools_optional()
+                unified = host.unified
                 assert unified is not None
                 result = await unified.execute("echo", {"text": "x"}, _context())
                 assert result == {"text": "h:x"}
 
                 await plugin_host.close_plugin_host()
-                assert get_unified_tools_optional() is None
+                assert plugin_host.get_plugin_host() is None
         finally:
             await plugin_host.close_plugin_host()
             if old_config is None:
@@ -808,13 +911,36 @@ def test_plugin_host_reads_repository_config_independently_of_cwd():
                         catalog=MappingCatalog(
                             {
                                 "agent-platform.tools-default": ToolsDefaultPlugin,
+                                "agent-platform.database-postgres": _NoopDatabasePlugin,
+                                "agent-platform.settings-postgres": PostgresSettingsPlugin,
+                                "agent-platform.agent-config": AgentConfigPlugin,
+                                "agent-platform.llm": LLMPlugin,
+                                "agent-platform.tool-host": ToolHostPlugin,
+                                "agent-platform.system-prompt": SystemPromptPlugin,
+                                "agent-platform.sandbox-policy": SandboxPolicyPlugin,
+                                "agent-platform.rpc-gateway": RpcGatewayPlugin,
+                                "agent-platform.rpc-connection": RpcConnectionPlugin,
+                                "agent-platform.api-workspace": WorkspaceControllerPlugin,
+                                "agent-platform.api-agents": AgentApiPlugin,
+                                "agent-platform.api-sessions": SessionApiPlugin,
+                                "agent-platform.http-api": HttpApiPlugin,
                                 "agent-platform.mcp-manager": McpManagerPlugin,
+                                "agent-platform.session": SessionPlugin,
+                                "agent-platform.session-persistence-postgres": PostgresPersistencePlugin,
+                                "agent-platform.session-title": SessionTitlePlugin,
+                                "agent-platform.session-recovery": SessionRecoveryPlugin,
+                                "agent-platform.session-projection": SessionProjectionPlugin,
                                 "agent-platform.skill-tools": SkillToolsPlugin,
                                 "agent-platform.skills-default": SkillsDefaultPlugin,
                                 "agent-platform.skills-filesystem": SkillsFilesystemPlugin,
                                 "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
                                 "agent-platform.agents": AgentsPlugin,
                                 "agent-platform.agent-loop": AgentLoopPlugin,
+                                "agent-platform.agent-runtime": AgentRuntimePlugin,
+                                "agent-platform.agent-entry": AgentEntryPlugin,
+                                "agent-platform.chat": ChatPlugin,
+                                "agent-platform.memory": MemoryPlugin,
+                                "agent-platform.user-approval": UserApprovalPlugin,
                                 "agent-platform.sandbox-tools": SandboxToolsPlugin,
                                 "agent-platform.sandbox-local": LocalSandboxPlugin,
                                 'agent-platform.builtin-mcp': BuiltinPlugin,
@@ -831,6 +957,17 @@ def test_plugin_host_reads_repository_config_independently_of_cwd():
                 assert set(plugin.name for plugin in host.plugins) == {
                     "agent-platform.tools-default",
                     "test.consumer",
+                    "agent-platform.database-postgres",
+                    "agent-platform.settings-postgres",
+                    "agent-platform.agent-config",
+                    "agent-platform.session",
+                    "agent-platform.session-persistence-postgres",
+                    "agent-platform.llm",
+                    "agent-platform.session-title",
+                    "agent-platform.session-recovery",
+                    "agent-platform.session-projection",
+                    "agent-platform.tool-host",
+                    "agent-platform.system-prompt",
                     "agent-platform.mcp-manager",
                     "agent-platform.skill-tools",
                     "agent-platform.skills-default",
@@ -838,14 +975,26 @@ def test_plugin_host_reads_repository_config_independently_of_cwd():
                     "agent-platform.llm-deepseek",
                     "agent-platform.agents",
                     "agent-platform.agent-loop",
+                    "agent-platform.agent-runtime",
+                    "agent-platform.agent-entry",
+                    "agent-platform.chat",
+                    "agent-platform.memory",
+                    "agent-platform.user-approval",
                     "agent-platform.sandbox-local",
+                    "agent-platform.sandbox-policy",
                     "agent-platform.builtin-mcp",
                     "agent-platform.paper-mcp",
                     "agent-platform.overleaf-mcp",
                     "agent-platform.overleaf-rt-mcp",
                     "agent-platform.sandbox-tools",
+                    "agent-platform.rpc-gateway",
+                    "agent-platform.rpc-connection",
+                    "agent-platform.api-workspace",
+                    "agent-platform.api-agents",
+                    "agent-platform.api-sessions",
+                    "agent-platform.http-api",
                 }
-                unified = get_unified_tools_optional()
+                unified = host.unified
                 assert unified is not None
                 result = await unified.execute("echo", {"text": "x"}, _context())
                 assert result == {"text": "h:x"}
@@ -873,13 +1022,36 @@ def test_plugin_host_starts_without_plugin_config():
                 catalog=MappingCatalog(
                     {
                         "agent-platform.tools-default": ToolsDefaultPlugin,
+                        "agent-platform.database-postgres": _NoopDatabasePlugin,
+                        "agent-platform.settings-postgres": PostgresSettingsPlugin,
+                        "agent-platform.agent-config": AgentConfigPlugin,
+                        "agent-platform.llm": LLMPlugin,
+                        "agent-platform.tool-host": ToolHostPlugin,
+                        "agent-platform.system-prompt": SystemPromptPlugin,
+                        "agent-platform.sandbox-policy": SandboxPolicyPlugin,
+                        "agent-platform.rpc-gateway": RpcGatewayPlugin,
+                        "agent-platform.rpc-connection": RpcConnectionPlugin,
+                        "agent-platform.api-workspace": WorkspaceControllerPlugin,
+                        "agent-platform.api-agents": AgentApiPlugin,
+                        "agent-platform.api-sessions": SessionApiPlugin,
+                        "agent-platform.http-api": HttpApiPlugin,
                         "agent-platform.mcp-manager": McpManagerPlugin,
+                        "agent-platform.session": SessionPlugin,
+                        "agent-platform.session-persistence-postgres": PostgresPersistencePlugin,
+                        "agent-platform.session-title": SessionTitlePlugin,
+                        "agent-platform.session-recovery": SessionRecoveryPlugin,
+                        "agent-platform.session-projection": SessionProjectionPlugin,
                         "agent-platform.skill-tools": SkillToolsPlugin,
                         "agent-platform.skills-default": SkillsDefaultPlugin,
                         "agent-platform.skills-filesystem": SkillsFilesystemPlugin,
                         "agent-platform.llm-deepseek": DeepSeekProviderPlugin,
                         "agent-platform.agents": AgentsPlugin,
                         "agent-platform.agent-loop": AgentLoopPlugin,
+                        "agent-platform.agent-runtime": AgentRuntimePlugin,
+                        "agent-platform.agent-entry": AgentEntryPlugin,
+                        "agent-platform.chat": ChatPlugin,
+                        "agent-platform.memory": MemoryPlugin,
+                        "agent-platform.user-approval": UserApprovalPlugin,
                         "agent-platform.sandbox-tools": SandboxToolsPlugin,
                         "agent-platform.sandbox-local": LocalSandboxPlugin,
                         'agent-platform.builtin-mcp': BuiltinPlugin,
@@ -890,9 +1062,9 @@ def test_plugin_host_starts_without_plugin_config():
                 )
             )
             assert host is not None
-            assert get_unified_tools_optional() is not None
+            assert host.unified is not None
             await plugin_host.close_plugin_host()
-            assert get_unified_tools_optional() is None
+            assert plugin_host.get_plugin_host() is None
         finally:
             await plugin_host.close_plugin_host()
             if old_config is not None:

@@ -13,6 +13,8 @@ class SourceConfig(SdkModel):
     kind: str = "skill"
     tenant_ids: tuple[int, ...]
     agent_keys: tuple[str, ...] | None = None
+    package_key: str | None = None
+    package_name: str | None = None
 
 
 class FilesystemConfig(SdkModel):
@@ -36,6 +38,7 @@ class SkillsFilesystemPlugin:
                 raise SkillError("自定义技能目录必须是绝对路径，并声明 tenant_ids")
             if source.name in ("platform", "installed"):
                 raise SkillError("installed 和 platform 是平台保留的技能来源名称")
-            sources.append(SkillSource(source.name, path, source.kind, source.tenant_ids, source.agent_keys))
+            sources.append(SkillSource(source.name, path, source.kind, source.tenant_ids, source.agent_keys,
+                                       package_key=source.package_key, package_name=source.package_name))
         provider = FilesystemSkillProvider(sources, include_installed=config.include_installed, name=ctx.instance_id)
         ctx.track(ctx.require(SKILLS).register_provider(provider))

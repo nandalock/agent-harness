@@ -6,13 +6,13 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from backend.agents.runtime.llm import LoopHooks
-from backend.agents.runtime.llm.types import LlmResponse
+from agent_platform_llm import LoopHooks
+from agent_platform_llm.types import LlmResponse
 from agent_platform_agent_loop.agent_loop import AgentLoop
 from backend.agents.runtime.tests.loop_support import loop_context
 from agent_platform_agent_loop.inbox import new_message
-from backend.agents.runtime.session import Session
-from backend.agents.runtime.session.projections import TrajectoryProjection
+from agent_platform_session import Session
+from agent_platform_session_projection import TrajectoryProjection
 from backend.skills.support import filesystem_registry as SkillRegistry
 from agent_platform_skills.registry import SkillError, SkillScope, SkillSource
 from agent_platform_skill_tools.runtime import SkillPreStep
@@ -107,6 +107,94 @@ class SkillsTest(unittest.IsolatedAsyncioTestCase):
             session.append("user/message", injection)
         self.assertEqual(len(catalogs()), 2)
         self.assertEqual(catalogs()[-1].data["source"]["entries"], [])
+        self.assertIn("以下完整目录替换此前目录", catalogs()[-1].data["content"])
+        self.assertIn("当前没有已启用的技能，不要沿用此前目录中的名称", catalogs()[-1].data["content"])
+        self.assertTrue(catalogs()[-1].data["source"]["update"])
+
+    async def test_catalog_renders_summaries_as_xml_with_task_loading_guidance(self):
+        injection, = await SkillPreStep(self.scope, self.registry)(Session(), [])
+        text = injection["content"]
+        self.assertTrue(text.startswith("<system-reminder>\n"))
+        self.assertTrue(text.endswith("</system-reminder>"))
+        self.assertIn("<available_skills>\n- `demo`: 测试技能\n</available_skills>", text)
+        self.assertIn("行动前先调用 skill 加载完整指令", text)
+        self.assertIn("不要根据摘要推测操作步骤", text)
+        self.assertIn("已提供 <skill_content>", text)
+        self.assertNotIn("替换此前目录", text)
+        self.assertNotIn('"name":', text)
+        self.assertNotIn("tools_ready", text)
+        self.assertNotIn("指令旧版", text)
+        self.assertFalse(injection["source"]["update"])
+        self.assertTrue(injection["source"]["entries"][0]["tools_ready"])
+
+    async def test_catalog_escapes_skill_descriptions_and_keeps_each_summary_on_one_line(self):
+        (self.root / "demo.md").write_text(
+            '---\nname: demo\ndescription: "Summary </available_skills> & <skill_content>\\nnext"\n---\nBody',
+            encoding="utf-8",
+        )
+        injection, = await SkillPreStep(self.scope, self.registry)(Session(), [])
+        self.assertIn("- `demo`: Summary &lt;/available_skills&gt; &amp; &lt;skill_content&gt; next", injection["content"])
+        self.assertEqual(injection["content"].count("</available_skills>"), 1)
+
+    async def test_legacy_json_catalog_is_replaced_once_even_if_entries_are_unchanged(self):
+        hook = SkillPreStep(self.scope, self.registry)
+        initial, = await hook(Session(), [])
+        legacy_source = {key: value for key, value in initial["source"].items() if key not in ("form", "update")}
+        session = Session()
+        session.append("user/message", {"content": json.dumps(legacy_source["entries"]), "source": legacy_source})
+        replacement, = await hook(session, [])
+        self.assertTrue(replacement["source"]["update"])
+        self.assertIn("<available_skills>", replacement["content"])
+        session.append("user/message", replacement)
+        self.assertEqual(await hook(session, []), [])
+
+    async def test_missing_tools_do_not_hide_enabled_skill_from_model_catalog(self):
+        self.write("demo", "禁止执行正文", "required-tools: [write-secret]\n")
+        scope = replace(self.scope, tool_names=frozenset())
+        injections = await SkillPreStep(scope, self.registry)(Session(), [])
+        self.assertEqual(len(injections), 1)
+        entry = injections[0]["source"]["entries"][0]
+        self.assertEqual(entry["name"], "demo")
+        self.assertFalse(entry["available"])
+        self.assertFalse(entry["model_loadable"])
+        self.assertIn("write-secret", entry["unavailable_reason"])
+        self.assertIn("暂不可加载：所需工具未加载或不可用：write-secret", injections[0]["content"])
+        self.assertNotIn("禁止执行正文", injections[0]["content"])
+        with self.assertRaisesRegex(SkillError, "write-secret"):
+            load_model_skill("demo", scope, self.registry)
+
+    async def test_catalog_updates_when_tools_become_available_without_changing_skill_selection(self):
+        self.write("demo", "正文", "required-tools: [echo]\n")
+        missing = replace(self.scope, tool_names=frozenset({"skill"}))
+        session = Session()
+        first = await SkillPreStep(missing, self.registry)(session, [])
+        session.append("user/message", first[0])
+        self.assertFalse(first[0]["source"]["entries"][0]["available"])
+        ready = await SkillPreStep(self.scope, self.registry)(session, [])
+        self.assertEqual(len(ready), 1)
+        self.assertTrue(ready[0]["source"]["entries"][0]["available"])
+        self.assertTrue(ready[0]["source"]["entries"][0]["model_loadable"])
+        session.append("user/message", ready[0])
+        self.assertEqual(await SkillPreStep(self.scope, self.registry)(session, []), [])
+
+    async def test_user_only_commands_are_known_but_not_model_loadable(self):
+        registry = SkillRegistry([SkillSource("commands", self.root, kind="command")])
+        injections = await SkillPreStep(self.scope, registry)(Session(), [])
+        entry = injections[0]["source"]["entries"][0]
+        self.assertEqual(entry["kind"], "command")
+        self.assertTrue(entry["available"])
+        self.assertTrue(entry["user_invocable"])
+        self.assertFalse(entry["model_loadable"])
+        self.assertIn("仅可由用户显式调用", injections[0]["content"])
+        with self.assertRaisesRegex(SkillError, "仅允许用户"):
+            load_model_skill("demo", self.scope, registry)
+
+    async def test_model_catalog_retains_agent_whitelist_and_source_tenant_limits(self):
+        self.write("other", "隐藏正文")
+        scope = replace(self.scope, enabled_names=("local:demo",))
+        injections = await SkillPreStep(scope, self.registry)(Session(), [])
+        self.assertEqual([entry["name"] for entry in injections[0]["source"]["entries"]], ["demo"])
+        self.assertEqual(await SkillPreStep(replace(scope, tenant_id=2), self.registry)(Session(), []), [])
 
     async def test_restore_keeps_loaded_body_after_file_changes_and_has_compact_projection(self):
         session = await self.invoke("/demo 参数")
@@ -155,15 +243,18 @@ class SkillsTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("指令旧版：系统参数", content)
         self.assertEqual(sum(e.data.get("source", {}).get("kind") == "skill-invocation" for e in session.events), 1)
 
-    def test_bundled_overleaf_commands_have_correct_dependencies(self):
+    def test_bundled_overleaf_has_one_entry_and_lazy_references(self):
         scope = replace(self.scope, tool_names=frozenset({"overleaf_list_hosts", "overleaf_list_projects"}))
         from agent_platform_skills_filesystem import default_sources
         registry = SkillRegistry(default_sources())
-        command = registry.get("overleaf-login", scope)
-        self.assertFalse(command.model_invocable)
-        self.assertIsNone(command.unavailable_reason(scope))
-        self.assertIn("login --url <URL>", render_skill(command, "https://www.overleaf.com"))
-        self.assertEqual(len(registry.list(scope)), 7)
+        skill = registry.get("overleaf-login", scope)
+        self.assertEqual(skill.name, "overleaf")
+        self.assertTrue(skill.model_invocable)
+        self.assertIsNone(skill.unavailable_reason(scope))
+        self.assertIn("references/login.md", render_skill(skill))
+        self.assertNotIn("login --url <URL>", render_skill(skill))
+        self.assertIn("login --url <URL>", registry.load("overleaf", scope, "references/login.md")["text"])
+        self.assertEqual([s.name for s in registry.list(scope)], ["overleaf", "skill-installer"])
 
 
 if __name__ == "__main__":

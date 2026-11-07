@@ -210,7 +210,7 @@ def _publish(data: bytes, origin: GitHubSkill, commit: str, scope: SkillScope) -
             if destination.exists():
                 raise SkillError(f"技能已安装：installed:{skill.name}；本次未覆盖") from None
             raise
-    allowed = scope.enabled_names is None or skill.name in scope.enabled_names or skill.key in scope.enabled_names
+    allowed = scope.allows(skill)
     return {"name": skill.name, "key": skill.key, "status": "installed", **provenance,
             "files": len(files), "visible": scope.enabled and allowed,
             "unavailable_reason": skill.unavailable_reason(scope),

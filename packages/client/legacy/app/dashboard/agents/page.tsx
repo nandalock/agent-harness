@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { T, S, btnPrimary } from '@/app/theme';
 import { X } from 'lucide-react';
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+import { remote } from '@/lib/remote';
 
 interface AgentInfo { key:string; name:string; desc:string; status:string; agent_type?:string; }
 const ICONS: Record<string,string> = { router:'🧠', default:'🤖' };
@@ -24,7 +23,10 @@ export default function AgentsPage() {
   const [error, setError] = useState('');
 
   function loadAgents() {
-    fetch(`${API}/api/agents`).then(r=>r.json()).then(d=>setAgents(d)).finally(()=>setLoading(false));
+    remote.agent.list()
+      .then(d => setAgents(d.items as AgentInfo[]))
+      .catch(() => setAgents([]))
+      .finally(() => setLoading(false));
   }
   useEffect(()=>{ loadAgents(); },[]);
 
@@ -42,21 +44,16 @@ export default function AgentsPage() {
       if (form.agent_type === 'agent') {
         body.system_prompt = form.system_prompt.trim();
       }
-      const r = await fetch(`${API}/api/agents`, {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(body),
-      });
-      if (r.ok) {
-        const data = await r.json();
+      try {
+        const data = await remote.agent.create(body);
         setShowModal(false);
         setForm({ key:'', name:'', desc:'', system_prompt:'', agent_type:'agent' });
         const target = form.agent_type === 'router'
           ? `/agents/router/${data.agent.key}`
           : `/agents/${data.agent.key}`;
         router.push(target);
-      } else {
-        const err = await r.json();
-        setError(err.detail || '创建失败');
+      } catch (reason: any) {
+        setError(reason?.message || '创建失败');
       }
     } catch { setError('请求失败'); }
     finally { setCreating(false); }

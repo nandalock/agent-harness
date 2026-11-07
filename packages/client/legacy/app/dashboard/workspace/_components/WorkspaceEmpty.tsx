@@ -21,13 +21,11 @@ import Link from 'next/link';
 import { ArrowUp, Bot, ChevronDown, Fish, FolderOpen, FolderPlus, Loader2 } from 'lucide-react';
 import { W } from '../theme';
 import DirectoryBrowser, { type BrowsePick } from './DirectoryBrowser';
+import { remote } from '@/lib/remote';
 import {
   createWorkspaceSession, ensureWorkspaceFolder, pickHostWorkspaceFolder,
   type CreatedSession,
 } from './useWorkspace';
-
-const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-const H = { 'X-Tenant-ID': '1' };
 
 type AgentsStatus = 'loading' | 'ready' | 'error';
 
@@ -71,23 +69,23 @@ export default function WorkspaceEmpty({ onCreated }: Props) {
   const needsApproval = !folderPath && !writable && !!folderValue;
   const projectReady = agentsReady && agentModel !== 'missing' && !folderBlocked && !needsApproval;
 
-  const loadAgents = useCallback(() => {
+  const loadAgents = useCallback(async () => {
     setAgentsStatus('loading');
-    fetch(`${API}/api/agents`, { headers: H })
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((list: any[]) => {
-        const items = (Array.isArray(list) ? list : [])
-          .map((a: any) => ({ key: a.key, name: a.name || a.key, agentType: a.agent_type || 'agent' }));
-        setAgents(items);
-        // 内置的 default 优先选中；用户已选的 agent 仍然保留
-        const preferred = items.find(a => a.key === 'default') ?? items[0];
-        setAgentKey(k => (k && items.some(a => a.key === k)) ? k : (preferred?.key || ''));
-        setAgentsStatus('ready');
-      })
-      .catch(() => setAgentsStatus('error'));
+    try {
+      const result = await remote.agent.list();
+      const items = (result.items || [])
+        .map(a => ({ key: a.key, name: a.name || a.key, agentType: a.agent_type || 'agent' }));
+      setAgents(items);
+      // 内置的 default 优先选中；用户已选的 agent 仍然保留
+      const preferred = items.find(a => a.key === 'default') ?? items[0];
+      setAgentKey(k => (k && items.some(a => a.key === k)) ? k : (preferred?.key || ''));
+      setAgentsStatus('ready');
+    } catch {
+      setAgentsStatus('error');
+    }
   }, []);
 
-  useEffect(() => { loadAgents(); }, [loadAgents]);
+  useEffect(() => { void loadAgents(); }, [loadAgents]);
 
   // 选中 agent 后检查模型配置：没有 model/base_url/api_key 时发送按钮会拦住，
   // 并给出去 Agent 配置页的链接——否则用户只会收到一句无信息的兜底回复。
@@ -98,21 +96,23 @@ export default function WorkspaceEmpty({ onCreated }: Props) {
     if (agent?.agentType === 'router') { setAgentModel('ready'); return; }
     let cancelled = false;
     setAgentModel('unknown');
-    fetch(`${API}/api/agents/${encodeURIComponent(agentKey)}/config`, { headers: H })
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((d: any) => {
+    void (async () => {
+      try {
+        const d = await remote.agent.getConfig({ agent_key: agentKey });
         if (cancelled) return;
         const cfg = d.config || {};
         const filled = (v: unknown) => typeof v === 'string' && v.trim() !== '';
-        // 后端把 DB + 环境变量解析后的有效视图放在 model_config；老后端没有这个
+        // 后端把 DB + 环境变量解析后的有效视图放在 model_info；老后端没有这个
         // 字段时退回看 DB 三个字段。
-        const effective = d.model_config;
+        const effective = d.model_info;
         const ready = effective && typeof effective.configured === 'boolean'
           ? effective.configured === true
           : filled(cfg.model) && filled(cfg.base_url) && filled(cfg.api_key);
         setAgentModel(ready ? 'ready' : 'missing');
-      })
-      .catch(() => { if (!cancelled) setAgentModel('error'); });
+      } catch {
+        if (!cancelled) setAgentModel('error');
+      }
+    })();
     return () => { cancelled = true; };
   }, [agentKey, agents]);
 

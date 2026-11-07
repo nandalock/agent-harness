@@ -1,10 +1,11 @@
 """Real SQL cursor pagination in the checkpoint suite's private test schema."""
-from fastapi import FastAPI
+from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
-from backend.agents.runtime.session.tests.test_checkpoint_postgres import database
-from backend.api.chat import router
-from backend.services.chat import service
+from backend.tests.session.test_checkpoint_postgres import database  # noqa: F401 — pytest fixture
+from agent_platform_chat import ChatService, ChatStore
+from agent_platform_http_api import create_app
+from agent_platform_session import SessionStore
 
 
 def seed(connection):
@@ -19,9 +20,9 @@ def seed(connection):
     return cid
 
 
-def test_cursor_latest_and_prepend_survive_concurrent_append(database, monkeypatch):
+def test_cursor_latest_and_prepend_survive_concurrent_append(database):
     connection = database[2]
-    monkeypatch.setattr(service, 'get_conn', connection)
+    service = ChatStore(SimpleNamespace(get_conn=connection), SessionStore(), None)
     cid = seed(connection)
     latest = service.list_message_window(1, cid)
     assert [m.content for m in latest['items']] == [str(n) for n in range(73, 123)]
@@ -39,17 +40,15 @@ def test_cursor_latest_and_prepend_survive_concurrent_append(database, monkeypat
     assert empty['items'] == [] and not empty['has_more']
 
 
-def test_window_endpoint_ownership_and_cursor_validation(database, monkeypatch):
+def test_window_endpoint_ownership_and_cursor_validation(database):
     connection = database[2]
-    monkeypatch.setattr(service, 'get_conn', connection)
+    service = ChatStore(SimpleNamespace(get_conn=connection), SessionStore(), None)
     cid = seed(connection)
-    app = FastAPI()
-    app.include_router(router)
-    with TestClient(app) as client:
-        url = f'/api/chat/conversations/{cid}/messages/window'
-        assert client.get(url, headers={'X-Tenant-ID': '2'}).status_code == 404
-        for query in ['?before_id=0', '?before_id=-1', '?size=101', '?size=0']:
-            assert client.get(url + query, headers={'X-Tenant-ID': '1'}).status_code == 422
-        result = client.get(url + '?size=3', headers={'X-Tenant-ID': '1'})
-        assert result.status_code == 200
-        assert [m['content'] for m in result.json()['items']] == ['120', '121', '122']
+    client = TestClient(create_app(chat=ChatService(None, service)))
+    url = f'/api/chat/conversations/{cid}/messages/window'
+    assert client.get(url, headers={'X-Tenant-ID': '2'}).status_code == 404
+    for query in ['?before_id=0', '?before_id=-1', '?size=101', '?size=0']:
+        assert client.get(url + query, headers={'X-Tenant-ID': '1'}).status_code == 422
+    result = client.get(url + '?size=3', headers={'X-Tenant-ID': '1'})
+    assert result.status_code == 200
+    assert [m['content'] for m in result.json()['items']] == ['120', '121', '122']

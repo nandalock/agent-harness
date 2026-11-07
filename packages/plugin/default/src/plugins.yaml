@@ -2,14 +2,48 @@
 # Services determine startup order through requires/provides.
 version: 1
 plugins:
-  - id: tools
-    name: agent-platform.tools-default
-  - id: agents
-    name: agent-platform.agents
-  - id: agent-loop
-    name: agent-platform.agent-loop
+  - id: database
+    name: agent-platform.database-postgres
+    config:
+      initializeSchema: true
+  - id: settings
+    name: agent-platform.settings-postgres
+  - id: agent-config
+    name: agent-platform.agent-config
+  - id: session
+    name: agent-platform.session
+  - id: session-persistence-postgres
+    name: agent-platform.session-persistence-postgres
+  - id: llm
+    name: agent-platform.llm
   - id: llm-deepseek
     name: agent-platform.llm-deepseek
+  - id: session-title
+    name: agent-platform.session-title
+  - id: session-recovery
+    name: agent-platform.session-recovery
+  - id: session-projection
+    name: agent-platform.session-projection
+  - id: tools
+    name: agent-platform.tools-default
+  - id: tool-host
+    name: agent-platform.tool-host
+  - id: system-prompt
+    name: agent-platform.system-prompt
+  - id: agents
+    name: agent-platform.agents
+  - id: user-approval
+    name: agent-platform.user-approval
+  - id: agent-loop
+    name: agent-platform.agent-loop
+  - id: agent-runtime
+    name: agent-platform.agent-runtime
+  - id: agent-entry
+    name: agent-platform.agent-entry
+  - id: chat
+    name: agent-platform.chat
+  - id: memory
+    name: agent-platform.memory
   - id: mcp-manager
     name: agent-platform.mcp-manager
   - id: skills
@@ -22,6 +56,8 @@ plugins:
     name: agent-platform.sandbox-tools
   - id: sandbox-provider
     name: agent-platform.sandbox-local
+  - id: sandbox-policy
+    name: agent-platform.sandbox-policy
   - id: builtin-mcp
     name: agent-platform.builtin-mcp
   - id: paper-mcp
@@ -30,3 +66,15 @@ plugins:
     name: agent-platform.overleaf-mcp
   - id: overleaf-rt-mcp
     name: agent-platform.overleaf-rt-mcp
+  - id: rpc-gateway
+    name: agent-platform.rpc-gateway
+  - id: rpc-connection
+    name: agent-platform.rpc-connection
+  - id: api-workspace
+    name: agent-platform.api-workspace
+  - id: api-agents
+    name: agent-platform.api-agents
+  - id: api-sessions
+    name: agent-platform.api-sessions
+  - id: http-api
+    name: agent-platform.http-api

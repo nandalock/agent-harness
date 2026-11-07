@@ -7,7 +7,6 @@ from backend.engine.state import WorkflowState
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_RETRIES = 3
 _visit_counts: dict[str, int] = {}
 
 
@@ -69,7 +68,8 @@ def make_agent_handler(node_id: str, agent_key: str, cache_config: dict | None =
 
     async def core(state: WorkflowState) -> dict:
         """核心逻辑：统一经 Gateway 入口调用 agent（身份解析/会话映射在 Gateway）"""
-        from backend.gateway import RequestContext, get_gateway
+        from agent_platform_agent_entry import RequestContext
+        from backend.plugin_services import agent_entry
 
         _visit_counts[node_id] = _visit_counts.get(node_id, 0) + 1
 
@@ -79,7 +79,7 @@ def make_agent_handler(node_id: str, agent_key: str, cache_config: dict | None =
         try:
             # tenant 来自 workflow 行注入的 state（不再硬编码 tenant_id=1）；
             # 上游节点输出装配为 context，经 RequestContext 交给 Gateway
-            reply = await get_gateway().chat(
+            reply = await agent_entry().chat(
                 RequestContext(
                     tenant_id=state.get("tenant_id"), agent_key=agent_key,
                     channel="workflow", visitor_id=state.get("user_id") or None,
@@ -177,14 +177,15 @@ def make_condition_router(node_id: str, config: dict, path_map: dict[str, str]) 
 def make_router_handler(node_id: str, agent_key: str) -> Callable:
 
     async def handler(state: WorkflowState) -> dict:
-        from backend.gateway import RequestContext, get_gateway
+        from agent_platform_agent_entry import RequestContext
+        from backend.plugin_services import agent_entry
 
         _visit_counts[node_id] = _visit_counts.get(node_id, 0) + 1
         context = _build_context(state)
 
         t0 = time.time()
         try:
-            reply = await get_gateway().chat(
+            reply = await agent_entry().chat(
                 RequestContext(
                     tenant_id=state.get("tenant_id"), agent_key=agent_key,
                     channel="workflow", visitor_id=state.get("user_id") or None,

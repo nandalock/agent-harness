@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from backend.integrations.xianyu.live import XianyuLive
-from backend.services.chat import service as chat_service
+from agent_platform_chat import MessageCreate
+from backend.plugin_services import chat_store
 
 logger = logging.getLogger(__name__)
 
@@ -97,14 +98,14 @@ async def _on_message(msg: dict):
     msg["time"] = now
 
     try:
-        conv = chat_service.get_or_create_conversation(
+        conv = chat_store().get_or_create_conversation(
             DEFAULT_TENANT_ID, "xianyu", cid,
             customer_name=msg.get("sender_name", ""),
             customer_id=msg.get("sender_id", ""),
         )
-        chat_service.create_message(
+        chat_store().create_message(
             DEFAULT_TENANT_ID, conv.id,
-            chat_service.MessageCreate(
+            MessageCreate(
                 role="customer",
                 sender_name=msg.get("sender_name", ""),
                 content=msg.get("content", ""),
@@ -132,7 +133,7 @@ def get_status() -> dict:
 def get_conversations() -> list[dict]:
     """返回会话列表（从数据库读取），兼容前端旧格式"""
     try:
-        rows = chat_service.list_conversations_with_summary(
+        rows = chat_store().list_conversations_with_summary(
             DEFAULT_TENANT_ID, channel="xianyu", page_size=200,
         )
     except Exception as e:
@@ -155,7 +156,7 @@ def get_conversations() -> list[dict]:
 def get_messages(cid: str) -> list[dict]:
     """返回指定会话的消息列表（从数据库读取），兼容前端旧格式"""
     try:
-        msgs = chat_service.get_messages_by_channel_cid(
+        msgs = chat_store().get_messages_by_channel_cid(
             DEFAULT_TENANT_ID, cid, page_size=500,
         )
     except Exception as e:
@@ -176,13 +177,12 @@ def get_messages(cid: str) -> list[dict]:
 
 async def fetch_history(cid: str):
     """拉取指定会话的历史消息并写入数据库"""
-    global _live
     if not _live:
         raise RuntimeError("未连接闲鱼")
     history = await _live.list_all_conversations(cid)
 
     try:
-        conv = chat_service.get_or_create_conversation(
+        conv = chat_store().get_or_create_conversation(
             DEFAULT_TENANT_ID, "xianyu", cid,
         )
     except Exception as e:
@@ -192,7 +192,7 @@ async def fetch_history(cid: str):
     inserted = 0
     for msg in history:
         try:
-            chat_service.insert_message_raw(
+            chat_store().insert_message_raw(
                 DEFAULT_TENANT_ID, conv.id,
                 role="customer",
                 sender_name=msg.get("sender_name", ""),
@@ -202,18 +202,6 @@ async def fetch_history(cid: str):
         except Exception as e:
             logger.warning(f"写入历史消息失败: {e}")
     return inserted
-
-
-async def auto_connect():
-    """应用启动时自动连接（如果已保存 Cookie）"""
-    cookie = get_saved_cookie()
-    if cookie:
-        logger.warning("尝试自动连接闲鱼...")
-        error = await connect(cookie)
-        if error:
-            logger.warning(f"自动连接失败: {error}")
-        else:
-            logger.warning("自动连接闲鱼成功")
 
 
 async def connect(cookie: str) -> str | None:
@@ -253,7 +241,6 @@ async def connect(cookie: str) -> str | None:
 
 
 async def _fetch_conversations():
-    global _live
     logger.warning("[拉会话] _fetch_conversations 已启动")
     try:
         convs = await _live.list_newest_conversations()
@@ -264,7 +251,7 @@ async def _fetch_conversations():
             if not cid:
                 continue
             try:
-                chat_service.get_or_create_conversation(
+                chat_store().get_or_create_conversation(
                     DEFAULT_TENANT_ID, "xianyu", cid,
                     customer_name=c.get("buyer_name", ""),
                     customer_id=c.get("buyer_id", ""),
@@ -278,12 +265,12 @@ async def _fetch_conversations():
             try:
                 history = await _live.list_all_conversations(cid)
                 if history:
-                    conv = chat_service.get_or_create_conversation(
+                    conv = chat_store().get_or_create_conversation(
                         DEFAULT_TENANT_ID, "xianyu", cid,
                     )
                     for msg in history:
                         try:
-                            chat_service.insert_message_raw(
+                            chat_store().insert_message_raw(
                                 DEFAULT_TENANT_ID, conv.id,
                                 role="customer",
                                 sender_name=msg.get("sender_name", ""),

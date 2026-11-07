@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-http-api"
+version = "0.1.0"
+description = "FastAPI HTTP/API plugin for the plugin platform"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.110",
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-agent-entry>=0.1,<0.2",
+    "agent-platform-chat>=0.1,<0.2",
+    "agent-platform-memory>=0.1,<0.2",
+    "agent-platform-user-approval>=0.1,<0.2",
+    "agent-platform-rpc-connection>=0.1,<0.2",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.http-api" = "agent_platform_http_api:HttpApiPlugin"
+
+[tool.setuptools]
+packages = ["agent_platform_http_api", "agent_platform_http_api.routes"]
+
+[tool.setuptools.package-dir]
+agent_platform_http_api = "src"
