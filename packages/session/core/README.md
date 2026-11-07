@@ -18,5 +18,5 @@
 | trace / trajectory / sandbox 投影 | `packages/session/projection` |
 
 后端不再保留兼容 shim：所有调用方直接导入 `agent_platform_session` 及其兄弟包，
-`backend/tests/session/` 只放跨包集成测试。PostgreSQL 实现位于持久化插件包，后端通过
+`tests/integration/session/` 只放跨包集成测试。PostgreSQL 实现位于持久化插件包，后端通过
 `DATABASE` 服务注入连接池。

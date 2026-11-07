@@ -130,7 +130,7 @@ $skill-installer https://github.com/anthropics/skills/tree/main/skills/pdf
 ## 验证
 
 ```bash
-docker compose exec -T backend python -m unittest backend.skills.test_skills backend.skills.test_installer -v
+docker compose exec -T backend python -m pytest tests/integration/skills/test_skills.py tests/integration/skills/test_installer.py -q
 ```
 
 前端交互测试位于 `packages/client/tests/skill-bindings.spec.ts`；元数据与按需读取回归测试位于 `packages/skills/tests/test_progressive.py`。

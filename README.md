@@ -41,8 +41,9 @@ minidsh 把 Agent 执行循环、模型接入、工具、技能、会话持久�
 | 知识库与缓存 | 管理 FAQ，按需启用向量检索、重排和 Redis 缓存；另有记忆管理页面 |
 | 插件化前端 | 页面功能通过客户端插件和 slots 组合；可通过 profile 更换前端包 |
 
-> 仓库正在持续进行插件化与 RPC 迁移。Workspace、Agent 配置和部分 Session 操作已接入
-> JSON-RPC；聊天流、文件传输及部分管理接口仍使用 HTTP/SSE。当前边界见 [RPC API 文档](docs/rpc-api.md)。
+> 仓库正在持续进行插件化与 RPC 迁移。Workspace、Agent 配置、部分 Session 操作和工作流
+> 已接入插件服务（工作流通过 `workflow.v1` / `workflow.nodes.v1`）；聊天流、文件传输及
+> 部分管理接口仍使用 HTTP/SSE。当前边界见 [RPC API 文档](docs/rpc-api.md)。
 
 ## 界面演示
 
@@ -181,7 +182,7 @@ python minidsh.py web --dir /path/to/your/frontend
 # Windows
 .venv/Scripts/python.exe -m backend.headless --agent your_agent_key "请介绍当前可用的技能"
 # Linux / macOS
-.venv/bin/python -m backend.headless --agent your_agent_key "请介绍当前可用的技能"
+.venv/bin/python -m agent_platform_cli --agent your_agent_key "请介绍当前可用的技能"
 ```
 
 ## 插件架构
@@ -263,19 +264,27 @@ plugins:
 
 ```text
 minidsh.py             统一安装与启动入口
+apps/
+  server/              ASGI carrier（uvicorn 入口）
+  cli/                 agent-platform run / serve
 packages/
   plugin/              SDK、加载器与默认插件清单
+  boot/app-boot/       组合发现与 PluginRuntime 启动
   agent/               配置、运行时、Loop 与系统提示词
   api/                 RPC Connection、Gateway 与业务 Controller
   host/http-api/       FastAPI 应用与 HTTP 适配
+  host/plugin-inventory/ 已启动插件投影
   session/             事件、存储、持久化、标题、恢复与投影
   llm/                 模型公共契约与 provider
   tools/               工具服务、调度与宿主适配
   skills/              技能中心、文件来源与 skill 工具
+  workflow/            工作流服务、节点注册表与响应缓存
+  faq/                 FAQ 服务、匹配与向量化
+  integrations/        渠道集成（闲鱼）
   sandbox/             沙箱 provider、策略与工具
   mcp/                 MCP 连接与各类集成
   client/              React + Vite 插件壳与页面
-backend/               宿主入口、兼容路由及待迁移业务
+tests/integration/     跨包集成测试
 config/                环境与插件配置模板
 docs/                  部署、架构与使用说明
 ```

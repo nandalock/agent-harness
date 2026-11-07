@@ -85,4 +85,4 @@ implementation. Routes not yet migrated still use their existing HTTP handlers:
 - agent L1 keyword CRUD.
 
 The HTTP/API plugin can be removed from the composition without affecting the
-agent runtime; `python -m backend.headless` runs a turn with no HTTP server.
+agent runtime; `python -m agent_platform_cli` runs a turn with no HTTP server.

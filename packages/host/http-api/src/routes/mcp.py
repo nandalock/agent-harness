@@ -21,7 +21,7 @@ from agent_platform_mcp_client import (
 )
 
 from .tools import api_list_bindings, api_save_bindings
-from backend.core.connection import get_conn
+from ..db import get_conn
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/mcp", tags=["MCP"])
@@ -34,15 +34,22 @@ LOCAL_MCP_URL = "http://localhost:9001/mcp"
 
 
 def _manager() -> McpManager:
-    from backend.plugin_host import get_plugin_host
+    from .. import services as plugin_services
 
-    host = get_plugin_host()
-    if host is None:
-        raise HTTPException(503, "插件宿主未装配")
     try:
-        return host.runtime.require(MCP_MANAGER)
+        return plugin_services.mcp_manager()
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(503, f"MCP 控制面未装配: {exc}") from exc
+
+
+def _unified_tools():
+    """Resolve tools.v1 from the active runtime, never a process singleton."""
+    from .. import services as plugin_services
+
+    try:
+        return plugin_services.unified_tools()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(503, f"单轨工具运行时未装配: {exc}") from exc
 
 
 def _server_name(sid: int) -> str:
@@ -379,22 +386,13 @@ async def api_list_tools():
 @router.get("/tools/all")
 async def api_list_all_tools():
     """列出 tools.v1 中的全部工具（唯一 Agent-facing 注册表）。"""
-    from agent_platform_tool_host import get_unified_tools_optional
-
-    unified = get_unified_tools_optional()
-    if unified is None:
-        raise HTTPException(503, "单轨工具运行时未装配")
-    return unified.list_tools()
+    return _unified_tools().list_tools()
 
 
 @router.get("/tools/{name}")
 async def api_get_tool(name: str):
     """查询单个工具信息（未索引则懒加载）。"""
-    from agent_platform_tool_host import get_unified_tools_optional
-
-    unified = get_unified_tools_optional()
-    if unified is None:
-        raise HTTPException(503, "单轨工具运行时未装配")
+    unified = _unified_tools()
     descriptor = await unified.ensure_tool(name)
     if descriptor is None:
         raise HTTPException(404, f"工具不存在: {name}")
@@ -414,11 +412,7 @@ async def api_get_tool(name: str):
 @router.post("/tools/{name}/call")
 async def api_call_tool(name: str, args: dict = Body(...)):
     """调用工具 — 统一经 tools.v1；无宿主上下文的能力 fail-closed。"""
-    from agent_platform_tool_host import get_unified_tools_optional
-
-    unified = get_unified_tools_optional()
-    if unified is None:
-        raise HTTPException(503, "单轨工具运行时未装配")
+    unified = _unified_tools()
     if await unified.ensure_tool(name) is None:
         raise HTTPException(404, f"工具不存在: {name}")
     result = await unified.execute(name, args, None)

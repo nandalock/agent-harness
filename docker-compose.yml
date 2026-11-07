@@ -37,10 +37,10 @@ services:
     restart: unless-stopped
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: deploy/Dockerfile.backend
       args:
         PRELOAD_RERANKER: ${PRELOAD_RERANKER:-false}
-    command: uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn agent_platform_server:app --host 0.0.0.0 --port 8000 --reload --reload-dir apps --reload-dir packages
     volumes:
       - .:/app
       - npm_cache:/root/.npm

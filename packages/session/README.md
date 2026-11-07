@@ -104,7 +104,7 @@ B——沙箱执行侧的 `cwd or workspace_for_session` 链与读侧 `_resolve_
 每个包通过 `pyproject.toml` 的 `agent_platform.plugins` 入口点注册插件，服务键依次是
 `agent.sessions.v1`、`agent.session-persistence.v1`、`agent.session-title.v1`、
 `agent.session-recovery.v1`、`agent.session-projection.v1`。后端只保留
-`backend/tests/session/` 集成测试，不再有兼容 shim。
+`tests/integration/session/` 集成测试，不再有兼容 shim。
 
 各包的 `__init__.py` 是**该包的界面**：只做 re-export，逻辑留在具体文件里。
 
@@ -173,7 +173,7 @@ PostgreSQL 每会话线程锁保护 pending 和数据库事务；advisory lock �
 
 验证：Session/repair/title/checkpoint、AgentLoop、Runtime prompt 和 ToolScheduler 的相关测试共 155 项通过，包含 9 项真实 PostgreSQL 集成测试及 3 个子进程强杀位置。前端生产构建通过。模型与工具行为使用测试替身，不调用真实模型服务。
 
-PostgreSQL 测试需显式设置 `CHECKPOINT_TEST_DSN` 指向测试服务器，每个用例创建并清理独立 schema。可运行 `python -m pytest backend/tests/session backend/agents/runtime/tests/test_agent_runtime_prompt.py backend/agents/runtime/tests/test_agent_loop.py backend/tests/test_scheduler.py -q`；测试环境需要 pytest、项目运行依赖和可用的 PostgreSQL。
+PostgreSQL 测试需显式设置 `CHECKPOINT_TEST_DSN` 指向测试服务器，每个用例创建并清理独立 schema。可运行 `python -m pytest tests/integration/session tests/integration/agent_runtime/test_agent_runtime_prompt.py tests/integration/agent_runtime/test_agent_loop.py tests/integration/test_scheduler.py -q`；测试环境需要 pytest、项目运行依赖和可用的 PostgreSQL。
 
 ### 两张表（`core/schema.py`）
 
@@ -299,7 +299,7 @@ UNIQUE(session_id, seq)
 ### 自检
 
 ```bash
-python -m pytest backend/tests/session -q
+python -m pytest tests/integration/session -q
 ```
 
 覆盖：从会话事件派生消息、tool 配对保持（assistant.tool_calls ↔ tool 结果）、seed 内存派生

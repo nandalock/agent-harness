@@ -10,7 +10,7 @@
 | `local.env.example` | 本地配置模板；`setup` 用它生成 `local.env` | 是 |
 | `docker.env` | Docker Compose 变量替换（`docker compose --env-file config/docker.env ...`） | 否，gitignored |
 | `docker.env.example` | Docker 配置模板 | 是 |
-| `plugins.yaml` | 插件实例清单，backend 自动发现 | 否，gitignored |
+| `plugins.yaml` | 插件实例清单，运行时自动发现 | 否，gitignored |
 | `plugins.yaml.example` | 插件配置模板 | 是 |
 
 ## 本地运行
@@ -73,7 +73,7 @@ Compose 只从这个文件读取 `${...}` 变量；容器内的 `DATABASE_URL`�
 
 ```sh
 cp config/plugins.yaml.example config/plugins.yaml
-# 编辑后重启 backend
+# 编辑后重启服务
 ```
 
 发现顺序：`PLUGIN_CONFIG` 环境变量 → 仓库内的 `config/plugins.yaml`。

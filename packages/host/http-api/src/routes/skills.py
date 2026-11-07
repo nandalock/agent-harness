@@ -3,10 +3,10 @@ import asyncio
 
 from fastapi import APIRouter, Header, HTTPException
 
-from backend import plugin_services
-from backend.core.connection import get_conn
-from agent_platform_skills import SKILLS, SkillError
-from agent_platform_plugin_sdk import ServiceUnavailableError, TOOLS
+from .. import services as plugin_services
+from ..db import get_conn
+from agent_platform_skills import SkillError
+from agent_platform_plugin_sdk import ServiceUnavailableError
 from agent_platform_skills.runtime import catalog_entries, scope_for
 
 router = APIRouter(prefix="/api/agents", tags=["Skills"])
@@ -64,18 +64,14 @@ async def _read_catalog(agent_key: str, tenant_id: int, *, session_id: str | Non
     if include_unselected:
         config = {**config, "skills_enabled": True, "enabled_skills": None}
     names = await asyncio.to_thread(_bindings, agent_key)
-    from backend.plugin_host import get_plugin_host
-    from backend.agents.runtime.bindings import prepare_bindings
-    host = get_plugin_host()
-    if host is None:
-        return {"skills": [], "available": False}
+    from agent_platform_agent_runtime import prepare_bindings
     try:
-        skills = host.runtime.require(SKILLS)
-        tools = host.runtime.require(TOOLS)
+        skills = plugin_services.skills()
+        tools = plugin_services.tools()
     except ServiceUnavailableError:
         return {"skills": [], "available": False}
     try:
-        contribution = await prepare_bindings(tenant_id, agent_key, config, names, tools)
+        contribution = await prepare_bindings(tenant_id, agent_key, config, names, tools, plugin_services.agent_extensions())
         # With the consumer plugin disabled there is no skill invocation UI.
         if "skills" not in contribution.capabilities:
             return {"skills": [], "available": False}

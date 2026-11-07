@@ -46,6 +46,8 @@ plugins:
     name: agent-platform.memory
   - id: mcp-manager
     name: agent-platform.mcp-manager
+  - id: mcp-database
+    name: agent-platform.mcp-database
   - id: skills
     name: agent-platform.skills-default
   - id: skills-filesystem
@@ -66,6 +68,14 @@ plugins:
     name: agent-platform.overleaf-mcp
   - id: overleaf-rt-mcp
     name: agent-platform.overleaf-rt-mcp
+  - id: workflow
+    name: agent-platform.workflow
+  - id: faq
+    name: agent-platform.faq
+  - id: xianyu
+    name: agent-platform.xianyu
+  - id: plugin-inventory
+    name: agent-platform.plugin-inventory
   - id: rpc-gateway
     name: agent-platform.rpc-gateway
   - id: rpc-connection

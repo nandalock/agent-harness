@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-app-boot"
+version = "0.1.0"
+description = "Composition loading and plugin-runtime boot glue"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-plugin-runtime>=0.1,<0.2",
+    "agent-platform-default>=0.1,<0.2",
+    "agent-platform-tool-host>=0.1,<0.2",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

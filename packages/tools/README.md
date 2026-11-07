@@ -11,7 +11,7 @@
 
 这些包不导入 `backend`，只依赖 `mcp`、`psycopg2`、`aiohttp`、`pypdf`、`python-dotenv` 等公共库，数据库地址通过 `DATABASE_URL` 注入。
 
-backend 启动时仍然负责拉起 builtin/paper 的 HTTP server；`agent-platform.mcp-client` 插件再连接它们，把工具注册进 `tools-default`。DB 里的 `mcp_servers` 行会被 `backend/plugin_host.py` 自动转换成 mcp-client 插件实例，因此新增 MCP server 不需要改 backend 代码。
+builtin/paper 的 HTTP server 由 managed-mcp 插件拉起；DB 里的 `mcp_servers` 行由 `agent-platform.mcp-database` 插件读取并交给 `mcp-manager`，工具注册进 `tools-default`。新增 MCP server 不需要改进程入口代码。
 
 直接运行某个 server（stdio）：
 

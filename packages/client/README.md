@@ -98,8 +98,18 @@ import type { PluginContext } from '@app/host';
 export default definePlugin({
   id: '@app/plugin-example',
   setup(ctx: PluginContext) {
-    ctx.router.add('/dashboard/example', ExamplePage);
-    // or: ctx.slots.register('root', 'example', ExampleWidget);
+    ctx.nav.add({
+      id: 'example',
+      label: '示例',
+      to: '/dashboard/example',
+      order: 90,
+    });
+    ctx.router.add('/dashboard/example', ExamplePage, {
+      shell: 'dashboard',
+      layout: 'standard',
+      slots: { 'example.actions': { kind: 'list' } },
+    });
+    ctx.slots.register('example.actions', 'demo', ExampleAction);
   },
 });
 ```
@@ -114,9 +124,10 @@ Platform modules available to plugin bundles (esbuild externals):
 
 - `react`, `react-dom`, `react-dom/client`, `react/jsx-runtime`, `react/jsx-dev-runtime`
 - `@tanstack/react-query` — shared so `Providers` and page plugins use one QueryClient
-- `@app/host` — `definePlugin`, `Slot`, `registerSlot`, `RouterOutlet`, `useRoute`,
-  `useParams`, `usePathname`, `useSearchParams`, `useRouter`, `navigate`, `registerRoute`,
-  `api`, auth helpers, `T`, `S`, `React`.
+- `@app/host` — `definePlugin`, `Slot`, `declareSlot`, `registerSlot`, `RouterOutlet`,
+  `KeepAliveOutlet`, `useRoute`, `useRouteMeta`, `useParams`, `usePathname`,
+  `useSearchParams`, `useRouter`, `navigate`, `registerRoute`, `useNavItems`,
+  `registerNavItem`, `AppFrame`, `Page`, `Toolbar`, `Panel`, `EmptyState`, `T`, `S`, `React`.
 
 ## Page migration
 
@@ -143,9 +154,74 @@ Migrated routes:
 | `workflow` | `/dashboard/workflow`, `/dashboard/workflow/list`, `/dashboard/workflow/[id]` |
 | `workspace` | `/dashboard/workspace` |
 
-The shell reuses the existing `legacy/app/dashboard/layout.tsx` and
-`legacy/app/agents/layout.tsx`, so the sidebar, chat keep-alive, full-bleed pages, and
-agent navigation behave the same as the old Next.js app.
+## Plugin UI contract
+
+The shell owns the visual language; plugins own their features. Plugins never edit the
+sidebar or page layout directly.
+
+### Navigation
+
+`ctx.nav.add({ id, label, to, icon, order, match })` contributes one primary menu entry.
+The shell renders entries in `order` sequence and removes them when the plugin unloads.
+
+### Slots
+
+The shell declares every slot before plugins run. `ctx.slots.register(name, idOrOptions,
+component)` throws for an undeclared slot, so a typo cannot silently drop UI. Supported
+kinds:
+
+| Kind | Render |
+| --- | --- |
+| `single` | lowest-priority entry |
+| `list` | all entries ordered by `priority`, `order`, registration |
+| `keyed` | the lowest-priority entry whose `key` matches `entryKey` |
+| `chain` | first entry whose `select` returns non-null, else `fallback` |
+
+A route may declare child slots through `options.slots`; other plugins can then extend that
+page without importing it. Every registration returns a disposer and the plugin context
+tracks it, so unloading a plugin removes its navigation, routes, and slots.
+
+### Backend enablement
+
+A plugin package may declare the backend plugin it needs:
+
+```json
+{
+  "name": "@app/plugin-workflow",
+  "dsh": {
+    "plugin": "agent-platform.workflow",
+    "client": { "platform": "web", "inject": ["@app/plugin-shell"] }
+  }
+}
+```
+
+`kernel/boot.ts` reads `GET /api/plugins` before loading any bundle and skips
+entries whose `plugin` is not in the started set. Disabling the backend plugin
+therefore removes the page, its navigation item and its client bundle in one
+place. If the catalog is unavailable (offline dev, headless tests) all bundles
+load. Tests and embedded hosts can set `window.__DSH_PLUGIN_CATALOG__` to an
+array of enabled names before boot.
+
+### Layout
+
+Routes carry their own layout metadata instead of the shell matching path prefixes:
+
+```tsx
+ctx.router.add('/dashboard/example', Page, {
+  shell: 'dashboard',        // dashboard | agents | bare
+  layout: 'standard',        // standard | flush | immersive | chat | canvas | split
+  keepAlive: true,           // stay mounted after leaving
+});
+```
+
+`AppFrame` renders the matching shell layout from these options. `immersive`/`canvas`
+default to a collapsed sidebar; `immersive` defaults to the workspace nav theme. Visual
+tokens (`T`, `S`) and primitives (`Page`, `Toolbar`, `Panel`, `EmptyState`) come from
+`@app/host`, so plugins compose pages without re-implementing the shell style.
+
+The dashboard layout no longer contains a menu array or `isChat/isMcp/...` branches; each
+plugin registers its own navigation and layout. `legacy/app/agents/layout.tsx` remains a
+separate shell for `/agents/*` routes.
 
 ## No login
 

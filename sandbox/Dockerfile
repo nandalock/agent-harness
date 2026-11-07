@@ -1,6 +1,6 @@
 # 沙箱镜像 —— 模型执行 bash / python 时 docker run 用的**执行环境**。
 #
-# 与 backend/Dockerfile、frontend/Dockerfile 职责不同：那两个是**应用镜像**
+# 与 deploy/Dockerfile.backend、frontend/Dockerfile 职责不同：那两个是**应用镜像**
 # （跑服务、带 CMD），这个是被 backend 经 docker.sock 临时拉起的执行环境。
 # 因此：
 #   - 不 COPY 项目代码（项目代码由工作区绑定挂载进来，见 docker.py 的 -v）

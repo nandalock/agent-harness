@@ -20,7 +20,7 @@ def ensure_server() -> int:
             args = json.dumps(["-m", "agent_platform_overleaf_mcp.launcher"])
             if row:
                 # Migrate rows created before the tool implementation moved out
-                # of backend/tool_packages.
+                # of the old backend package tree.
                 cur.execute(
                     "UPDATE mcp_servers SET transport='stdio', command=%s, "
                     "args=%s::jsonb WHERE id=%s",

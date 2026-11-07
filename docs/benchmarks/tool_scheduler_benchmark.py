@@ -3,7 +3,7 @@
 The tools simulate I/O with asyncio.sleep; this is not an LLM, network, Docker,
 database, or production benchmark. Reuses the existing scheduler test fixtures.
 
-Run from the repository root with Python 3.12 and backend import dependencies
+Run from the repository root with Python 3.12 and runtime import dependencies
 installed in an isolated virtual environment. The measured environment used:
     python -m pip install mcp==1.30.0 aiohttp==3.14.5 psycopg2-binary==2.9.13
 Then run:
@@ -29,7 +29,7 @@ from agent_platform_tool_host.scheduler import (  # noqa: E402
     DEFAULT_MAX_PARALLEL_TOOLS,
     ToolScheduler,
 )
-from backend.tests.test_scheduler import (  # noqa: E402
+from tests.integration.test_scheduler import (  # noqa: E402
     _ControlledRuntime,
     _FakeRecorder,
     _context_factory,

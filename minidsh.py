@@ -9,7 +9,7 @@
 Runtime configuration lives in config/:
     config/local.env   local processes (this CLI)
     config/docker.env  Docker Compose variable substitution
-    config/plugins.yaml  plugin instances (auto-discovered by the backend)
+    config/plugins.yaml  plugin instances (auto-discovered by the runtime)
 """
 from __future__ import annotations
 
@@ -272,7 +272,7 @@ def doctor(env, backend_only=False, profile: FrontendProfile | None = None):
     profile = profile or _default_frontend_profile()
     import psycopg2
 
-    for module in ("uvicorn", "backend.main", "agent_platform_default"):
+    for module in ("uvicorn", "agent_platform_server", "agent_platform_default"):
         if importlib.util.find_spec(module) is None:
             raise RuntimeError(f"Missing {module}; run python minidsh.py setup.")
     try:
@@ -395,7 +395,7 @@ def run(args, env, profile: FrontendProfile):
     previous = signal.signal(signal.SIGTERM, interrupted)
     previous_break = signal.signal(signal.SIGBREAK, interrupted) if os.name == "nt" else None
     try:
-        argv = [sys.executable, "-m", "uvicorn", "backend.main:app", "--host", "127.0.0.1", "--port", str(args.backend_port)]
+        argv = [sys.executable, "-m", "uvicorn", "agent_platform_server:app", "--host", "127.0.0.1", "--port", str(args.backend_port)]
         if os.name == "nt":
             # uvicorn 在 Windows 上只要启用 --reload / 多 worker 就会选
             # SelectorEventLoop（uvicorn.config.use_subprocess=True）。Selector
@@ -404,7 +404,7 @@ def run(args, env, profile: FrontendProfile):
             # 使用平台默认的 ProactorEventLoop。
             argv += ["--loop", "none"]
         if args.action == "dev":
-            argv += ["--reload", "--reload-dir", "backend", "--reload-dir", "packages"]
+            argv += ["--reload", "--reload-dir", "apps", "--reload-dir", "packages"]
         backend = spawn(argv, ROOT)
         deadline = time.monotonic() + 120
         while True:

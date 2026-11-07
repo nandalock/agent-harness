@@ -11,7 +11,7 @@ import asyncio
 from fastapi import APIRouter, Body, Header, HTTPException
 from pydantic import BaseModel
 
-from backend.core.connection import get_conn
+from ..db import get_conn
 
 router = APIRouter(prefix="/api/tools", tags=["Tools"])
 
@@ -36,22 +36,21 @@ def api_list_bindings():
 @router.get("/bindings/{agent_key}")
 async def api_binding_details(agent_key: str, x_tenant_id: int = Header(default=1, alias="X-Tenant-ID")):
     """Manual selections plus live plugin-owned bindings for the selected tenant."""
-    from backend import plugin_services
-    from backend.agents.runtime.bindings import prepare_bindings
-    from backend.host_services import read_tool_bindings
-    from backend.plugin_host import get_plugin_host
-    from agent_platform_plugin_sdk import TOOLS
+    from .. import services as plugin_services
+    from agent_platform_agent_runtime import prepare_bindings
 
     agents = plugin_services.agents()
     definition = await agents.get_definition(agent_key)
     if definition is None:
         raise HTTPException(404, "智能体不存在")
-    manual = await asyncio.to_thread(read_tool_bindings, agent_key)
+    manual = await asyncio.to_thread(plugin_services.tool_bindings().get_bindings, agent_key)
     automatic = {}
-    host = get_plugin_host()
-    if host is not None and definition.get("agent_type") != "router":
+    if definition.get("agent_type") != "router":
         config = await agents.get_config(agent_key) or {}
-        contribution = await prepare_bindings(x_tenant_id, agent_key, config, manual, host.runtime.require(TOOLS))
+        contribution = await prepare_bindings(
+            x_tenant_id, agent_key, config, manual,
+            plugin_services.tools(), plugin_services.agent_extensions(),
+        )
         automatic = contribution.automatic_tools
     return {"agent_key": agent_key, "manual_tools": manual, "automatic_tools": automatic,
             "tools": sorted(set(manual) | set(automatic))}
@@ -79,11 +78,12 @@ def api_save_bindings(agent_key: str, tools: list[str] = Body(...)):
 def api_get_sandbox_capability():
     """沙箱能力是否启用（settings.sandbox.enabled，缺省 true）。"""
     from agent_platform_sandbox_tools import is_sandbox_enabled
-    from agent_platform_sandbox.services import SANDBOX
-    from backend.plugin_host import get_plugin_host
+    from .. import services as plugin_services
 
-    host = get_plugin_host()
-    provider = host.runtime.require(SANDBOX) if host is not None else None
+    try:
+        provider = plugin_services.sandbox()
+    except Exception:  # noqa: BLE001
+        provider = None
     return {"name": "sandbox", "enabled": is_sandbox_enabled(),
             "backend": getattr(provider, "backend", None)}
 

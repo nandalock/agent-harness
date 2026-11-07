@@ -10,7 +10,7 @@ patch 掉 aiohttp（`llm.openai_chat.get_http_session`），断言的全是**适
 循环侧的收口（重试 / 落库 / 取消 / 半截正文）在 test_agent_loop.py，那边是端到端的。
 
 Usage:
-    docker compose exec backend python backend/agents/runtime/tests/test_llm_client.py
+    docker compose exec backend python packages/llm/core/tests/test_openai_chat.py
 """
 import asyncio
 import json

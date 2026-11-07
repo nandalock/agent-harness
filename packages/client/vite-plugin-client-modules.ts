@@ -12,6 +12,7 @@ interface DiscoveredEntry {
   entryFile: string;
   inject: string[];
   immediately: boolean;
+  plugin?: string;
 }
 
 interface PluginEntry extends DiscoveredEntry {
@@ -24,6 +25,7 @@ interface BootEntry {
   rev: string;
   inject: string[];
   immediately: boolean;
+  plugin?: string;
 }
 
 interface BootBatch {
@@ -57,7 +59,10 @@ function scanPlugins(root: string): DiscoveredEntry[] {
 
     const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
       name?: string;
-      dsh?: { client?: { platform?: string; inject?: string[]; immediately?: boolean } };
+      dsh?: {
+        plugin?: string;
+        client?: { platform?: string; inject?: string[]; immediately?: boolean; plugin?: string };
+      };
     };
     const client = manifest.dsh?.client;
     if (!manifest.name || !client || client.platform !== 'web') continue;
@@ -73,6 +78,9 @@ function scanPlugins(root: string): DiscoveredEntry[] {
       entryFile,
       inject: client.inject ?? [],
       immediately: Boolean(client.immediately),
+      ...(manifest.dsh?.plugin || client.plugin
+        ? { plugin: manifest.dsh?.plugin || client.plugin }
+        : {}),
     });
   }
 
@@ -231,6 +239,7 @@ function composeGraph(entries: PluginEntry[], rev: string): { entries: BootEntry
       rev: entry.rev,
       inject: entry.inject,
       immediately: entry.immediately,
+      ...(entry.plugin ? { plugin: entry.plugin } : {}),
     })),
     batches: [
       {

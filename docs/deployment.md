@@ -140,7 +140,7 @@ CLI 默认只监听回环地址，适合本地部署。公网服务应由进程�
   Overleaf RT 使用 `OVERLEAF_RT_ENABLED=true`，另需 Node/npx 和相应凭据。
 - 自定义插件继续使用 `config/plugins.yaml` 或环境变量 `PLUGIN_CONFIG`。
   内置/论文 MCP 与 Overleaf 的启动、连接和关闭现由 managed-mcp 插件包负责，
-  不再由 backend/main.py 逐项启动。可按插件实例设置 disabled 或 config.enabled。
+  不再由 app boot 逐项启动。可按插件实例设置 disabled 或 config.enabled。
   `MANAGED_MCP_ENABLED=false` 可整体关闭这些集成；`PLUGIN_MCP_AUTO` 仅控制其他数据库 MCP 的自动发现。
 
 ## 保留 Docker 部署

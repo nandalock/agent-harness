@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
-from backend.core.auth import LoginRequest, LoginResponse
-from backend.core.auth import login
+from ..auth import LoginRequest, LoginResponse
+from ..auth import login
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 

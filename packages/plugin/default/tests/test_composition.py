@@ -66,8 +66,13 @@ class CompositionTests(unittest.TestCase):
 
     def test_default_packages_and_explicit_disable(self):
         config = compose(PluginConfiguration())
-        self.assertEqual(len(config.plugins), 37)
+        self.assertEqual(len(config.plugins), 42)
         self.assertIn("agent-platform.memory", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.workflow", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.faq", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.xianyu", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.mcp-database", {p.name for p in config.plugins})
+        self.assertIn("agent-platform.plugin-inventory", {p.name for p in config.plugins})
         self.assertTrue({"agent-platform.agent-entry", "agent-platform.chat", "agent-platform.user-approval"}
                         <= {entry.name for entry in config.plugins})
         self.assertIn("agent-platform.agent-runtime", {p.name for p in config.plugins})

@@ -54,6 +54,7 @@ function initialArgs(schema: any): Record<string, any> {
 export default function McpListPage() {
   const router = useRouter();
   const [tools, setTools] = useState<McpTool[]>([]);
+  const [loadError, setLoadError] = useState('');
   const [showModal, setShowModal] = useState(false);
 
   const [importJson, setImportJson] = useState('');
@@ -126,9 +127,28 @@ export default function McpListPage() {
   async function fetchTools() {
     try {
       const r = await fetch(`${API}/api/mcp/tools/all`);
-      const list: McpTool[] = await r.json();
-      setTools(list);
-    } catch {}
+      if (!r.ok) {
+        let detail = `HTTP ${r.status}`;
+        try {
+          const body = await r.json();
+          detail = body?.detail || detail;
+        } catch {}
+        setTools([]);
+        setLoadError(detail);
+        return;
+      }
+      const data = await r.json();
+      if (!Array.isArray(data)) {
+        setTools([]);
+        setLoadError('工具列表格式异常');
+        return;
+      }
+      setTools(data);
+      setLoadError('');
+    } catch (e) {
+      setTools([]);
+      setLoadError(e instanceof Error ? e.message : '工具列表加载失败');
+    }
   }
 
   useEffect(() => { fetchTools(); }, []);
@@ -197,6 +217,20 @@ export default function McpListPage() {
         <p style={{ margin: 0, marginBottom: S.xl, fontSize: 13, color: T.secondary }}>
           平台所有可用的 MCP 工具，共 {tools.length} 个
         </p>
+        {loadError && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: S.sm, marginBottom: S.xl,
+            padding: `${S.md}px ${S.base}px`, borderRadius: 8,
+            border: `1px solid ${T.danger}`, background: `${T.danger}0F`,
+            fontSize: 13, color: T.text,
+          }}>
+            <span style={{ flex: 1 }}>工具列表加载失败：{loadError}</span>
+            <button onClick={fetchTools} style={{
+              padding: '5px 12px', borderRadius: 6, border: `1px solid ${T.border}`,
+              background: T.surface, color: T.text, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+            }}>重试</button>
+          </div>
+        )}
 
         {[...groups.entries()].map(([serverName, serverTools]) => {
           const isOpen = open.has(serverName);
@@ -273,7 +307,7 @@ export default function McpListPage() {
           );
         })}
 
-        {tools.length === 0 && (
+        {tools.length === 0 && !loadError && (
           <div style={{ textAlign: 'center', padding: '80px 0', color: T.tertiary }}>
             <Box size={36} style={{ marginBottom: S.md, opacity: 0.4 }} />
             <div style={{ fontSize: 14, marginBottom: S.sm }}>暂无工具</div>

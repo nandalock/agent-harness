@@ -1,8 +1,9 @@
 """FastAPI surface owned by the HTTP/API plugin.
 
-The runtime is started by the host proxy (``backend.main``); this module only
-assembles the web application and its routes. Route handlers resolve services
-from the active PluginRuntime instead of importing runtime implementations.
+The runtime is started by the ASGI carrier (``agent_platform_server``); this
+module only assembles the web application and its routes. Route handlers
+resolve services from the active PluginRuntime instead of importing runtime
+implementations.
 """
 import logging
 import os
@@ -22,8 +23,10 @@ from .routes.skills import router as skills_router
 from .routes.tools import router as tools_router
 from .routes.workflow import router as workflow_router
 from .routes.workspace import router as workspace_router
-from .routes.ws import router as ws_router
+from .routes.ws import register_broadcast, router as ws_router
 from .routes.xianyu import router as xianyu_router
+from .db import reset_current_database, set_current_database
+from .services import reset_services, set_services
 from agent_platform_agent_entry import (
     AgentBusy,
     AgentNotFound,
@@ -33,7 +36,7 @@ from agent_platform_agent_entry import (
     SessionNotFound,
 )
 from agent_platform_chat.service import ConversationConflict, ConversationNotFound
-from agent_platform_plugin_sdk import ServiceClosedError
+from agent_platform_plugin_sdk import ServiceClosedError, ServiceUnavailableError
 from agent_platform_session_recovery import CheckpointError, RecoveryError
 from agent_platform_agents import RunConflict
 
@@ -53,19 +56,28 @@ _GATEWAY_STATUS = {
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Project registry bootstrap needs the schema created by the database
-    # plugin; failures never block conversation startup.
+    database = getattr(app.state, "database", None)
+    token = set_current_database(database) if database is not None else None
+    service_token = set_services(getattr(app.state, "services", {}) or {})
     try:
-        from .routes.workspace import bootstrap_workspace_projects
+        # Project registry bootstrap needs the schema created by the database
+        # plugin; failures never block conversation startup.
+        try:
+            from .routes.workspace import bootstrap_workspace_projects
 
-        bootstrap_workspace_projects()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("项目注册表引导失败（会话不受影响）: %s", exc)
-    yield
+            bootstrap_workspace_projects()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("项目注册表引导失败（会话不受影响）: %s", exc)
+        yield
+    finally:
+        reset_services(service_token)
+        if token is not None:
+            reset_current_database(token)
 
 
 def create_app(
     connection=None, *, entry=None, chat=None, approval=None, agent_config=None, memory=None,
+    workflow=None, plugin_catalog=None, database=None, services=None, faq=None, xianyu=None,
 ) -> FastAPI:
     app = FastAPI(title="minidsh", lifespan=lifespan)
     app.state.agent_entry = entry
@@ -73,6 +85,11 @@ def create_app(
     app.state.approval = approval
     app.state.agent_config = agent_config
     app.state.memory = memory
+    app.state.workflow = workflow
+    app.state.database = database
+    app.state.services = services or {}
+    app.state.faq = faq
+    app.state.xianyu = xianyu
     app.add_middleware(
         CORSMiddleware,
         allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:4000").split(","),
@@ -80,11 +97,30 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    for router in (
-        auth_router, faq_router, xianyu_router, ws_router, agents_router,
-        chat_router, mcp_router, tools_router, workflow_router,
+
+    @app.middleware("http")
+    async def _bind_database(request: Request, call_next):
+        token = set_current_database(database) if database is not None else None
+        service_token = set_services(services or {})
+        try:
+            return await call_next(request)
+        finally:
+            reset_services(service_token)
+            if token is not None:
+                reset_current_database(token)
+    routers = [
+        auth_router, agents_router,
+        chat_router, mcp_router, tools_router,
         workspace_router, skills_router,
-    ):
+    ]
+    if faq is not None:
+        routers.append(faq_router)
+    if workflow is not None:
+        routers.append(workflow_router)
+    if xianyu is not None:
+        register_broadcast(xianyu)
+        routers.extend((xianyu_router, ws_router))
+    for router in routers:
         app.include_router(router)
     if memory is not None:
         app.include_router(memory_router)
@@ -106,11 +142,16 @@ def create_app(
                 return Response(status_code=204)
             return JSONResponse(result)
 
+    @app.get("/api/plugins")
+    async def plugins():
+        """The single enablement source for frontend plugin loading."""
+        if plugin_catalog is None:
+            return JSONResponse(status_code=503, content={"detail": "plugin catalog unavailable"})
+        return {"plugins": plugin_catalog.list()}
+
     @app.get("/health")
     async def health():
-        from backend.plugin_host import get_plugin_host
-
-        ready = get_plugin_host() is not None
+        ready = plugin_catalog is not None
         return JSONResponse(
             status_code=200 if ready else 503,
             content={"status": "ready" if ready else "unavailable", "plugins": ready},
@@ -125,6 +166,10 @@ def create_app(
 
     @app.exception_handler(ServiceClosedError)
     async def _service_closed_handler(request: Request, exc: ServiceClosedError):
+        return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+    @app.exception_handler(ServiceUnavailableError)
+    async def _service_unavailable_handler(request: Request, exc: ServiceUnavailableError):
         return JSONResponse(status_code=503, content={"detail": str(exc)})
 
     @app.exception_handler(CheckpointError)

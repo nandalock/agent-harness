@@ -366,14 +366,5 @@ assert not any(name == 'backend' or name.startswith('backend.') for name in sys.
 """], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    async def test_backend_import_does_not_select_or_import_the_default_loop(self):
-        result = await asyncio.to_thread(subprocess.run, [sys.executable, "-c", """
-import sys
-import backend.agents.runtime
-assert 'agent_platform_agent_loop' not in sys.modules
-"""], capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-
 if __name__ == "__main__":
     unittest.main()

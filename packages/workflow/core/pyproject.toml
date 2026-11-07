@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-workflow"
+version = "0.1.0"
+description = "Workflow service and extensible node registry as an Agent Platform plugin"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-agent-entry>=0.1,<0.2",
+    "agent-platform-llm>=0.1,<0.2",
+    "langgraph>=1,<2",
+    "numpy>=1.26,<3",
+    "psycopg2-binary>=2.9,<3",
+    "redis>=5,<7",
+]
+
+[project.optional-dependencies]
+dev = ["mypy>=1.10"]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.workflow" = "agent_platform_workflow:WorkflowPlugin"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+check_untyped_defs = true

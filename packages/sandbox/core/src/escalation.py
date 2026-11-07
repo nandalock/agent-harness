@@ -109,7 +109,7 @@ def escalation_hint_marker(mode: str, *, can_ask_human: bool) -> str:
     return ESCALATION_HINT
 
 
-# 审批的能力与词汇都不在本模块：见 backend/interaction/approval
+# 审批的能力与词汇都不在本模块：见 packages/interaction/approval
 # （ApprovalRequest / ApprovalOutcome / ApprovalChannel 协议）。
 # 本模块只**消费**它 —— 沙箱的模式信息装进 ApprovalRequest.metadata。
 

@@ -39,7 +39,7 @@ AgentLoop
 ### 贡献提示词段
 
 ```python
-from backend.agents.runtime.system_prompt import PromptSection, section, SECTION_ORDERS
+from agent_platform_system_prompt import PromptSection, section, SECTION_ORDERS
 
 section(PromptSection(
     name="my:rule",                          # 唯一名，重复注册抛错
@@ -63,7 +63,7 @@ section(PromptSection(
 逐轮变化的内容放 context（排在提示词尾部，不破坏前缀缓存）：
 
 ```python
-from backend.agents.runtime.system_prompt import PromptContext, context, CONTEXT_ORDERS
+from agent_platform_system_prompt import PromptContext, context, CONTEXT_ORDERS
 
 context(PromptContext(
     name="my:facts",
@@ -259,8 +259,8 @@ system prompt 每次请求都完整发送，成本随内容增长（固定开销
 ```bash
 docker compose exec backend python packages/agent/system-prompt/tests/test_system_prompt.py
 docker compose exec backend python packages/agent/system-prompt/tests/test_platform_sections.py
-docker compose exec backend python backend/tests/session/test_session.py
-docker compose exec backend python backend/agents/runtime/tests/test_agent_runtime_prompt.py
+docker compose exec backend python tests/integration/session/test_session.py
+docker compose exec backend python tests/integration/agent_runtime/test_agent_runtime_prompt.py
 ```
 
 （容器内没有 pytest，测试文件自带 `main()` 运行器 —— 与仓库其它测试一致。）

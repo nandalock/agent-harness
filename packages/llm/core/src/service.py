@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from agent_platform_llm.client import LlmClient
+from agent_platform_llm.embedding import embed as _embed
 from agent_platform_llm.http import HttpSessionPool
 from agent_platform_llm.openai_chat import OpenAiChatClient
 from agent_platform_llm.providers import (
@@ -47,6 +48,10 @@ class LLMService:
             max_llm_retries=max_llm_retries,
             http_session_factory=self._http.get,
         )
+
+    async def embed(self, text: str, model: str = "bge-m3") -> list[float] | None:
+        """Embed text through the runtime-owned HTTP pool (Ollama bge-m3)."""
+        return await _embed(self._http.get, text, model)
 
     async def aclose(self) -> None:
         await self._http.aclose()

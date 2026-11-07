@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, TypeVar, cast
 
 from agent_platform_plugin_sdk import (
+    PLUGIN_CATALOG,
     PluginConfiguration,
     PluginSpec,
     ServiceClosedError,
@@ -43,6 +44,23 @@ class LoadedPluginInfo:
     spec: PluginSpec
 
 
+class _RuntimePluginCatalog:
+    """Built-in projection of the runtime's own started instances.
+
+    The runtime is the only owner of this state, so the catalog is not a
+    module singleton and cannot drift from `runtime.plugins`.
+    """
+
+    def __init__(self, runtime: "PluginRuntime") -> None:
+        self._runtime = runtime
+
+    def list(self) -> list[dict[str, Any]]:
+        return [
+            {"id": plugin.instance_id, "name": plugin.name, "version": plugin.version}
+            for plugin in self._runtime.plugins
+        ]
+
+
 class PluginRuntime:
     """A single host scope for declarative plugin instances.
 
@@ -70,6 +88,7 @@ class PluginRuntime:
         )
         self._catalog = catalog if catalog is not None else EntryPointCatalog()
         self._host_services = dict(host_services or {})
+        self._host_services.setdefault(PLUGIN_CATALOG, _RuntimePluginCatalog(self))
         self._state = RuntimeState.NEW
         self._registry: ServiceRegistry | None = None
         self._contexts: list[tuple[LoadedPlugin, RuntimePluginContext]] = []

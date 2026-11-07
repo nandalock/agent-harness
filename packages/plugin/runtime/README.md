@@ -166,16 +166,16 @@ runtime = PluginRuntime.from_yaml(
 
 SDK 自己的错误（`PluginCompatibilityError`、`RegistrationConflictError`、`ServiceClosedError`、`ServiceUnavailableError`）保持原样抛出。
 
-## 后端接入
+## 进程接入
 
-后端通过 `backend/plugin_host.py` 装配**单轨**工具运行时：
+后端通过 `packages/boot/app-boot/src/agent_platform_app_boot/host.py` 装配**单轨**工具运行时：
 
 - `tools-default` 总是被加载（配置里没写时自动补上），它是唯一的 `tools.v1` 注册表。
-- MCP 工具实现位于 `packages/mcp/`；backend 启动后会把 `mcp_servers` 表里的每个 server 自动转换成 `agent-platform.mcp-client` 插件实例，由插件连接 server 并注册工具。`PLUGIN_MCP_AUTO=false` 可关闭自动装配。
+- MCP 工具实现位于 `packages/mcp/`；`agent-platform.mcp-database` 插件在数据库插件启动后读取 `mcp_servers` 表，把每个 server 交给 `mcp-manager` 连接并注册工具。`PLUGIN_MCP_AUTO=false` 可关闭自动装配。
 - sandbox / skill 等原生工具在启动时注册进同一个注册表；后续动态注册/注销（如沙箱能力开关、远程 MCP 懒加载）通过 Registry 变更监听同步。插件已注册的同名 MCP 工具优先，未被插件覆盖的原生 MCP 工具仍走 `backend.native` 兜底。
-- AgentLoop 的 `ToolScheduler`、系统提示词的 `_platform_tool_provider`、`/api/mcp/tools/*` 都只使用单轨运行时；backend 的 `ToolRegistry` 只作为原生工具来源，由单轨运行时同步，不再是 agent-facing 的第二份注册表。
-- backend 的沙箱策略、审批通道和事件出口通过 `ToolContext.host_context` 传给原生 executor；该字段不参与序列化，插件工具不应依赖它。
-- 插件配置按以下顺序发现：`PLUGIN_CONFIG` → 仓库内的 `config/plugins.yaml`；都没有时只加载默认插件。
+- AgentLoop 的 `ToolScheduler`、系统提示词的 `_platform_tool_provider`、`/api/mcp/tools/*` 都只使用单轨运行时；原生 `ToolRegistry` 只作为工具来源，由单轨运行时同步，不再是 agent-facing 的第二份注册表。
+- 宿主提供的沙箱策略、审批通道和事件出口通过 `ToolContext.host_context` 传给原生 executor；该字段不参与序列化，插件工具不应依赖它。
+- 插件配置按以下顺序发现：`PLUGIN_CONFIG` → 工作目录的 `plugins.yaml` / `config/plugins.yaml`；都没有时只加载默认插件。
 - 依赖缺失或装配失败时记录 warning，回退到旧的原生 ToolRuntime。
 - 插件工具会出现在 `/api/mcp/tools/all`，来源标签为 `plugin`；通过 `PUT /api/tools/bindings/{agent_key}` 绑定后，模型下一轮就能看到它。
 

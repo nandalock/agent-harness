@@ -2,7 +2,7 @@
 
 > 当前实现已插件化：[`packages/agent/README.md`](../packages/agent/README.md)。
 > `agent-platform.agents` 提供运行作用域与活动句柄服务；`agent-platform.agent-loop`
-> 注册具体工厂。循环源码在 `packages/agent/loop/src`，`backend/agents/runtime/loop`
+> 注册具体工厂。循环源码在 `packages/agent/loop/src`，`packages/agent/loop/src`
 > 已删除。下文的阶段记录保留当时的路径和进程单例设计；当前登记表由插件运行时隔离，
 > 后端通过 `get_agent_runs().open(...)` 创建循环，关闭前先 quiesce 再释放工具和服务。
 > 循环接收并保存 `LoopContext`（`self.loop_ctx`）；工具调度通过同一个上下文访问
@@ -11,7 +11,7 @@
 > 状态：**§2–§5 全部落地**（循环本体 §8 · LLM 出口 §9 · RunRegistry 与投递端点 §10）；
 > 已落地：`pre_step` 的上下文注入；未做：§3 的持久化队列、`request` / `turn_stopping` 拦截点
 > 参考：DeepSeek Harness `dsh-agent-loop`（`inbox.ts` 双队列 · `agent.ts` 四个 waterfall）· `dsh-agent`（事件契约）
-> 关联代码：`packages/agent/loop/src/agent_loop.py` · `backend/agents/runtime/agent_runtime.py` · `packages/host/http-api/src/routes/agents.py`
+> 关联代码：`packages/agent/loop/src/agent_loop.py` · `packages/agent/runtime/src/runtime.py` · `packages/host/http-api/src/routes/agents.py`
 > 前置：Phase 1（健壮性：finish_reason / 重试 / 闭合）· Phase 2（取消通道）已落地
 
 ## 1. 问题

@@ -1,6 +1,6 @@
 # Managed MCP service plugins
 
-This package owns the lifecycle previously hardcoded in backend/main.py.
+This package owns the lifecycle previously hardcoded in the app boot layer.
 It exports four independent plugin entries:
 
 | Entry | Lifecycle |

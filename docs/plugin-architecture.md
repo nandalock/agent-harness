@@ -34,7 +34,12 @@ or `ctx.get(...)` (optional), and own every effect through their context.
 | `agent.entry.v1` | `agent-platform.agent-entry` | chat, workflows, headless CLI |
 | `chat.v1` | `agent-platform.chat` | HTTP chat, memory views, Xianyu |
 | `memory.v1` | `agent-platform.memory` | HTTP memory profiles and debug |
+| `workflow.v1` / `workflow.nodes.v1` | `agent-platform.workflow` | Workflow HTTP routes, node-contributing plugins |
+| `faq.v1` | `agent-platform.faq` | FAQ HTTP routes |
+| `xianyu.v1` | `agent-platform.xianyu` | Xianyu HTTP/WS routes, chat persistence |
 | `approval.v1` / `approval.inbox.v1` | `agent-platform.user-approval` | Agent Loop, sandbox tools, HTTP approval routes |
+| `plugin-catalog.v1` | `PluginRuntime` (native) | plugin inventory |
+| `plugin.inventory.v1` | `agent-platform.plugin-inventory` | HTTP `/api/plugins`, frontend boot filter |
 | `http.app.v1` | `agent-platform.http-api` | ASGI proxy |
 
 `agent-platform.agent-runtime` requires `agents.v1`, `agent.runs.v1`,
@@ -71,15 +76,15 @@ HTTP. See [rpc-api.md](rpc-api.md).
 
 ## HTTP boundary
 
-`backend/main.py` is only an ASGI proxy. It starts the plugin runtime on
+`apps/server` is only an ASGI carrier. It starts the plugin runtime on
 lifespan, resolves `http.app.v1`, and delegates requests to the FastAPI
-application owned by `agent-platform.http-api`. The proxy contains no routes
+application owned by `agent-platform.http-api`. The carrier contains no routes
 and no agent assembly.
 
 A headless entry is available for deployments without the HTTP plugin:
 
 ```bash
-python -m backend.headless --agent default "你好"
+python -m agent_platform_cli --agent default "你好"
 ```
 
 It loads the same composition, explicitly removes `agent-platform.http-api`,
@@ -109,10 +114,56 @@ agent's model configuration for the debug endpoint. The debug endpoint previews
 extraction without saving profile facts. The Agent Runtime does not register
 memory hooks.
 
-## Remaining host code
+## Workflow and node extensions
 
-Legacy HTTP handlers still use `backend.session_services` and
-`backend.plugin_services` for some runtime lookups. Workflow, FAQ,
-semantic cache, Xianyu, and MCP configuration discovery still have host
-implementations. Workflows and Xianyu consume the same agent entry and chat
-services as the web application.
+`agent-platform.workflow` owns workflow CRUD, graph execution and the response
+cache. It publishes two services:
+
+- `workflow.v1` — tenant-scoped list/create/get/save/delete/run. The HTTP
+  plugin only formats SSE; it has no SQL or LangGraph code.
+- `workflow.nodes.v1` — a node-kind registry. The plugin registers `start`,
+  `end`, `agent`, `condition` and `router`; any plugin that declares a
+  dependency on `workflow.nodes.v1` can register another kind with a handler
+  and an optional conditional-edge router.
+
+Node factories receive `NodeContext` (agent entry, agent config, node cache),
+so a node kind never imports the workflow service or the host.
+
+## Frontend enablement
+
+Frontend plugins declare their backend identity in `package.json`:
+
+```json
+"dsh": {
+  "plugin": "agent-platform.workflow",
+  "client": { "platform": "web", "inject": ["@app/plugin-shell"] }
+}
+```
+
+`PluginRuntime` exposes `plugin-catalog.v1`; `agent-platform.plugin-inventory` projects it. `GET /api/plugins`
+returns the started instances; `kernel/boot.ts` filters boot entries by
+`entry.plugin` before loading any bundle. A disabled backend plugin therefore
+removes its pages, navigation entries and client bundle together. When the
+catalog is unavailable (headless tests, offline dev) every bundle loads; tests
+may inject `window.__DSH_PLUGIN_CATALOG__` to select a subset.
+
+## Process entry and boot
+
+The repository has no `backend/` directory. Process concerns live in apps and
+boot packages:
+
+| Package | Role |
+| --- | --- |
+| `apps/server` | ASGI carrier for uvicorn: start runtime, resolve `http.app.v1` |
+| `apps/cli` | `agent-platform run` (headless turn) and `agent-platform serve` |
+| `packages/boot/app-boot` | composition discovery + `PluginRuntime` start/stop |
+| `packages/host/plugin-inventory` | `plugin.inventory.v1` projection of started instances |
+
+`PluginRuntime` provides `plugin-catalog.v1` natively; the inventory plugin
+projects it for the HTTP plugin. MCP rows are loaded by
+`agent-platform.mcp-database` after the database plugin starts, so boot never
+reads a business table.
+
+The HTTP plugin owns its request-scoped database and service adapters
+(`packages/host/http-api/src/db.py`, `services.py`); route modules do not
+import an app entry or a host singleton.

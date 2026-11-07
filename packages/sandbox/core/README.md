@@ -36,7 +36,7 @@
 | `workspace.py` | 路径映射、工作区根解析与安全校验、**工作区内相对路径的越界校验**、只读挂载构造、功能探测 | 装配层、后端、`packages/host/http-api/src/routes/workspace.py` |
 | `errors.py` | `SandboxUnavailableError` —— fail-closed 的唯一出口 | 全层 |
 | `runtime.py` | 装配 + 会话策略 + 内建工具 schema / 注册辅助 | `main.py`、`sandbox-tools` 插件 |
-| `backend/tests/test_sandbox.py` | 自检：纯逻辑 + 真实 docker e2e（docker 不可用时自动跳过） | — |
+| `tests/integration/test_sandbox.py` | 自检：纯逻辑 + 真实 docker e2e（docker 不可用时自动跳过） | — |
 
 ---
 
@@ -272,8 +272,8 @@ interaction/approval    怎么问人、怎么等回答      ← Channel / Servic
 7. **镜像无 digest pin**。默认 `agent-sandbox:1`（`sandbox/Dockerfile` 的自建
    tag，见 compose 的 `sandbox-image` 服务），且 `SANDBOX_IMAGE` 可指向任意
    可变 tag —— 换镜像不必动代码，因此也没有地方强制校验它。
-   （注意沙箱镜像与 backend/frontend 镜像职责不同：装沙箱内依赖要改
-   `sandbox/Dockerfile`，不要改 `backend/Dockerfile`。）
+   （注意沙箱镜像与应用/前端镜像职责不同：装沙箱内依赖要改
+   `sandbox/Dockerfile`，不要改 `deploy/Dockerfile.backend`。）
 8. **`read_roots` 不进事件**。`tool/result` 的 sandbox 事实只有 `{mode, enforcement,
    outcome}` —— 事后审计无法回答「这次会话读到了哪些宿主目录」。
 9. **读路径有 TOCTOU 窗口**。`resolve_workspace_member` 先 `resolve()` 判越界，
@@ -297,9 +297,9 @@ interaction/approval    怎么问人、怎么等回答      ← Channel / Servic
 - 动升权？→ 三件事必须一起看：**链在 `approve_escalation` 里一次走完**（别拆回
   「先判断后审批」两段）、**`on_request` 回调必须在 await 之前**（否则前端看不到
   等待态）、**事件 schema 是记录不是配置**（进了策略解析就把一次性变成持久放权）
-- 动审批？→ 那是 `backend/interaction/approval/` 的事，**不要在这里加实现**。
+- 动审批？→ 那是 `packages/interaction/approval/` 的事，**不要在这里加实现**。
   本目录只 import 它的协议；越界会被 `test_approval_never_imports_a_domain_package`
   扫出来
 - 跑测试：
-  - `python -m backend.tests.test_sandbox`（e2e 需 docker，不可用自动跳过）
-  - `python -m backend.interaction.approval.test_approval`（审批本身，无依赖）
+  - `python -m pytest tests/integration/test_sandbox.py`（e2e 需 docker，不可用自动跳过）
+  - `python -m pytest packages/interaction/approval/tests/test_approval.py`（审批本身，无依赖）

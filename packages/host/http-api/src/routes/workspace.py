@@ -65,11 +65,11 @@ from urllib.parse import quote
 from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
 
-from backend.core.connection import get_conn
-from backend import plugin_services
+from ..db import get_conn
+from .. import services as plugin_services
 from agent_platform_rpc_gateway import RpcError
-from backend.rpc_http import http_error
-from backend.services import folder_picker
+from ..rpc_http import http_error
+from .. import folder_picker
 from agent_platform_sandbox.errors import SandboxUnavailableError
 from agent_platform_sandbox.workspace import (
     READ_ROOTS_ENV,

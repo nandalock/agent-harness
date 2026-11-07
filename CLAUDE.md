@@ -25,13 +25,13 @@
 - session 能力拆在 `packages/session/*`：`SESSIONS`、`SESSION_PERSISTENCE`、
   `SESSION_TITLE`、`SESSION_RECOVERY`、`SESSION_PROJECTION`。
   `SessionRecoveryService` / `SessionTitleService` 由插件构造并注入 store、
-  persistence、LLM；后端只剩 `backend/tests/session/` 集成测试。
+  persistence、LLM；后端只剩 `tests/integration/session/` 集成测试。
 - `AgentRuntime` 只依赖 `AGENTS`、`AGENT_RUNS`、`RUNTIME_PROMPTS`、`LLM`、
   `AGENT_SANDBOX`、`SESSION_RECOVERY`、可选 `SESSION_TITLE`，不再引用 backend
   适配器或全局单例。细节见 `docs/plugin-architecture.md`。
 - HTTP 由 `packages/host/http-api` 插件提供；REST/SSE/WebSocket 路由定义都在
-  `packages/host/http-api/src/routes/`，`backend/api/` 已不存在。`backend/main.py`
-  只是 ASGI proxy。无 HTTP 入口：`python -m backend.headless --agent default "..."`。
+  `packages/host/http-api/src/routes/`。`apps/server` 只是 ASGI carrier，启动 runtime
+  后转交 `http.app.v1`。无 HTTP 入口：`python -m agent_platform_cli --agent default "..."`。
 - 业务接口走 `POST /api/rpc`：`packages/api/gateway`（方法登记/校验）、
   `packages/api/connection`（JSON-RPC 2.0）、`packages/api/{workspace,agents,sessions}`
   （Controller 插件）。前端用 `packages/client/legacy/lib/remote/`，TS 类型由

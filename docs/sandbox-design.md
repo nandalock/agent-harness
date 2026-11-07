@@ -187,8 +187,8 @@ packages/tools/system/src/providers.py  # ToolProvider / BuiltinToolProvider
 packages/tools/system/src/context.py  # sandbox_policy（策略下传）
 packages/agent/loop/src/agent_loop.py       # 解析策略 + 落地 SessionHeader.cwd
 packages/host/http-api/src/routes/mcp.py         # 工具列表/详情含原生工具
-backend/main.py                                 # 装配：init_sandbox + 注册 bash/python
-docker-compose.yml / backend/Dockerfile         # socket + docker CLI + 工作区同路径挂载
+packages/sandbox/tools                         # 沙箱工具插件：注册 bash/python
+docker-compose.yml / deploy/Dockerfile.backend         # socket + docker CLI + 工作区同路径挂载
 ```
 
 阶段 1c 追加：`session/events.py`（`SANDBOX_MODE` 常量）、`session/projections/sandbox.py`
@@ -381,7 +381,7 @@ assert not any(a in argv for a in _FORBIDDEN), "模型参数不得影响隔离�
    → config/ 直接被挂进去
 ```
 
-**必须实现校验**：`SANDBOX_WORKSPACE_ROOT` 启动时断言其不等于、也不包含仓库根或 `backend/` 目录。这条把「读侧不设防」从固有风险降级为配置错误。
+**必须实现校验**：`SANDBOX_WORKSPACE_ROOT` 启动时断言其不等于、也不包含仓库根或应用源码目录。这条把「读侧不设防」从固有风险降级为配置错误。
 
 #### 9.2.1 读侧可以被显式放宽：整盘只读挂载
 

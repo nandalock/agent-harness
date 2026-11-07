@@ -132,3 +132,20 @@ class Database(Protocol):
 DATABASE: ServiceKey[Database] = ServiceKey(
     ServiceRef(name="database", api_version=1)
 )
+
+
+# ── plugin-catalog.v1 ──
+
+class PluginCatalog(Protocol):
+    """Host-supplied view of the plugin instances that actually started.
+
+    Disabled or failed instances are absent; clients use this as the single
+    enablement source when composing their own UI or capabilities.
+    """
+
+    def list(self) -> list[dict[str, Any]]: ...
+
+
+PLUGIN_CATALOG: ServiceKey[PluginCatalog] = ServiceKey(
+    ServiceRef(name="plugin-catalog", api_version=1)
+)

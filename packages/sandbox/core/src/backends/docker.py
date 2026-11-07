@@ -45,7 +45,7 @@ from ..workspace import (
 
 #: 默认沙箱镜像。由 ``SANDBOX_IMAGE`` 配置（compose 的 backend.environment 传入，
 #: 默认值为本仓库自建镜像，见 ``sandbox/Dockerfile`` 与 compose 的
-#: ``sandbox-image`` 服务）。装依赖要改 **沙箱镜像**，不要改 backend/frontend
+#: ``sandbox-image`` 服务）。装依赖要改 **沙箱镜像**，不要改应用/前端
 #: 镜像 —— 那是应用镜像，职责不同。
 DEFAULT_SANDBOX_IMAGE = os.environ.get("SANDBOX_IMAGE", "agent-sandbox:1")
 

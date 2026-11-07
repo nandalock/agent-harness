@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "dsh": {
+    "plugin": "agent-platform.xianyu",
     "client": {
       "platform": "web",
       "inject": ["@app/plugin-shell"]

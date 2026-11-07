@@ -15,6 +15,17 @@ dependencies = [
     "agent-platform-memory>=0.1,<0.2",
     "agent-platform-user-approval>=0.1,<0.2",
     "agent-platform-rpc-connection>=0.1,<0.2",
+    "agent-platform-api-agents>=0.1,<0.2",
+    "agent-platform-api-sessions>=0.1,<0.2",
+    "agent-platform-api-workspace>=0.1,<0.2",
+    "agent-platform-system-prompt>=0.1,<0.2",
+    "agent-platform-faq>=0.1,<0.2",
+    "agent-platform-xianyu>=0.1,<0.2",
+    "agent-platform-workflow>=0.1,<0.2",
+    "agent-platform-mcp-client>=0.1,<0.2",
+    "agent-platform-skills>=0.1,<0.2",
+    "agent-platform-sandbox>=0.1,<0.2",
+    "agent-platform-plugin-inventory>=0.1,<0.2",
 ]
 
 [project.entry-points."agent_platform.plugins"]

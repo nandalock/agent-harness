@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from backend.integrations.xianyu import manager
+from agent_platform_xianyu import XianyuManager
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +22,10 @@ async def _broadcast(data: dict):
         _ws_clients.discard(ws)
 
 
-async def on_new_message(msg: dict):
-    """manager 收到新消息时广播给所有前端 WS 客户端"""
-    convs = manager.get_conversations()
-    conv = next((c for c in convs if c["cid"] == msg["cid"]), None)
+async def on_new_message(manager: XianyuManager, msg: dict) -> None:
+    """Broadcast a newly persisted Xianyu message to browser clients."""
+    conversations = manager.get_conversations()
+    conversation = next((c for c in conversations if c["cid"] == msg["cid"]), None)
     await _broadcast({
         "type": "new_message",
         "data": {
@@ -34,12 +34,16 @@ async def on_new_message(msg: dict):
             "content": msg.get("content", ""),
             "time": msg.get("time", ""),
         },
-        "conversation": conv,
-        "conversation_id": conv["id"] if conv else None,
+        "conversation": conversation,
+        "conversation_id": conversation["id"] if conversation else None,
     })
 
 
-manager.subscribe(on_new_message)
+def register_broadcast(manager: XianyuManager) -> None:
+    async def callback(msg: dict) -> None:
+        await on_new_message(manager, msg)
+
+    manager.subscribe(callback)
 
 
 @router.websocket("/api/ws/chat")
@@ -50,7 +54,7 @@ async def chat_ws(websocket: WebSocket):
 
     try:
         while True:
-            await websocket.receive_text()  # 保持连接
+            await websocket.receive_text()
     except WebSocketDisconnect:
         logger.info("[WS] 客户端已断开")
     finally:

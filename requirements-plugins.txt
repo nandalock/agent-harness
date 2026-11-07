@@ -1,4 +1,4 @@
-# Agent Platform plugin stack for local/backend development.
+# Agent Platform plugin stack for local/application development.
 # Install leaf packages first so editable dependency resolution never falls
 # back to an unpublished PyPI release.
 -e ./packages/plugin/sdk
@@ -39,9 +39,17 @@
 -e ./packages/mcp/overleaf
 -e ./packages/mcp/overleaf-rt
 -e ./packages/mcp/managed
+-e ./packages/mcp/database
+-e ./packages/workflow/core
+-e ./packages/faq/core
+-e ./packages/integrations/xianyu
+-e ./packages/host/plugin-inventory
+-e ./packages/boot/app-boot
 -e ./packages/api/gateway
 -e ./packages/api/connection
 -e ./packages/api/workspace
 -e ./packages/api/agents
 -e ./packages/api/sessions
 -e ./packages/host/http-api
+-e ./apps/server
+-e ./apps/cli

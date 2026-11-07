@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-mcp-database"
+version = "0.1.0"
+description = "Load persisted MCP server rows into the MCP manager as a plugin"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-plugin-sdk>=0.1,<0.2",
+    "agent-platform-mcp-client>=0.1,<0.2",
+    "agent-platform-managed-mcp>=0.1,<0.2",
+    "psycopg2-binary>=2.9,<3",
+]
+
+[project.entry-points."agent_platform.plugins"]
+"agent-platform.mcp-database" = "agent_platform_mcp_database:McpDatabasePlugin"
+
+[tool.setuptools.packages.find]
+where = ["src"]

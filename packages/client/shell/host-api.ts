@@ -1,7 +1,18 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { disposePlugin, trackPluginEffect } from '../kernel/lifecycle';
 import {
+  getNavItems,
+  isNavItemActive,
+  registerNavItem,
+  unregisterNavItem,
+  useNavItems,
+} from '../kernel/nav';
+import {
+  DEFAULT_ROUTE_OPTIONS,
+  KeepAliveOutlet,
+  matchRoute,
   navigate,
   notFound,
   redirect,
@@ -10,28 +21,64 @@ import {
   useParams,
   usePathname,
   useRoute,
+  useRouteMatch,
+  useRouteMeta,
   useRouter,
   useSearchParams,
 } from '../kernel/router';
-import { registerSlot, Slot, unregisterSlot } from '../kernel/slots';
+import {
+  clearSlots,
+  declareSlot,
+  getSlotDeclaration,
+  getSlotEntries,
+  getSlotEntryMeta,
+  hasSlot,
+  registerSlot,
+  Slot,
+  unregisterSlot,
+} from '../kernel/slots';
 import type { PluginContext } from '../kernel/types';
+import { AppFrame, SHELL_SLOTS } from './app-frame';
 import { S, T } from './theme';
+import { EmptyState, Page, Panel, Toolbar } from './ui';
 
 export {
+  AppFrame,
+  DEFAULT_ROUTE_OPTIONS,
+  EmptyState,
+  KeepAliveOutlet,
+  Page,
+  Panel,
   React,
   S,
+  SHELL_SLOTS,
   Slot,
   T,
+  Toolbar,
+  clearSlots,
+  declareSlot,
+  getNavItems,
+  getSlotDeclaration,
+  getSlotEntries,
+  getSlotEntryMeta,
+  hasSlot,
+  isNavItemActive,
+  matchRoute,
   navigate,
   notFound,
   redirect,
+  registerNavItem,
   registerRoute,
   registerSlot,
   RouterOutlet,
+  unregisterNavItem,
   unregisterSlot,
+  useNavItems,
   useParams,
   usePathname,
   useRoute,
+  useRouteMatch,
+  useRouteMeta,
   useRouter,
   useSearchParams,
 };
@@ -39,14 +86,37 @@ export {
 export type { PluginContext };
 
 export function createHostApi() {
-  const slots = { register: registerSlot };
+  const slots = {
+    declare: declareSlot,
+    register: registerSlot,
+  };
   const router = { add: registerRoute, navigate };
+  const nav = { add: registerNavItem };
+
   return {
     slots,
     router,
+    nav,
     context(id: string): PluginContext {
-      return { id, slots, router };
+      const track = (dispose: () => void) => trackPluginEffect(id, dispose);
+      return {
+        id,
+        slots: {
+          declare: (name, declaration) => track(declareSlot(name, declaration)),
+          register: (name, idOrOptions, component) =>
+            track(registerSlot(name, idOrOptions, component)),
+        },
+        router: {
+          add: (path, component, options) => track(registerRoute(path, component, options)),
+          navigate,
+        },
+        nav: {
+          add: (item) => track(registerNavItem(item)),
+        },
+        onDispose: (callback) => track(callback),
+      };
     },
+    disposePlugin,
   };
 }
 

@@ -67,7 +67,7 @@ def assert_root_is_safe(root: str) -> None:
 
     两条规则：
       - 工作区根不能是仓库根的祖先（否则整个仓库被挂进沙箱）
-      - 工作区根不能落在 ``backend/`` 内（否则后端源码被挂进沙箱）
+      - 工作区根不能落在应用源码/配置目录内
 
     Args:
         root: 待校验的工作区根路径。
@@ -81,18 +81,21 @@ def assert_root_is_safe(root: str) -> None:
 
     resolved = root_path.resolve()
     repo = repo_root()
-    backend_dir = repo / "backend"
 
     if _contains(resolved, repo):
         raise ValueError(
             f"{WORKSPACE_ROOT_ENV}={root!r} 会包含仓库根 {repo}；"
             "沙箱将挂载整个仓库（含 .env 与源码）。请改用独立目录，例如 /srv/agent/workspaces。"
         )
-    if _contains(backend_dir, resolved):
-        raise ValueError(
-            f"{WORKSPACE_ROOT_ENV}={root!r} 落在 backend/ 内 {backend_dir}；"
-            "沙箱将挂载后端源码。请改用独立目录。"
-        )
+
+    protected = ("packages", "apps", "config", "deploy", "tests", ".git", ".venv", ".data")
+    for name in protected:
+        source_dir = repo / name
+        if _contains(source_dir, resolved):
+            raise ValueError(
+                f"{WORKSPACE_ROOT_ENV}={root!r} 落在源码/配置目录 {source_dir} 内；"
+                "沙箱将挂载应用源码。请改用独立目录。"
+            )
 
 
 def resolve_workspace_root(configured: str | None = None) -> str:

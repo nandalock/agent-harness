@@ -5,6 +5,9 @@ import type { PluginContext } from '@app/host';
 export default definePlugin({
   id: '@app/plugin-dashboard',
   setup(ctx: PluginContext) {
-    ctx.router.add('/dashboard', DashboardPage);
+    ctx.router.add('/dashboard', DashboardPage, {
+      shell: 'dashboard',
+      layout: 'standard',
+    });
   },
 });

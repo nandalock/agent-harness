@@ -14,8 +14,8 @@ from agent_platform_session import Session
 from agent_platform_system_prompt import render_system_prompt
 from agent_platform_user_approval import ApprovalService
 
-from backend import plugin_services
-from backend.rpc_http import http_error
+from .. import services as plugin_services
+from ..rpc_http import http_error
 
 from ..dependencies import agent_config, agent_entry, approval_inbox, chat_service
 
@@ -426,7 +426,7 @@ async def list_ollama_models() -> list[dict]:
     """读取 Ollama 本地已安装的 embedding 模型"""
     import os
     import aiohttp
-    from backend.core.http import get_http_session
+    from ..http_session import get_http_session
 
     ollama_url = os.getenv("OLLAMA_HOST", "http://localhost:11434")
     try:

@@ -1,22 +1,19 @@
 import json
-import re
+from collections.abc import AsyncIterator
+from typing import Any
 
-import psycopg2.errors
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from backend.core.connection import get_conn
+
+from agent_platform_workflow import (
+    WorkflowNameConflict,
+    WorkflowNotFound,
+    WorkflowService,
+    WorkflowValidationError,
+)
 
 router = APIRouter(prefix="/api/workflows", tags=["workflows"])
-
-# Lone surrogates (U+D800–U+DFFF) are invalid in JSON; strip them before saving.
-_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
-
-
-def _safe_dumps(obj) -> str:
-    """json.dumps that strips lone surrogates before encoding."""
-    raw = json.dumps(obj, ensure_ascii=False)
-    return _SURROGATE_RE.sub("", raw)
 
 
 class RunWorkflowPayload(BaseModel):
@@ -37,99 +34,84 @@ class SaveWorkflowPayload(BaseModel):
     edges: list | None = None
 
 
+def workflow_service(request: Request) -> WorkflowService:
+    service = getattr(request.app.state, "workflow", None)
+    if service is None:
+        raise HTTPException(404, "workflow plugin is not enabled")
+    return service
+
+
+async def _sse(events: AsyncIterator[dict[str, Any]]) -> AsyncIterator[str]:
+    async for event in events:
+        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+
 @router.get("")
-def list_workflows(tenant_id: int = 1):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """SELECT id, name, status, jsonb_array_length(nodes) as node_count,
-                          created_at, updated_at
-                   FROM workflows WHERE tenant_id = %s ORDER BY updated_at DESC""",
-                (tenant_id,),
-            )
-            rows = cur.fetchall()
-    return {"items": rows}
+async def list_workflows(
+    tenant_id: int = 1,
+    service: WorkflowService = Depends(workflow_service),
+):
+    return {"items": await service.list(tenant_id)}
 
 
 @router.post("")
-def create_workflow(payload: CreateWorkflowPayload, tenant_id: int = 1):
+async def create_workflow(
+    payload: CreateWorkflowPayload,
+    tenant_id: int = 1,
+    service: WorkflowService = Depends(workflow_service),
+):
     try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """INSERT INTO workflows (tenant_id, name, nodes, edges)
-                       VALUES (%s, %s, %s::jsonb, %s::jsonb) RETURNING id""",
-                    (tenant_id, payload.name,
-                     _safe_dumps(payload.nodes) if payload.nodes else '[]',
-                     _safe_dumps(payload.edges) if payload.edges else '[]'),
-                )
-                new_id = cur.fetchone()["id"]
-            conn.commit()
-        return {"id": new_id}
-    except psycopg2.errors.UniqueViolation:
-        raise HTTPException(409, "工作流名称已存在")
+        return await service.create(tenant_id, payload.name, payload.nodes, payload.edges)
+    except WorkflowNameConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
 
 
 @router.get("/{workflow_id}")
-def get_workflow(workflow_id: int):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT * FROM workflows WHERE id = %s",
-                (workflow_id,),
-            )
-            row = cur.fetchone()
-    if not row:
-        raise HTTPException(404, "工作流不存在")
-    return row
+async def get_workflow(
+    workflow_id: int,
+    service: WorkflowService = Depends(workflow_service),
+):
+    try:
+        return await service.get(workflow_id)
+    except WorkflowNotFound as exc:
+        raise HTTPException(404, str(exc)) from exc
 
 
 @router.put("/{workflow_id}")
-def save_workflow(workflow_id: int, payload: SaveWorkflowPayload):
-    sets = []
-    params = []
-    if payload.name is not None:
-        sets.append("name = %s")
-        params.append(payload.name)
-    if payload.status is not None:
-        sets.append("status = %s")
-        params.append(payload.status)
-    if payload.nodes is not None:
-        sets.append("nodes = %s::jsonb")
-        params.append(_safe_dumps(payload.nodes))
-    if payload.edges is not None:
-        sets.append("edges = %s::jsonb")
-        params.append(_safe_dumps(payload.edges))
-    if not sets:
-        raise HTTPException(400, "没有要更新的字段")
-    sets.append("updated_at = now()")
-    params.append(workflow_id)
+async def save_workflow(
+    workflow_id: int,
+    payload: SaveWorkflowPayload,
+    service: WorkflowService = Depends(workflow_service),
+):
     try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"UPDATE workflows SET {', '.join(sets)} WHERE id = %s",
-                    params,
-                )
-            conn.commit()
+        await service.save(
+            workflow_id,
+            name=payload.name,
+            status=payload.status,
+            nodes=payload.nodes,
+            edges=payload.edges,
+        )
         return {"ok": True}
-    except psycopg2.errors.UniqueViolation:
-        raise HTTPException(409, "工作流名称已存在")
+    except WorkflowNameConflict as exc:
+        raise HTTPException(409, str(exc)) from exc
+    except WorkflowValidationError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.post("/{workflow_id}/run")
-async def run_workflow(workflow_id: int, payload: RunWorkflowPayload):
-    from backend.engine.run import run_workflow as _run
-    return StreamingResponse(
-        _run(workflow_id, {"input": payload.input, "user_id": payload.user_id}),
-        media_type="text/event-stream",
-    )
+async def run_workflow(
+    workflow_id: int,
+    payload: RunWorkflowPayload,
+    service: WorkflowService = Depends(workflow_service),
+):
+    events = service.run(workflow_id, {"input": payload.input, "user_id": payload.user_id})
+    return StreamingResponse(_sse(events), media_type="text/event-stream")
 
 
 @router.delete("/{workflow_id}")
-def delete_workflow(workflow_id: int):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM workflows WHERE id = %s", (workflow_id,))
-        conn.commit()
+async def delete_workflow(
+    workflow_id: int,
+    service: WorkflowService = Depends(workflow_service),
+):
+    await service.delete(workflow_id)
     return {"ok": True}

@@ -30,12 +30,12 @@ python minidsh.py web
          → 退出运行作用域，释放活动句柄
 ```
 
-后端通过 `backend/agents/runtime/services.py` 查公共服务，不再收集 pre-step 钩子或创建 LoopHooks。
+后端通过 `packages/agent/runtime/src/runtime.py` 查公共服务，不再收集 pre-step 钩子或创建 LoopHooks。
 `runtime/src/extensions.py` 的扩展注册表由运行时插件创建；skill-tools 通过 `ctx.require(AGENT_EXTENSIONS).register(...)` 登记扩展。
 运行时插件收集这些扩展，把合并后的 pre-step 钩子交给循环。注册表按 PluginRuntime 隔离，卸载后撤销。
 
 提示词、LLM、会话恢复/标题、沙箱策略和智能体配置都由各自插件通过服务表提供，
-Runtime 在 `ctx.require(...)` 中解析；仓库里不再有 `backend/agents/runtime/host.py`
+Runtime 在 `ctx.require(...)` 中解析；所有服务都由插件运行时注入
 这类中转适配器。所有工具仍来自同一个 `tools.v1` 注册表。
 
 `loop/src/context.py` 定义 `LoopContext`，保留插件启动时收到的原始 `PluginContext`。
@@ -113,7 +113,7 @@ ctx.track(registration)
 python -m unittest discover -s packages/agent/loop/tests -v
 python -m unittest discover -s packages/agent/runtime/tests -v
 python -m unittest discover -s packages/plugin/runtime/tests -v
-python -m backend.agents.runtime.tests.test_agent_loop
-python -m backend.agents.runtime.tests.test_agent_runtime_prompt
-python -m pytest backend/tests/session/test_checkpoint.py -q
+python -m pytest tests/integration/agent_runtime/test_agent_loop.py -q
+python -m pytest tests/integration/agent_runtime/test_agent_runtime_prompt.py -q
+python -m pytest tests/integration/session/test_checkpoint.py -q
 ```

@@ -3,7 +3,14 @@ import React from 'react';
 import AgentsLayout from '@/app/agents/layout';
 import DashboardLayout from '@/app/dashboard/layout';
 import Providers from '@/app/providers';
-import { definePlugin, navigate, RouterOutlet, useRoute } from '@app/host';
+import {
+  KeepAliveOutlet,
+  SHELL_SLOTS,
+  definePlugin,
+  navigate,
+  useRoute,
+  useRouteMeta,
+} from '@app/host';
 import type { PluginContext } from '@app/host';
 
 function NotFound() {
@@ -17,6 +24,7 @@ function NotFound() {
 
 function Root() {
   const path = useRoute();
+  const meta = useRouteMeta();
 
   React.useEffect(() => {
     if (path === '/' || path === '/login') {
@@ -25,26 +33,29 @@ function Root() {
   }, [path]);
 
   if (path === '/' || path === '/login') return null;
-  if (path.startsWith('/agents/')) {
+  if (meta.shell === 'agents') {
     return (
       <AgentsLayout>
-        <RouterOutlet />
+        <KeepAliveOutlet />
       </AgentsLayout>
     );
   }
-  if (path.startsWith('/dashboard')) {
+  if (meta.shell === 'dashboard') {
     return (
       <DashboardLayout>
-        <RouterOutlet />
+        <KeepAliveOutlet />
       </DashboardLayout>
     );
   }
-  return <RouterOutlet />;
+  return <KeepAliveOutlet />;
 }
 
 export default definePlugin({
   id: '@app/plugin-shell',
   setup(ctx: PluginContext) {
+    for (const [name, declaration] of Object.entries(SHELL_SLOTS)) {
+      ctx.slots.declare(name, declaration);
+    }
     ctx.router.add('*', NotFound);
     ctx.slots.register('root', 'shell', () => (
       <Providers>

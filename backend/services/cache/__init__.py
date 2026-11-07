@@ -1,1 +1,0 @@
-"""Workflow response cache."""

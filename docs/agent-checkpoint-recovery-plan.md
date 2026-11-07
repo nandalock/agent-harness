@@ -21,7 +21,7 @@ DeepSeek 将“保存数据”和“决定何时必须保存”分开：持久�
 
 ## 2. 实施前的问题（基线 4ca8233）
 
-1. [Session.append](D:/jk/Code/github/agent-low-code-platform/packages/session/core/src/session.py:124) 只写内存；[Runtime](D:/jk/Code/github/agent-low-code-platform/backend/agents/runtime/agent_runtime.py:206) 主要在轮末调用数据库保存。需要补上执行过程中的持久化位置。
+1. [Session.append](D:/jk/Code/github/agent-low-code-platform/packages/session/core/src/session.py:124) 只写内存；[Runtime](D:/jk/Code/github/agent-low-code-platform/packages/agent/runtime/src/runtime.py:206) 主要在轮末调用数据库保存。需要补上执行过程中的持久化位置。
 2. [flush_session_events](D:/jk/Code/github/agent-low-code-platform/packages/session/persistence/src/base.py:31) 会吞掉保存异常。这种“尽力保存”适合原有收尾，不能作为工具执行前的持久化确认。
 3. [LoopHooks](D:/jk/Code/github/agent-low-code-platform/packages/llm/core/src/hooks.py:15) 的约定是异常后按默认行为继续；[工具派发](D:/jk/Code/github/agent-low-code-platform/packages/tools/system/src/scheduler.py:296)、[轮次处理与 driver](D:/jk/Code/github/agent-low-code-platform/packages/agent/loop/src/agent_loop.py:357) 也有通用异常捕获。检查点失败必须作为独立错误传播，不能被这些路径吞掉后继续。
 4. 当前写入去重只防止重复行；`ON CONFLICT DO NOTHING` 无法阻止不同进程使用相同 `seq` 写入不同事件。需要在恢复之前取得会话写入所有权。
@@ -204,12 +204,12 @@ POST /api/agents/{agent_key}/chat/resume/stream
 | 新增 `D:/jk/Code/github/agent-low-code-platform/packages/session/recovery/src/checkpoint.py` | 严格异步提交、串行 writer、持久化游标、结构化失败。 |
 | 新增 `D:/jk/Code/github/agent-low-code-platform/packages/session/recovery/src/recovery.py` | 获取所有权、最新日志恢复、修复持久化、恢复摘要。 |
 | [persistence/base.py](D:/jk/Code/github/agent-low-code-platform/packages/session/persistence/src/base.py) 与 [postgres.py](D:/jk/Code/github/agent-low-code-platform/packages/session/persistence-postgres/src/postgres.py) | 严格保存接口、能力声明、锁持有、增量事务和序号冲突检查；迁移所有旧写入入口。 |
-| [agent_runtime.py](D:/jk/Code/github/agent-low-code-platform/backend/agents/runtime/agent_runtime.py) | 前移所有权获取、统一准备 Session、注入检查点、最终提交后报告完成。 |
+| [agent_runtime.py](D:/jk/Code/github/agent-low-code-platform/packages/agent/runtime/src/runtime.py) | 前移所有权获取、统一准备 Session、注入检查点、最终提交后报告完成。 |
 | [agent_loop.py](D:/jk/Code/github/agent-low-code-platform/packages/agent/loop/src/agent_loop.py) | 请求/步骤/轮次检查点、请求记录、检查点失败传播与恢复来源事件。 |
 | [scheduler.py](D:/jk/Code/github/agent-low-code-platform/packages/tools/system/src/scheduler.py) | 正文前异步确认，取消与失败分类，保留并发和有序提交。 |
 | [repair.py](D:/jk/Code/github/agent-low-code-platform/packages/session/core/src/repair.py) 与 [events.py](D:/jk/Code/github/agent-low-code-platform/packages/session/core/src/events.py) | 新策略标记、历史日志保守修复、新增事件和停止原因。 |
 | [title/service.py](D:/jk/Code/github/agent-low-code-platform/packages/session/title/src/service.py) | 标题提交使用同一 writer/所有权规则，避免并发丢事件。 |
-| [gateway/service.py](D:/jk/Code/github/agent-low-code-platform/backend/gateway/service.py) 与 [errors.py](D:/jk/Code/github/agent-low-code-platform/backend/gateway/errors.py) | 继续入口及结构化持久化/恢复错误，保持 Gateway 不直接执行工具。 |
+| [gateway/service.py](D:/jk/Code/github/agent-low-code-platform/packages/agent/entry/src/service.py) 与 [errors.py](D:/jk/Code/github/agent-low-code-platform/packages/agent/entry/src/errors.py) | 继续入口及结构化持久化/恢复错误，保持 Gateway 不直接执行工具。 |
 | [api/agents.py](D:/jk/Code/github/agent-low-code-platform/packages/host/http-api/src/routes/agents.py) | 状态/继续 API、提前绑定会话、只读查询与写入准备分离、SSE 失败和恢复提示。 |
 | [WorkspaceChat.tsx](D:/jk/Code/github/agent-low-code-platform/packages/client/legacy/app/dashboard/workspace/_components/WorkspaceChat.tsx) 与 [Agent 页面](D:/jk/Code/github/agent-low-code-platform/packages/client/legacy/app/agents/[id]/page.tsx) | session/ready、恢复状态、继续按钮、失败状态展示。 |
 | [session/session.md](D:/jk/Code/github/agent-low-code-platform/packages/session/README.md) 与 [agent-loop-design.md](D:/jk/Code/github/agent-low-code-platform/docs/agent-loop-design.md) | 更新持久化时机、异常行为和恢复范围。 |
