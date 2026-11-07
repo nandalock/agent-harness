@@ -1,3 +1,11 @@
+FROM node:22-slim AS browser-build
+
+WORKDIR /source/packages/client
+COPY packages/client/package.json packages/client/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY packages /source/packages
+RUN MINIDSH_CLIENT_ASSET_ROOT=/plugin-web npm run build
+
 FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 
 WORKDIR /app
@@ -55,12 +63,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && \
 RUN npm install --global overleaf-mcp-rt@2.2.0
 
 # 插件 SDK / runtime / 示例插件：editable 安装指向 /app/packages，
-# docker-compose 的 .:/app 挂载可让宿主机改动直接生效。
+# 包含浏览器资源的功能用普通安装，确保 Compose 挂载 /app 后仍能从包内读取资源。
 COPY packages ./packages
 COPY apps ./apps
 COPY requirements-plugins.txt ./requirements-plugins.txt
+COPY --from=browser-build /plugin-web/ ./packages/
 RUN pip install --no-cache-dir -r requirements-plugins.txt && \
-    pip install --no-cache-dir -e ./packages/plugin/examples/echo-plugin
+    pip install --no-cache-dir -e ./packages/plugin/examples/echo-plugin && \
+    find packages -mindepth 4 -path '*/client/package.json' -exec sh -ec ' \
+      for manifest do \
+        root=${manifest%/client/package.json}; \
+        pip install --no-cache-dir --no-deps --force-reinstall "./$root"; \
+      done \
+    ' sh {} +
 
 COPY config ./config
 

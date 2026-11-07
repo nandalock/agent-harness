@@ -13,7 +13,8 @@ CHAT = ServiceKey[ChatService](ServiceRef(name="chat", api_version=1))
 
 class ChatPlugin:
     spec = PluginSpec(
-        name="agent-platform.chat", version="0.1.0",
+        name="agent-platform.chat",
+        web_package=__package__, version="0.1.0",
         provides=(CHAT.ref,),
         requires=tuple(ServiceRequirement(service=key.ref) for key in (AGENT_ENTRY, DATABASE, SESSIONS, SESSION_PERSISTENCE)),
     )

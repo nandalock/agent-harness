@@ -95,19 +95,12 @@ function installInspectionSurface(): void {
   };
 }
 
-/**
- * Read the backend's started-plugin set. `null` means the catalog is
- * unavailable (offline dev, headless or older backend), so every bundle loads.
- */
-async function fetchEnabledPlugins(): Promise<Set<string> | null> {
-  // Tests and embedded hosts may inject the catalog without an HTTP backend.
-  const override = (window as any).__DSH_PLUGIN_CATALOG__;
-  if (Array.isArray(override)) {
-    return new Set(override.filter((name): name is string => typeof name === 'string'));
-  }
-  // Offline/dev mode: skip the round trip and load every bundle.
-  if (import.meta.env.VITE_PLUGIN_CATALOG === 'off') return null;
+interface PluginCatalogResponse {
+  plugins: Array<{ name: string }>;
+  clients?: WebBootEntry[];
+}
 
+async function fetchPluginCatalog(): Promise<PluginCatalogResponse | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 2000);
   try {
@@ -115,14 +108,7 @@ async function fetchEnabledPlugins(): Promise<Set<string> | null> {
       signal: controller.signal,
       headers: { Accept: 'application/json' },
     });
-    if (!response.ok) return null;
-    const payload = (await response.json()) as { plugins?: Array<{ name?: unknown }> };
-    if (!Array.isArray(payload.plugins)) return null;
-    return new Set(
-      payload.plugins
-        .map((plugin) => (typeof plugin?.name === 'string' ? plugin.name : ''))
-        .filter(Boolean),
-    );
+    return response.ok ? await response.json() : null;
   } catch {
     return null;
   } finally {
@@ -149,31 +135,28 @@ export async function boot(): Promise<void> {
     '@tanstack/react-query': ReactQuery,
   });
 
-  const enabledPlugins = await fetchEnabledPlugins();
+  const catalog = await fetchPluginCatalog();
   if (import.meta.env.DEV) {
     (window as any).__DSH_KERNEL__.plugins = {
-      enabled: enabledPlugins ? [...enabledPlugins] : null,
+      enabled: catalog?.plugins?.map(({ name }) => name) ?? null,
+      clients: catalog?.clients?.map(({ id }) => id) ?? [],
     };
   }
-  const entries = sortEntries(
-    graph.entries.filter(
-      (entry) =>
-        !entry.plugin || enabledPlugins === null || enabledPlugins.has(entry.plugin),
-    ),
-  );
-  await Promise.all(entries.map((entry) => loadEntry(entry)));
+  const entries = sortEntries([...graph.entries, ...(catalog?.clients ?? [])]);
+  const loaded = await Promise.allSettled(entries.map((entry) => loadEntry(entry)));
 
-  for (const entry of entries) {
-    const plugin = materialize(entry.id) as Plugin;
-    if (!plugin || typeof plugin.setup !== 'function') {
-      throw new Error(`client-modules: ${entry.id} does not export a setup() plugin`);
-    }
+  for (const [index, entry] of entries.entries()) {
     try {
+      const status = loaded[index];
+      if (status.status === 'rejected') throw status.reason;
+      const plugin = materialize(entry.id) as Plugin;
+      if (!plugin || typeof plugin.setup !== 'function') {
+        throw new Error('client-modules: ' + entry.id + ' does not export a setup() plugin');
+      }
       await plugin.setup(hostApi.context(entry.id));
     } catch (error) {
-      // One broken plugin must not take down the shell or its siblings.
       hostApi.disposePlugin(entry.id);
-      console.error(`client-modules: ${entry.id} setup failed`, error);
+      console.error('client-modules: ' + entry.id + ' setup failed', error);
     }
   }
 

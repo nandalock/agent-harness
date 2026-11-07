@@ -55,7 +55,7 @@ python minidsh.py start          # serves packages/client/dist
 ```
 
 `minidsh` scans `packages/*/package.json` for this field. Select another package with
-`python minidsh.py web --profile <dir-or-package-name>`, or point outside the repo with
+`python minidsh.py web --frontend <dir-or-package-name>`, or point outside the repo with
 `python minidsh.py web --dir D:/jk/Code/web2`.
 
 ## How it works
@@ -73,7 +73,7 @@ index.html
             └─ shell/host-api.ts           the `@app/host` platform module
 ```
 
-Each plugin is a package under `plugins/<name>/`:
+A browser entry declares its bundle in `package.json`:
 
 ```json
 {
@@ -114,7 +114,7 @@ export default definePlugin({
 });
 ```
 
-The Vite plugin scans `plugins/*/package.json`, builds each `src/client.tsx` with esbuild,
+For shell entries, the Vite plugin scans `plugins/*/package.json`, builds each `src/client.tsx` with esbuild,
 serves it as `/plugins/<dir>/client.js` (cached per dev-server session), and injects the boot
 graph. Bundles are lazy CJS: loading a script only registers a factory; the module body runs
 when materialized. CSS imported by a page is inlined as a `<style data-plugin="...">` at
@@ -181,26 +181,30 @@ A route may declare child slots through `options.slots`; other plugins can then 
 page without importing it. Every registration returns a disposer and the plugin context
 tracks it, so unloading a plugin removes its navigation, routes, and slots.
 
-### Backend enablement
+### Browser entries in Python packages
 
-A plugin package may declare the backend plugin it needs:
+The shell and dashboard are the local bootstrap entries. The other feature entries
+live beside their Python plugins in `packages/<area>/<feature>/client/`. For example,
+`packages/api/workspace/client/src/client.tsx` adds the workspace menu and route.
 
-```json
-{
-  "name": "@app/plugin-workflow",
-  "dsh": {
-    "plugin": "agent-platform.workflow",
-    "client": { "platform": "web", "inject": ["@app/plugin-shell"] }
-  }
-}
+The browser build bundles those entries and their page components into
+`web/client.js` and `web/client.json` under each Python import package. The
+package's `pyproject.toml` includes both files as package data. Build before
+publishing a wheel:
+
+```sh
+npm --prefix packages/client ci
+npm --prefix packages/client run build
+python -m pip wheel --no-deps -w dist ./packages/api/workspace
 ```
 
-`kernel/boot.ts` reads `GET /api/plugins` before loading any bundle and skips
-entries whose `plugin` is not in the started set. Disabling the backend plugin
-therefore removes the page, its navigation item and its client bundle in one
-place. If the catalog is unavailable (offline dev, headless tests) all bundles
-load. Tests and embedded hosts can set `window.__DSH_PLUGIN_CATALOG__` to an
-array of enabled names before boot.
+Declare `web_package=__package__` on the Python plugin's `PluginSpec` to expose
+its bundle. `GET /api/plugins` advertises browser entries from started packages.
+The shell loads those URLs and calls their `setup(ctx)`. Disabling the Python
+entry in YAML also removes its browser entry. Browser assets are generated on
+Vite dev-server start for editable installs and built into feature packages for
+Docker deployment. Feature bundle requests use the shell's same-origin `/api`
+proxy.
 
 ### Layout
 
@@ -227,8 +231,8 @@ separate shell for `/agents/*` routes.
 
 - The shell has no login page, logout button, cookie, or route guard.
 - Opening `/` (or `/login`) redirects directly to `/dashboard`.
-- API calls use the absolute backend URL from `BACKEND_URL` (default
-  `http://127.0.0.1:8000`), with CORS allowing the shell port.
+- The Vite dev server and preview proxy feature APIs to `BACKEND_URL`
+  (default `http://127.0.0.1:8000`).
 - The backend still exposes `POST /api/auth/login` as an optional API, but the frontend
   does not call it.
 

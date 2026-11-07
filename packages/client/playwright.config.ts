@@ -19,8 +19,7 @@ export default defineConfig({
     url: 'http://127.0.0.1:4175',
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
-    // Tests have no backend; skip the catalog round trip unless a test injects
-    // `window.__DSH_PLUGIN_CATALOG__` explicitly.
-    env: { ...(process.env as Record<string, string>), VITE_PLUGIN_CATALOG: 'off' },
+    // Serve built plugin resources through the same API contract as the Python host.
+    env: { ...(process.env as Record<string, string>), MINIDSH_CLIENT_FIXTURES: '1' },
   },
 });

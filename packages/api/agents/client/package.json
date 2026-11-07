@@ -3,10 +3,11 @@
   "private": true,
   "version": "0.1.0",
   "dsh": {
-    "plugin": "agent-platform.api-agents",
     "client": {
       "platform": "web",
-      "inject": ["@app/plugin-shell"]
+      "inject": [
+        "@app/plugin-shell"
+      ]
     }
   }
 }

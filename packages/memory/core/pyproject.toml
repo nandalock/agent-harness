@@ -21,3 +21,6 @@ packages = ["agent_platform_memory"]
 
 [tool.setuptools.package-dir]
 agent_platform_memory = "src"
+
+[tool.setuptools.package-data]
+agent_platform_memory = ["web/client.json", "web/client.js"]

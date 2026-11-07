@@ -1,17 +1,22 @@
 # AGENTS.md
 
+## 启动与插件
+
+- 发布入口 `minidsh web --profile web` 使用 `~/.minidsh/profiles/web` 的 Python 环境和插件清单。
+- 源码入口 `python minidsh.py web` 使用仓库环境。开发、打包和阅读顺序见 [docs/README.md](docs/README.md)。
+
 ## 前端
 
 - `packages/client/`：默认前端，DSH 风格的浏览器端插件壳，端口 4000（独立开发时 4100）。
-  `window.__DSH_BOOT__` 启动图 + lazy CommonJS loader + slots；插件在
-  `packages/client/plugins/*`，每个包的 `package.json` 声明 `dsh.client`，入口是
-  `src/client.tsx`。聊天、Agent、知识库、集成、MCP、记忆、工作流、工作区、
-  `/agents/*` 均已迁移；前端**没有登录页**，打开 `/` 直接进入 `/dashboard`。
+  `window.__DSH_BOOT__` 启动图 + lazy CommonJS loader + slots。Shell 和首页在
+  `packages/client/plugins/*`。工作区、Agent、聊天等功能的浏览器入口在各自 Python
+  包的 `client/src/client.tsx`，编译后作为包资源交付。后端 `/api/plugins` 提供已启动
+  插件的浏览器入口。打开 `/` 直接进入 `/dashboard`。
 - `packages/client/legacy/`：迁移页面的源码（`@/` alias 指向这里）。旧的根目录
   `frontend/` 已移除，Docker Compose 的 `frontend` 服务也改为构建 `packages/client`。
 - 前端 profile 由前端包自己的 `package.json` 声明 `dsh.frontend`（和 DSH 的
   `dsh.client` 同为包自描述）。`minidsh` 扫描 `packages/*/package.json`；
-  `python minidsh.py web --profile web2` 按目录名/包名选择，`--dir` 指向仓库外目录。
+  `python minidsh.py web --frontend web2` 按目录名/包名选择，`--dir` 指向仓库外目录。
   `minidsh.py` 不 import 前端代码，也不使用中心化前端配置文件。
 - 后端 API 仍由 Python/FastAPI 提供；`packages/client` 在开发/预览时把 `/api` 代理到
   `BACKEND_URL`（默认 `127.0.0.1:8000`）。前端不实现登录/登出，也不依赖 cookie；

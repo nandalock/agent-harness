@@ -45,6 +45,7 @@ test('keepAlive routes stay mounted when navigating away', async ({ page }) => {
 
 test('layout options are declared by the route, not the shell', async ({ page }) => {
   await page.goto('/dashboard/knowledge');
+  await expect(page.locator('[data-nav-id="workspace"]')).toBeVisible();
   const options = await page.evaluate(() => ({
     workspace: (window as any).__DSH_KERNEL__.router.options('/dashboard/workspace').layout,
     workflow: (window as any).__DSH_KERNEL__.router.options('/dashboard/workflow/42').layout,

@@ -456,7 +456,7 @@ def main():
                         help=f"local env file (default: {DEFAULT_ENV_FILE})")
     parser.add_argument("--backend-port", type=int, default=8000)
     parser.add_argument("--frontend-port", type=int, default=4000)
-    parser.add_argument("--profile", default=None,
+    parser.add_argument("--frontend", "--profile", dest="profile", default=None,
                         help="frontend profile declared by packages/*/package.json dsh.frontend (default: web)")
     parser.add_argument("--dir", "--frontend-dir", dest="frontend_dir", default=None,
                         help="frontend package directory declaring dsh.frontend (overrides --profile)")
@@ -470,7 +470,7 @@ def main():
     if args.action == "web" and args.backend_only:
         parser.error("web starts the frontend; use 'dev --backend-only' for backend-only")
     if args.profile and args.frontend_dir:
-        parser.error("use either --profile or --dir, not both")
+        parser.error("use either --frontend or --dir, not both")
     os.chdir(ROOT)
     try:
         if args.action == "setup":

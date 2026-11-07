@@ -35,6 +35,7 @@ test('slots must be declared and list entries render in order', async ({ page })
 
 test('route child slots are declared with the route', async ({ page }) => {
   await page.goto('/dashboard');
+  await expect(page.locator('[data-nav-id="workflow"]')).toBeVisible();
   const declaration = await page.evaluate(() =>
     (window as any).__DSH_KERNEL__.slots.declaration('workflow.inspector'),
   );
@@ -43,6 +44,7 @@ test('route child slots are declared with the route', async ({ page }) => {
 
 test('the shell renders contributions into declared page slots', async ({ page }) => {
   await page.goto('/dashboard/knowledge');
+  await expect(page.locator('[data-nav-id="knowledge"]')).toBeVisible();
   await page.evaluate(() => {
     const kernel = (window as any).__DSH_KERNEL__;
     kernel.slots.register('page.actions', 'test.action', () =>

@@ -8,8 +8,9 @@ implementations.
 import logging
 import os
 from contextlib import asynccontextmanager
+from urllib.parse import quote
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -144,10 +145,26 @@ def create_app(
 
     @app.get("/api/plugins")
     async def plugins():
-        """The single enablement source for frontend plugin loading."""
+        """Advertise browser entries from the same packages as started plugins."""
         if plugin_catalog is None:
             return JSONResponse(status_code=503, content={"detail": "plugin catalog unavailable"})
-        return {"plugins": plugin_catalog.list()}
+        return {
+            "plugins": plugin_catalog.list(),
+            "clients": [
+                {
+                    **entry.model_dump(mode="json"),
+                    "url": f"/api/plugins/client/{quote(entry.id, safe='/')}?rev={entry.rev}",
+                }
+                for entry in plugin_catalog.clients()
+            ],
+        }
+
+    @app.get("/api/plugins/client/{client_id:path}")
+    def client_script(client_id: str, rev: str):
+        script = plugin_catalog.script(client_id, rev) if plugin_catalog is not None else None
+        if script is None:
+            raise HTTPException(status_code=404, detail="Browser plugin bundle not found")
+        return Response(script, media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
     @app.get("/health")
     async def health():

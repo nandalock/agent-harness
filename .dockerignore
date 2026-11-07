@@ -20,3 +20,7 @@ packages/**/dist
 packages/**/build
 packages/**/.mypy_cache
 packages/**/*.egg-info
+packages/**/src/**/web/client.js
+packages/**/src/**/web/client.json
+apps/server/src/agent_platform_server/web
+apps/**/build

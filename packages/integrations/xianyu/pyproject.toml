@@ -21,6 +21,9 @@ dependencies = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+agent_platform_xianyu = ["web/client.json", "web/client.js"]
+
 [tool.mypy]
 python_version = "3.12"
 files = ["src"]

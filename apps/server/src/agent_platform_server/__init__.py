@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,18 @@ class RuntimeASGIApp:
         from agent_platform_http_api import HTTP_APP
 
         host = await init_plugin_host()
-        self._app = host.runtime.require(HTTP_APP)
+        http_app = host.runtime.require(HTTP_APP)
+        try:
+            if os.environ.get("MINIDSH_SERVE_WEB") == "1":
+                from .web import mount_web
+
+                mount_web(http_app)
+        except BaseException:
+            from agent_platform_app_boot import close_plugin_host
+
+            await close_plugin_host()
+            raise
+        self._app = http_app
         logger.info("HTTP/API plugin ready")
 
     async def _lifespan(self, scope, receive, send):

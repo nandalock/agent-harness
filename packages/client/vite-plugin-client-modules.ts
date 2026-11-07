@@ -12,7 +12,7 @@ interface DiscoveredEntry {
   entryFile: string;
   inject: string[];
   immediately: boolean;
-  plugin?: string;
+  outDir?: string;
 }
 
 interface PluginEntry extends DiscoveredEntry {
@@ -25,7 +25,6 @@ interface BootEntry {
   rev: string;
   inject: string[];
   immediately: boolean;
-  plugin?: string;
 }
 
 interface BootBatch {
@@ -46,48 +45,55 @@ const EXTERNALS = [
   '@tanstack/react-query',
 ];
 
+function readClient(dir: string, dirName: string): DiscoveredEntry | undefined {
+  const manifestPath = path.join(dir, 'package.json');
+  if (!fs.existsSync(manifestPath)) return;
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
+    name?: string;
+    dsh?: {
+      client?: { platform?: string; inject?: string[]; immediately?: boolean; outDir?: string };
+    };
+  };
+  const client = manifest.dsh?.client;
+  if (!manifest.name || client?.platform !== 'web') return;
+  const entryFile = path.join(dir, 'src/client.tsx');
+  if (!fs.existsSync(entryFile)) {
+    throw new Error('client-modules: ' + manifest.name + ' declares dsh.client but has no src/client.tsx');
+  }
+  return {
+    id: manifest.name,
+    dirName,
+    dir,
+    entryFile,
+    inject: client.inject ?? [],
+    immediately: Boolean(client.immediately),
+    outDir: client.outDir,
+  };
+}
+
+function directories(dir: string): string[] {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).filter((item) => item.isDirectory()).map((item) => item.name);
+}
+
 function scanPlugins(root: string): DiscoveredEntry[] {
   const pluginsDir = path.join(root, 'plugins');
-  if (!fs.existsSync(pluginsDir)) return [];
-
-  const entries: DiscoveredEntry[] = [];
-  for (const dirent of fs.readdirSync(pluginsDir, { withFileTypes: true })) {
-    if (!dirent.isDirectory()) continue;
-    const dir = path.join(pluginsDir, dirent.name);
-    const manifestPath = path.join(dir, 'package.json');
-    if (!fs.existsSync(manifestPath)) continue;
-
-    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')) as {
-      name?: string;
-      dsh?: {
-        plugin?: string;
-        client?: { platform?: string; inject?: string[]; immediately?: boolean; plugin?: string };
-      };
-    };
-    const client = manifest.dsh?.client;
-    if (!manifest.name || !client || client.platform !== 'web') continue;
-
-    const entryFile = path.join(dir, 'src/client.tsx');
-    if (!fs.existsSync(entryFile)) {
-      throw new Error(`client-modules: ${manifest.name} declares dsh.client but has no src/client.tsx`);
-    }
-    entries.push({
-      id: manifest.name,
-      dirName: dirent.name,
-      dir,
-      entryFile,
-      inject: client.inject ?? [],
-      immediately: Boolean(client.immediately),
-      ...(manifest.dsh?.plugin || client.plugin
-        ? { plugin: manifest.dsh?.plugin || client.plugin }
-        : {}),
-    });
-  }
-
-  if (entries.length === 0) {
-    throw new Error('client-modules: no plugins with dsh.client platform "web" found');
+  const entries = directories(pluginsDir).flatMap((name) => readClient(path.join(pluginsDir, name), name) ?? []);
+  if (!entries.length) {
+    throw new Error('client-modules: no shell plugins with dsh.client platform "web" found');
   }
   return entries;
+}
+
+function scanPackagedClients(packages: string): DiscoveredEntry[] {
+  return directories(packages).flatMap((area) => {
+    const family = path.join(packages, area);
+    return directories(family).flatMap((feature) => {
+      const dir = path.join(family, feature);
+      if (!fs.existsSync(path.join(dir, 'pyproject.toml'))) return [];
+      return readClient(path.join(dir, 'client'), feature) ?? [];
+    });
+  });
 }
 
 function sortEntries(entries: PluginEntry[]): PluginEntry[] {
@@ -150,7 +156,7 @@ function resolveFrontendFile(base: string): string {
   return base;
 }
 
-async function buildPlugin(entry: PluginEntry, root: string): Promise<string> {
+async function buildPlugin(entry: DiscoveredEntry, root: string, packaged = false): Promise<string> {
   const legacy = path.resolve(root, 'legacy');
   const result = await build({
     entryPoints: [entry.entryFile],
@@ -163,8 +169,9 @@ async function buildPlugin(entry: PluginEntry, root: string): Promise<string> {
     target: ['es2020'],
     jsx: 'automatic',
     external: EXTERNALS,
+    nodePaths: [path.join(root, 'node_modules')],
     define: {
-      'process.env.NEXT_PUBLIC_API_URL': JSON.stringify(
+      'process.env.NEXT_PUBLIC_API_URL': (packaged || process.env.MINIDSH_EMBEDDED_WEB === '1') ? 'window.location.origin' : JSON.stringify(
         process.env.VITE_PUBLIC_BACKEND_URL ||
           process.env.BACKEND_URL ||
           process.env.VITE_BACKEND_URL ||
@@ -239,7 +246,6 @@ function composeGraph(entries: PluginEntry[], rev: string): { entries: BootEntry
       rev: entry.rev,
       inject: entry.inject,
       immediately: entry.immediately,
-      ...(entry.plugin ? { plugin: entry.plugin } : {}),
     })),
     batches: [
       {
@@ -311,10 +317,40 @@ function pluginMiddleware(root: string, entries: PluginEntry[]) {
   };
 }
 
+interface PackagedClient {
+  entry: BootEntry;
+  script: string;
+}
+
+async function buildPackagedClients(root: string): Promise<PackagedClient[]> {
+  const packages = path.resolve(root, '..');
+  const destination = process.env.MINIDSH_CLIENT_ASSET_ROOT || packages;
+  return Promise.all(scanPackagedClients(packages).map(async (entry) => {
+    const code = await buildPlugin(entry, root, true);
+    const rev = crypto.createHash('sha256').update(code).digest('hex').slice(0, 16);
+    const resource = path.resolve(entry.dir, entry.outDir ?? '../src/web');
+    const relative = path.relative(packages, resource);
+    if (relative.startsWith('..') || path.isAbsolute(relative)) {
+      throw new Error('client-modules: bundle output must stay in the packages directory');
+    }
+    const target = path.resolve(destination, relative);
+    fs.mkdirSync(target, { recursive: true });
+    const script = path.join(target, 'client.js');
+    fs.writeFileSync(script, code, 'utf8');
+    const manifest = { id: entry.id, rev, inject: entry.inject };
+    fs.writeFileSync(path.join(target, 'client.json'), JSON.stringify(manifest) + '\n', 'utf8');
+    return {
+      entry: { ...manifest, url: '/api/plugins/client/' + entry.id + '?rev=' + rev, immediately: false },
+      script,
+    };
+  }));
+}
+
 export function clientModules(options: { root?: string } = {}): Plugin {
   const root = path.resolve(options.root ?? process.cwd());
   let isBuild = false;
   let entries: PluginEntry[] = [];
+  let packagedClients: PackagedClient[] = [];
 
   return {
     name: 'agent-platform:client-modules',
@@ -322,13 +358,28 @@ export function clientModules(options: { root?: string } = {}): Plugin {
     config(_config, env) {
       isBuild = env.command === 'build';
     },
-    buildStart() {
+    async buildStart() {
       const rev = isBuild ? 'build' : Date.now().toString(36);
       entries = scanPlugins(root)
         .map((entry) => ({ ...entry, rev: isBuild ? revision(entry) : rev }))
         .sort((a, b) => a.id.localeCompare(b.id));
+      packagedClients = await buildPackagedClients(root);
     },
     configureServer(server) {
+      if (process.env.MINIDSH_CLIENT_FIXTURES === '1') {
+        // Browser tests and screenshots use the same wire format with a local fixture.
+        server.middlewares.use((req, res, next) => {
+          if (req.url === '/api/plugins') {
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ plugins: [], clients: packagedClients.map(({ entry }) => entry) }));
+            return;
+          }
+          const client = packagedClients.find(({ entry }) => entry.url === req.url);
+          if (!client) return next();
+          res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+          res.end(fs.readFileSync(client.script));
+        });
+      }
       server.middlewares.use((req, res, next) => {
         void pluginMiddleware(root, entries)(req, res, next);
       });

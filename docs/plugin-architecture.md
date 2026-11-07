@@ -1,5 +1,7 @@
 # Plugin runtime architecture
 
+[文档首页](README.md) · [启动与插件运行](startup.md) · [插件开发](plugin-development.md)
+
 `PluginRuntime` is the only service container. Plugins publish typed services
 through `ctx.provide(...)`, resolve declared dependencies with `ctx.require(...)`
 or `ctx.get(...)` (optional), and own every effect through their context.
@@ -84,7 +86,7 @@ and no agent assembly.
 A headless entry is available for deployments without the HTTP plugin:
 
 ```bash
-python -m agent_platform_cli --agent default "你好"
+python -m agent_platform_cli run --agent default "你好"
 ```
 
 It loads the same composition, explicitly removes `agent-platform.http-api`,
@@ -140,12 +142,10 @@ Frontend plugins declare their backend identity in `package.json`:
 }
 ```
 
-`PluginRuntime` exposes `plugin-catalog.v1`; `agent-platform.plugin-inventory` projects it. `GET /api/plugins`
-returns the started instances; `kernel/boot.ts` filters boot entries by
-`entry.plugin` before loading any bundle. A disabled backend plugin therefore
-removes its pages, navigation entries and client bundle together. When the
-catalog is unavailable (headless tests, offline dev) every bundle loads; tests
-may inject `window.__DSH_PLUGIN_CATALOG__` to select a subset.
+Python plugins with a `web_package` include their browser bundle as package data.
+`GET /api/plugins` advertises modules from started packages and the HTTP plugin
+serves their scripts. The browser app combines those entries with its bootstrap
+shell. A single YAML entry enables a feature's Python and browser code.
 
 ## Process entry and boot
 

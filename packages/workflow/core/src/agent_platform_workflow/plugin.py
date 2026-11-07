@@ -34,6 +34,7 @@ class WorkflowConfig(SdkModel):
 class WorkflowPlugin:
     spec = PluginSpec(
         name="agent-platform.workflow",
+        web_package=__package__,
         version="0.1.0",
         provides=(WORKFLOW_NODES.ref, WORKFLOW.ref),
         requires=(

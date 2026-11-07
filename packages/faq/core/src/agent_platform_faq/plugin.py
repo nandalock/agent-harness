@@ -18,6 +18,7 @@ class FaqConfig(SdkModel):
 class FaqPlugin:
     spec = PluginSpec(
         name="agent-platform.faq",
+        web_package=__package__,
         version="0.1.0",
         provides=(FAQ.ref,),
         requires=(ServiceRequirement(service=DATABASE.ref),),

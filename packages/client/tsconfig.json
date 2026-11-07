@@ -16,10 +16,12 @@
     "paths": {
       "@app/host": ["./shell/host-api.ts"],
       "@/*": ["./legacy/*"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
+      "lucide-react": ["./node_modules/lucide-react"],
       "next/navigation": ["./shell/shims/next-navigation.tsx"],
       "next/link": ["./shell/shims/next-link.tsx"],
       "next/dynamic": ["./shell/shims/next-dynamic.tsx"]
     }
   },
-  "include": ["kernel", "shell", "legacy", "plugins", "vite.config.ts", "vite-plugin-client-modules.ts"]
+  "include": ["kernel", "shell", "legacy", "plugins", "../*/*/client/src", "vite.config.ts", "vite-plugin-client-modules.ts"]
 }

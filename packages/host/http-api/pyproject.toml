@@ -9,6 +9,8 @@ description = "FastAPI HTTP/API plugin for the plugin platform"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.110",
+    "pyjwt>=2,<3",
+    "python-multipart>=0.0.18",
     "agent-platform-plugin-sdk>=0.1,<0.2",
     "agent-platform-agent-entry>=0.1,<0.2",
     "agent-platform-chat>=0.1,<0.2",

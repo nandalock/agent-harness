@@ -27,7 +27,7 @@ packages = ["agent_platform_mcp_client"]
 agent_platform_mcp_client = "src"
 
 [tool.setuptools.package-data]
-agent_platform_mcp_client = ["py.typed"]
+agent_platform_mcp_client = ["py.typed", "web/client.json", "web/client.js"]
 
 [tool.mypy]
 python_version = "3.12"

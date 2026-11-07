@@ -50,6 +50,7 @@ async function mockAgentSettings(page: Page, overrides: Record<string, unknown> 
   await page.route('**/api/**', async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path === '/api/plugins' || path.startsWith('/api/plugins/client/')) return route.fallback();
     const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' };
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });
     const respond = (json: unknown, status = 200) => route.fulfill({ status, json, headers });

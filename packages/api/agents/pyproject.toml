@@ -22,3 +22,6 @@ packages = ["agent_platform_api_agents"]
 
 [tool.setuptools.package-dir]
 agent_platform_api_agents = "src"
+
+[tool.setuptools.package-data]
+agent_platform_api_agents = ["web/client.json", "web/client.js"]

@@ -20,6 +20,7 @@ class XianyuConfig(SdkModel):
 class XianyuPlugin:
     spec = PluginSpec(
         name="agent-platform.xianyu",
+        web_package=__package__,
         version="0.1.0",
         provides=(XIANYU.ref,),
         requires=(ServiceRequirement(service=CHAT.ref),),

@@ -63,3 +63,10 @@ backend_build.log
 # Web plugin shell build output
 packages/client/dist/
 packages/client/.vite/
+
+# Feature wheel build output and generated browser resources
+packages/**/build/
+packages/**/src/**/web/client.js
+packages/**/src/**/web/client.json
+apps/server/src/agent_platform_server/web/
+apps/**/build/

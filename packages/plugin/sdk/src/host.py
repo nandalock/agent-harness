@@ -145,6 +145,8 @@ class PluginCatalog(Protocol):
 
     def list(self) -> list[dict[str, Any]]: ...
 
+    def web_packages(self) -> tuple[str, ...]: ...
+
 
 PLUGIN_CATALOG: ServiceKey[PluginCatalog] = ServiceKey(
     ServiceRef(name="plugin-catalog", api_version=1)

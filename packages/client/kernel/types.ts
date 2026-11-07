@@ -5,13 +5,12 @@ export interface ClientDeclaration {
   inject?: string[];
   immediately?: boolean;
   external?: string[];
-  /** Canonical backend plugin name; the client loads only when it is enabled. */
-  plugin?: string;
+  outDir?: string;
 }
 
 export interface PluginPackageJson {
   name: string;
-  dsh?: { plugin?: string; client?: ClientDeclaration };
+  dsh?: { client?: ClientDeclaration };
 }
 
 export interface WebBootEntry {
@@ -21,8 +20,6 @@ export interface WebBootEntry {
   inject?: string[];
   immediately?: boolean;
   external?: string[];
-  /** Canonical backend plugin name; absent means always load. */
-  plugin?: string;
 }
 
 export interface WebBootBatch {

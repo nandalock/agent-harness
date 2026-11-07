@@ -12,9 +12,12 @@ dependencies = [
     "agent-platform-agent-entry>=0.1,<0.2",
     "agent-platform-plugin-runtime>=0.1,<0.2",
     "agent-platform-server>=0.1,<0.2",
+    "python-dotenv>=1,<2",
+    "PyYAML>=6,<7",
 ]
 
 [project.scripts]
+minidsh = "agent_platform_cli.profiles:main"
 agent-platform = "agent_platform_cli:main"
 
 [tool.setuptools.packages.find]

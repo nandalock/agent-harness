@@ -61,6 +61,13 @@ class _RuntimePluginCatalog:
         ]
 
 
+    def web_packages(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(
+            plugin.spec.web_package for plugin in self._runtime.plugins
+            if plugin.spec.web_package is not None
+        ))
+
+
 class PluginRuntime:
     """A single host scope for declarative plugin instances.
 

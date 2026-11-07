@@ -56,6 +56,7 @@ class WorkspaceConfig(SdkModel):
 class WorkspaceControllerPlugin:
     spec = PluginSpec(
         name="agent-platform.api-workspace",
+        web_package=__package__,
         version="0.1.0",
         provides=(WORKSPACE_CONTROLLER.ref,),
         requires=(

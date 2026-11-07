@@ -17,8 +17,10 @@
 
 ```sh
 cd packages/client
-npm run dev -- --host 127.0.0.1 --port 4176 --strictPort
+MINIDSH_CLIENT_FIXTURES=1 npm run dev -- --host 127.0.0.1 --port 4176 --strictPort
 ```
+
+PowerShell 可先运行 `$env:MINIDSH_CLIENT_FIXTURES='1'`，再单独执行 npm 命令。
 
 第二个终端在仓库根目录运行：
 

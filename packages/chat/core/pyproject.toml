@@ -24,3 +24,6 @@ packages = ["agent_platform_chat"]
 
 [tool.setuptools.package-dir]
 agent_platform_chat = "src"
+
+[tool.setuptools.package-data]
+agent_platform_chat = ["web/client.json", "web/client.js"]

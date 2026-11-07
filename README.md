@@ -6,7 +6,7 @@
 
 在同一个工作区里对话、使用工具、加载技能、浏览文件，并把智能体连接成工作流。
 
-[快速开始](#快速开始) · [界面演示](#界面演示) · [插件架构](#插件架构) · [开发与文档](#开发与文档)
+[快速开始](#快速开始) · [界面演示](#界面演示) · [插件架构](#插件架构) · [学习与开发文档](docs/README.md)
 
 ![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)
 ![React](https://img.shields.io/badge/React-18-149ECA?logo=react&logoColor=white)
@@ -39,7 +39,7 @@ minidsh 把 Agent 执行循环、模型接入、工具、技能、会话持久�
 | 可视化工作流 | 在 React Flow 画布上连接 Agent、路由和条件节点，保存、预览与运行流程 |
 | MCP 集成 | 管理外部 MCP 服务，接入论文、Overleaf 等独立配置的集成 |
 | 知识库与缓存 | 管理 FAQ，按需启用向量检索、重排和 Redis 缓存；另有记忆管理页面 |
-| 插件化前端 | 页面功能通过客户端插件和 slots 组合；可通过 profile 更换前端包 |
+| 插件化前端 | 页面功能通过客户端插件和 slots 组合，功能包可同时携带后端和页面 |
 
 > 仓库正在持续进行插件化与 RPC 迁移。Workspace、Agent 配置、部分 Session 操作和工作流
 > 已接入插件服务（工作流通过 `workflow.v1` / `workflow.nodes.v1`）；聊天流、文件传输及
@@ -78,7 +78,27 @@ minidsh 把 Agent 执行循环、模型接入、工具、技能、会话持久�
 
 ## 快速开始
 
-### 环境准备
+### 用发布包运行
+
+安装发布目录中的 CLI wheel 后，按 [快速开始](docs/quickstart.md) 初始化 profile。发布目录可按 [构建指南](docs/development.md#构建发布-wheel) 生成。
+
+```powershell
+minidsh profile init --profile web --wheelhouse D:/minidsh-release
+# 在 ~/.minidsh/profiles/web/local.env 填写 PostgreSQL 连接
+minidsh web
+```
+
+从任意目录启动后，打开 **http://127.0.0.1:4000**。额外插件装在
+`~/.minidsh/profiles/web/.venv`，启用状态写入同一个 profile 的 `plugins.yaml`。
+
+```powershell
+minidsh plugin install D:/downloads/my_plugin-0.1.0-py3-none-any.whl
+minidsh plugin list
+```
+
+启用、停用、卸载和编写插件，见 [插件管理](docs/plugin-management.md) 与 [插件开发](docs/plugin-development.md)。
+
+### 从源码运行
 
 - **Python 3.12+**：运行服务端及插件。
 - **Node.js 20+ 与 npm**：安装、构建和运行默认前端。
@@ -172,7 +192,7 @@ python minidsh.py infra                  # 仅启动容器数据库与 Redis
 
 ```sh
 python minidsh.py web --backend-port 18000 --frontend-port 14000
-python minidsh.py web --profile web2      # 需要先准备声明了该 profile 的前端包
+python minidsh.py web --frontend web2      # 需要先准备声明了该 profile 的前端包
 python minidsh.py web --dir /path/to/your/frontend
 ```
 
@@ -180,9 +200,9 @@ python minidsh.py web --dir /path/to/your/frontend
 
 ```sh
 # Windows
-.venv/Scripts/python.exe -m backend.headless --agent your_agent_key "请介绍当前可用的技能"
+.venv/Scripts/python.exe -m agent_platform_cli run --agent your_agent_key "请介绍当前可用的技能"
 # Linux / macOS
-.venv/bin/python -m agent_platform_cli --agent your_agent_key "请介绍当前可用的技能"
+.venv/bin/python -m agent_platform_cli run --agent your_agent_key "请介绍当前可用的技能"
 ```
 
 ## 插件架构
@@ -261,6 +281,8 @@ plugins:
 也可设置 `SANDBOX_BACKEND=docker` 使用容器。模式、审批与操作系统支持见 [原生沙箱](docs/native-sandbox.md)。
 
 ## 开发与文档
+
+从 [文档导航](docs/README.md) 选择阅读路径。想跟代码可以从 [启动与插件运行](docs/startup.md) 开始，随后读 [Profile 与配置](docs/profiles.md)、[插件开发指南](docs/plugin-development.md) 和 [开发与发布](docs/development.md)。
 
 ```text
 minidsh.py             统一安装与启动入口

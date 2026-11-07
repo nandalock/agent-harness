@@ -228,6 +228,7 @@ class McpManagerPlugin:
 
     spec = PluginSpec(
         name="agent-platform.mcp-manager",
+        web_package=__package__,
         version="0.1.0",
         requires=(ServiceRequirement(service=TOOLS.ref),),
         provides=(MCP_MANAGER.ref,),

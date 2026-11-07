@@ -24,3 +24,6 @@ packages = ["agent_platform_api_workspace"]
 
 [tool.setuptools.package-dir]
 agent_platform_api_workspace = "src"
+
+[tool.setuptools.package-data]
+agent_platform_api_workspace = ["web/client.json", "web/client.js"]

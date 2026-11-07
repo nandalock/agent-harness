@@ -10,6 +10,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const legacy = path.resolve(root, 'legacy');
 const backend = process.env.BACKEND_URL || process.env.VITE_BACKEND_URL || 'http://127.0.0.1:8000';
 const publicBackend = process.env.VITE_PUBLIC_BACKEND_URL || backend;
+const embedded = process.env.MINIDSH_EMBEDDED_WEB === '1';
 
 const proxy = {
   '/api/ws': {
@@ -35,7 +36,7 @@ export default defineConfig({
     ],
   },
   define: {
-    'process.env.NEXT_PUBLIC_API_URL': JSON.stringify(publicBackend),
+    'process.env.NEXT_PUBLIC_API_URL': embedded ? 'window.location.origin' : JSON.stringify(publicBackend),
   },
   server: {
     port: 4100,

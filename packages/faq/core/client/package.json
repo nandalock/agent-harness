@@ -3,10 +3,12 @@
   "private": true,
   "version": "0.1.0",
   "dsh": {
-    "plugin": "agent-platform.faq",
     "client": {
       "platform": "web",
-      "inject": ["@app/plugin-shell"]
+      "inject": [
+        "@app/plugin-shell"
+      ],
+      "outDir": "../src/agent_platform_faq/web"
     }
   }
 }

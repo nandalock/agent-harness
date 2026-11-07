@@ -51,6 +51,7 @@ try {
   await context.route('**/api/**', async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
+    if (path === '/api/plugins' || path.startsWith('/api/plugins/client/')) return route.fallback();
     const headers = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*', 'Access-Control-Allow-Methods': '*' };
     const json = data => route.fulfill({ json: data, headers });
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers });

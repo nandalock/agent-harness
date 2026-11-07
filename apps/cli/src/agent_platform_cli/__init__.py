@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
+import sys
 from pathlib import Path
 
 from agent_platform_agent_entry import AGENT_ENTRY, RequestContext
@@ -50,19 +51,19 @@ def serve() -> int:
     return 0
 
 
-def main() -> int:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    sub = parser.add_subparsers(dest="command")
+    sub = parser.add_subparsers(dest="command", required=True)
     run_parser = sub.add_parser("run", help="run one agent turn")
     run_parser.add_argument("question", nargs="?", default="你好")
     run_parser.add_argument("--agent", default="default")
     run_parser.add_argument("--tenant-id", type=int, default=1)
     serve_parser = sub.add_parser("serve", help="run the HTTP server")
     serve_parser.set_defaults(command="serve")
-    parser.add_argument("question", nargs="?", default="你好")
-    parser.add_argument("--agent", default="default")
-    parser.add_argument("--tenant-id", type=int, default=1)
-    args = parser.parse_args()
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if not arguments or arguments[0] not in {"run", "serve", "-h", "--help"}:
+        arguments.insert(0, "run")
+    args = parser.parse_args(arguments)
 
     if args.command == "serve":
         return serve()

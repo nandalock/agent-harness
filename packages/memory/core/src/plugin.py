@@ -11,6 +11,7 @@ MEMORY = ServiceKey[MemoryService](ServiceRef(name="memory", api_version=1))
 class MemoryPlugin:
     spec = PluginSpec(
         name="agent-platform.memory",
+        web_package=__package__,
         version="0.1.0",
         provides=(MEMORY.ref,),
         requires=tuple(ServiceRequirement(service=key.ref) for key in (DATABASE, AGENTS, CHAT)),

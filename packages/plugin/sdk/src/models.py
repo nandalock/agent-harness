@@ -52,6 +52,8 @@ class PluginSpec(SdkModel):
     sdk_api_version: PositiveInteger = SDK_API_VERSION
     requires: tuple[ServiceRequirement, ...] = ()
     provides: tuple[ServiceRef, ...] = ()
+    # Import package containing web/client.json and its bundled web/client.js.
+    web_package: Annotated[StrictStr, Field(pattern=r"^[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)*$")] | None = None
 
     @field_validator("version")
     @classmethod

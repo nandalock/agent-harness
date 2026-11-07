@@ -39,6 +39,7 @@ class AgentsApiConfig(SdkModel):
 class AgentApiPlugin:
     spec = PluginSpec(
         name="agent-platform.api-agents",
+        web_package=__package__,
         version="0.1.0",
         provides=(AGENT_API.ref,),
         requires=(
