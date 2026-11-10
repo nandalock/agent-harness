@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "minidsh-cordis"
+version = "0.1.0"
+description = "An asynchronous plugin kernel for Python inspired by Cordis"
+readme = "README.md"
+requires-python = ">=3.12"
+
+[tool.setuptools]
+packages = ["minidsh_cordis"]
+
+[tool.setuptools.package-dir]
+minidsh_cordis = "src"
+
+[tool.setuptools.package-data]
+minidsh_cordis = ["py.typed"]
