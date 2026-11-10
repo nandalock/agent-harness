@@ -29,7 +29,7 @@ Nested Python packages must also appear in `packages`, e.g.
 Runtime data such as `py.typed`, default YAML, skill documents and native runner
 manifests are declared through `tool.setuptools.package-data`.
 
-Plugin entry points and Python imports are independent of disk layout and retain
+Plugin module exports and Python imports are independent of disk layout and retain
 their existing names. After changing a package mapping, reinstall the packages:
 
 ```bash

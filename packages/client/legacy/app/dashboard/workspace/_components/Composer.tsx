@@ -22,6 +22,8 @@ import { SlashSkillMenu, useSkillCatalog, type SkillEntry } from '@/components/S
 import { Plus, ArrowUp, Square, Loader2, ShieldCheck, ChevronDown, Check } from 'lucide-react';
 import { W, R, WS } from '../theme';
 import { SANDBOX_MODE_LABELS } from './useWorkspace';
+import type { ContextUsage } from '@/lib/memory';
+import ContextMeter from './ContextMeter';
 
 interface Props {
   disabled: boolean;          // **只**表示无会话（不能输入）；发送中不禁用，见文件头
@@ -35,6 +37,8 @@ interface Props {
   onModeChange: (mode: string) => void;
   agentKey?: string;
   sessionId?: string | null;
+  contextUsage?: ContextUsage;
+  memoryAvailable?: boolean;
 }
 
 const MODES = ['read-only', 'workspace-write', 'danger-full-access'];
@@ -46,7 +50,7 @@ const MODE_HINTS: Record<string, string> = {
   'danger-full-access': '不限制，可读写挂载进来的任意目录',
 };
 
-export default function Composer({ disabled, sending, uploading, uploadError, onSend, onStop, onUpload, sandboxMode, onModeChange, agentKey, sessionId }: Props) {
+export default function Composer({ disabled, sending, uploading, uploadError, onSend, onStop, onUpload, sandboxMode, onModeChange, agentKey, sessionId, contextUsage, memoryAvailable }: Props) {
   const [text, setText] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -197,9 +201,11 @@ export default function Composer({ disabled, sending, uploading, uploadError, on
 
           <div style={{ flex: 1 }} />
 
+          {sessionId && memoryAvailable && <ContextMeter key={sessionId} sessionId={sessionId} usage={contextUsage} />}
+
           {/* 模型：后端待支持，只报当前值 */}
           <span title="模型选择（后端待支持）" style={{ fontSize: 12, color: W.dimmed, whiteSpace: 'nowrap' }}>
-            DeepSeek-V4.1-Flash
+            {contextUsage?.model || 'DeepSeek-V4.1-Flash'}
           </span>
 
           {/* 运行中的语义提示：此刻发送 = 并入当前轮（不是发新消息），与沙箱 chip 同形 */}

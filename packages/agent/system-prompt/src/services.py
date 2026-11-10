@@ -2,7 +2,7 @@
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from agent_platform_plugin_sdk import ServiceKey, ServiceRef
+from agent_platform_plugin_sdk import ServiceKey
 
 
 @dataclass(frozen=True)
@@ -16,6 +16,4 @@ class RuntimePrompts(Protocol):
     async def preview(self, **options: Any) -> Any: ...
 
 
-RUNTIME_PROMPTS: ServiceKey[RuntimePrompts] = ServiceKey(
-    ServiceRef(name="agent.prompts", api_version=1)
-)
+RUNTIME_PROMPTS: ServiceKey[RuntimePrompts] = ServiceKey("agent.prompts")

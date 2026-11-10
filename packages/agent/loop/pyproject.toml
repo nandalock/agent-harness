@@ -14,9 +14,6 @@ dependencies = [
   "agent-platform-tool-host>=0.1,<0.2",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.agent-loop" = "agent_platform_agent_loop:AgentLoopPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_agent_loop"]
 

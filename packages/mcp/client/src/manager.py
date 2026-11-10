@@ -12,13 +12,8 @@ from typing import Any
 
 from agent_platform_plugin_sdk import (
     JsonObject,
-    Plugin,
-    PluginContext,
-    PluginSpec,
     SdkModel,
     ServiceKey,
-    ServiceRef,
-    ServiceRequirement,
     TOOLS,
     TOOL_UNAVAILABLE,
     ToolsService,
@@ -29,12 +24,12 @@ from agent_platform_plugin_sdk import (
 from .client import McpConnection, McpToolInfo
 from .config import McpServerConfig
 from .registration import McpRegistration, register_mcp_tools
+from minidsh_cordis import Context, Plugin
+from minidsh_cordis import Context, Plugin
 
 logger = logging.getLogger(__name__)
 
-MCP_MANAGER: ServiceKey["McpManager"] = ServiceKey(
-    ServiceRef(name="mcp.manager", api_version=1)
-)
+MCP_MANAGER: ServiceKey["McpManager"] = ServiceKey("mcp.manager")
 
 
 def _error(message: str) -> ToolResult:
@@ -223,19 +218,17 @@ class McpManagerConfig(SdkModel):
     pass
 
 
-class McpManagerPlugin:
+class McpManagerPlugin(Plugin[McpManagerConfig]):
     """Publish the dynamic MCP control plane on ``mcp.manager.v1``."""
 
-    spec = PluginSpec(
-        name="agent-platform.mcp-manager",
-        web_package=__package__,
-        version="0.1.0",
-        requires=(ServiceRequirement(service=TOOLS.ref),),
-        provides=(MCP_MANAGER.ref,),
-    )
+    name = "agent-platform.mcp-manager"
+    web_package = __package__
+    version = "0.1.0"
+    requires = (TOOLS,)
+    provides = (MCP_MANAGER,)
     config_model = McpManagerConfig
 
-    async def setup(self, ctx: PluginContext, config: McpManagerConfig) -> None:
+    async def setup(self, ctx: Context, config: McpManagerConfig) -> None:
         manager = McpManager(ctx.require(TOOLS))
         ctx.provide(MCP_MANAGER, manager)
         ctx.on_dispose(manager.aclose, label="mcp-manager")

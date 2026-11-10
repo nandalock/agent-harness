@@ -9,9 +9,6 @@ description = "Agent service, driver contracts and lifecycle ownership"
 requires-python = ">=3.12"
 dependencies = ["agent-platform-plugin-sdk>=0.1,<0.2"]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.agents" = "agent_platform_agents:AgentsPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_agents"]
 

@@ -2,14 +2,12 @@
 from agent_platform_plugin_sdk import (
     PLUGIN_CATALOG,
     PluginCatalog,
-    PluginContext,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
 )
 
 from .client import ClientModule, discover_clients
 from .contracts import PLUGIN_INVENTORY
+from minidsh_cordis import Context, Plugin
 
 
 class InventoryConfig(SdkModel):
@@ -37,16 +35,14 @@ class _Inventory:
             return None
 
 
-class PluginInventoryPlugin:
-    spec = PluginSpec(
-        name="agent-platform.plugin-inventory",
-        version="0.1.0",
-        provides=(PLUGIN_INVENTORY.ref,),
-        requires=(ServiceRequirement(service=PLUGIN_CATALOG.ref),),
-    )
+class PluginInventoryPlugin(Plugin[InventoryConfig]):
+    name = "agent-platform.plugin-inventory"
+    version = "0.1.0"
+    provides = (PLUGIN_INVENTORY,)
+    requires = (PLUGIN_CATALOG,)
     config_model = InventoryConfig
 
-    async def setup(self, ctx: PluginContext, config: InventoryConfig) -> None:
+    async def setup(self, ctx: Context, config: InventoryConfig) -> None:
         ctx.provide(PLUGIN_INVENTORY, _Inventory(ctx.require(PLUGIN_CATALOG)))
 
 

@@ -1,7 +1,7 @@
 """Service key for the single-track tools host."""
 from typing import Any, Protocol
 
-from agent_platform_plugin_sdk import ServiceKey, ServiceRef
+from agent_platform_plugin_sdk import ServiceKey
 
 
 class UnifiedToolsService(Protocol):
@@ -10,6 +10,4 @@ class UnifiedToolsService(Protocol):
     async def aclose(self) -> None: ...
 
 
-UNIFIED_TOOLS: ServiceKey[UnifiedToolsService] = ServiceKey(
-    ServiceRef(name="unified-tools", api_version=1)
-)
+UNIFIED_TOOLS: ServiceKey[UnifiedToolsService] = ServiceKey("unified-tools")

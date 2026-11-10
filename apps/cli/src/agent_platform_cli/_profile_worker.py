@@ -2,14 +2,23 @@
 import json
 import sys
 from importlib import metadata
+from importlib.machinery import EXTENSION_SUFFIXES
 
 from packaging.utils import canonicalize_name
 
-from agent_platform_app_boot.config import compose_plugins, load_config
-from agent_platform_plugin_runtime.catalog import EntryPointCatalog
-from agent_platform_plugin_runtime.dependencies import resolve
-from agent_platform_plugin_runtime.loader import load_plugins
-from agent_platform_plugin_sdk import PLUGIN_CATALOG, PLUGIN_ENTRY_POINT_GROUP, PluginConfiguration
+from agent_platform_app_boot.config import load_config, resolve_config_path
+from agent_platform_plugin_runtime import (
+    PluginConfiguration, PluginEntry, PluginLoader, load_layers, load_module_plugin, load_yaml_config,
+)
+
+
+def owns_export(files: set[str], target: str) -> bool:
+    module = target.partition(":")[0].replace(".", "/")
+    return any(
+        path + suffix in files
+        for path in (module, f"{module}/__init__")
+        for suffix in (".py", *EXTENSION_SUFFIXES)
+    )
 
 
 def main():
@@ -19,7 +28,6 @@ def main():
             {
                 "distribution": canonicalize_name(dist.metadata["Name"]),
                 "version": dist.version,
-                "entries": [ep.name for ep in dist.entry_points if ep.group == PLUGIN_ENTRY_POINT_GROUP],
                 "requires": dist.requires or [],
             }
             for dist in metadata.distributions()
@@ -27,9 +35,30 @@ def main():
     elif action == "config":
         result = load_config().model_dump(mode="json")
     elif action == "validate":
-        config = compose_plugins(PluginConfiguration.model_validate_json(sys.stdin.read()))
-        resolve(load_plugins(config, EntryPointCatalog()), {PLUGIN_CATALOG: None})
+        config = load_config(PluginConfiguration.model_validate_json(sys.stdin.read()))
+        PluginLoader(config).validate()
         return
+    elif action in ("describe", "owned"):
+        distribution = metadata.distribution(sys.argv[2])
+        files = {path.as_posix() for path in distribution.files or ()}
+        if action == "describe":
+            target = sys.argv[3]
+            if not owns_export(files, target):
+                raise ValueError(f"{target!r} is outside {distribution.metadata['Name']}")
+            plugin = load_module_plugin(target)
+            entry = PluginEntry(id=plugin.name, name=plugin.name, use=target)
+            result = entry.model_dump(mode="json")
+        else:
+            def owned(config: PluginConfiguration) -> list[str]:
+                return [entry.id for entry in config.plugins
+                        if entry.use is not None and owns_export(files, entry.use)]
+
+            path = resolve_config_path()
+            included = []
+            if path is not None:
+                document = load_yaml_config(path).model_copy(update={"plugins": (), "patches": ()})
+                included = owned(load_layers(path, document=document))
+            result = {"configured": owned(load_config()), "included": included}
     else:
         raise ValueError(f"Unknown profile operation: {action}")
     print(json.dumps(result))

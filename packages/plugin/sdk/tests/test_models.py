@@ -5,68 +5,24 @@ import unittest
 from pydantic import ValidationError
 
 from agent_platform_plugin_sdk import (
-    TOOLS, ExecutionScope, PluginCompatibilityError, PluginConfiguration, PluginEntry,
-    PluginSpec, ServiceKey, ServiceRef, ServiceRequirement, ServiceUnavailableError,
-    ToolCall, ToolContext, ToolDescriptor, ToolError, ToolResult, ensure_sdk_compatible,
+    TOOLS, ExecutionScope,
+    ServiceKey, ServiceUnavailableError,
+    ToolCall, ToolContext, ToolDescriptor, ToolError, ToolResult,
 )
 
 
-class ConfigurationTests(unittest.TestCase):
-    def test_yaml_shaped_document_round_trips_without_losing_instance_identity(self):
-        config = PluginConfiguration.model_validate({"version": 1, "plugins": [
-            {"id": "tools", "name": "agent-platform.tools-default", "config": {}},
-            {"id": "echo", "name": "example.echo", "disabled": True, "config": {"prefix": "收到："}},
-        ]})
-        self.assertEqual(config.plugins[0].id, "tools")
-        self.assertEqual(config.plugins[0].name, "agent-platform.tools-default")
-        self.assertEqual(PluginConfiguration.model_validate_json(config.model_dump_json()), config)
+class ServiceKeyTests(unittest.TestCase):
+    def test_service_keys_use_cordis_identity_and_exact_versions(self):
+        from minidsh_cordis import ServiceKey as CordisKey
 
-    def test_instances_are_unique_but_implementation_names_can_repeat(self):
-        entries = [{"id": "first", "name": "example.echo"}, {"id": "second", "name": "example.echo"}]
-        self.assertEqual(len(PluginConfiguration(plugins=entries).plugins), 2)
-        entries[1]["id"] = "first"
-        with self.assertRaises(ValidationError):
-            PluginConfiguration(plugins=entries)
-
-    def test_invalid_or_ambiguous_configuration_is_rejected(self):
-        for value in ({"id": "bad id", "name": "example.echo"},
-                      {"id": "echo", "name": "backend.module:Plugin"},
-                      {"id": "echo", "name": "example.echo", "disabled": "false"},
-                      {"id": "echo", "name": "example.echo", "extra": True},
-                      {"id": "echo", "name": "example.echo", "config": {"callback": object()}},
-                      {"id": "echo", "name": "example.echo", "config": {"number": float("nan")}}):
-            with self.subTest(value=value), self.assertRaises(ValidationError):
-                PluginEntry.model_validate(value)
-        for version in (2, True, "1"):
-            with self.subTest(version=version), self.assertRaises(ValidationError):
-                PluginConfiguration(version=version)
-
-    def test_plugin_and_service_versions_are_independent(self):
-        spec = PluginSpec(name="example.tools", version="2.4.0", provides=(TOOLS.ref,))
-        ensure_sdk_compatible(spec)
-        self.assertEqual(spec.version, "2.4.0")
-        self.assertEqual(spec.provides[0].api_version, 1)
-        incompatible = spec.model_copy(update={"sdk_api_version": 2})
-        with self.assertRaises(PluginCompatibilityError) as raised:
-            ensure_sdk_compatible(incompatible)
-        self.assertEqual(raised.exception.code, "plugin.incompatible_sdk")
-        for version in ("not-a-version", "", "1.2.3.?"):
-            with self.subTest(version=version), self.assertRaises(ValidationError):
-                PluginSpec(name="example.tools", version=version)
-
-    def test_service_declarations_reject_duplicates_and_invalid_versions(self):
-        requirement = ServiceRequirement(service=TOOLS.ref)
-        with self.assertRaises(ValidationError):
-            PluginSpec(name="example.echo", version="0.1", requires=(requirement, requirement))
-        with self.assertRaises(ValidationError):
-            PluginSpec(name="example.echo", version="0.1", provides=(TOOLS.ref, TOOLS.ref))
+        self.assertIs(ServiceKey, CordisKey)
         for version in (0, -1, True, "1"):
-            with self.subTest(version=version), self.assertRaises(ValidationError):
-                ServiceRef(name="tools", api_version=version)
-        self.assertEqual(str(TOOLS.ref), "tools.v1")
-        self.assertNotEqual(TOOLS, ServiceKey(ServiceRef(name="tools", api_version=2)))
-        self.assertEqual(TOOLS, ServiceKey(ServiceRef(name="tools", api_version=1)))
-        self.assertEqual(ServiceUnavailableError(TOOLS.ref).service, TOOLS.ref)
+            with self.subTest(version=version), self.assertRaises(ValueError):
+                ServiceKey("tools", version=version)
+        self.assertEqual(str(TOOLS), "tools.v1")
+        self.assertNotEqual(TOOLS, ServiceKey("tools", version=2))
+        self.assertEqual(TOOLS, ServiceKey("tools"))
+        self.assertEqual(ServiceUnavailableError(TOOLS).service, TOOLS)
 
 
 class ToolsDataTests(unittest.TestCase):
@@ -114,14 +70,11 @@ class ToolsDataTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             ToolContext(scope=ExecutionScope(tenant_id=1, agent_key="a"), visible_tool_names=[], deadline=float("nan"))
 
-    def test_schema_and_config_defaults_are_not_shared(self):
+    def test_schema_defaults_are_not_shared(self):
         first = ToolDescriptor(name="one", executor="native", description="One")
         second = ToolDescriptor(name="two", executor="native", description="Two")
         first.input_schema["required"] = ["text"]
         self.assertNotIn("required", second.input_schema)
-        entry = PluginEntry(id="one", name="example.one")
-        entry.config["changed"] = True
-        self.assertEqual(PluginEntry(id="two", name="example.two").config, {})
         # Frozen fields do not imply deep JSON immutability; documented host
         # snapshots must be made before calls cross an async boundary.
         snapshot = first.model_copy(deep=True)

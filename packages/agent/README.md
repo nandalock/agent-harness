@@ -32,13 +32,13 @@ python minidsh.py web
 
 后端通过 `packages/agent/runtime/src/runtime.py` 查公共服务，不再收集 pre-step 钩子或创建 LoopHooks。
 `runtime/src/extensions.py` 的扩展注册表由运行时插件创建；skill-tools 通过 `ctx.require(AGENT_EXTENSIONS).register(...)` 登记扩展。
-运行时插件收集这些扩展，把合并后的 pre-step 钩子交给循环。注册表按 PluginRuntime 隔离，卸载后撤销。
+运行时插件收集这些扩展，把合并后的 pre-step 钩子交给循环。注册表按 PluginLoader 隔离，卸载后撤销。
 
 提示词、LLM、会话恢复/标题、沙箱策略和智能体配置都由各自插件通过服务表提供，
 Runtime 在 `ctx.require(...)` 中解析；所有服务都由插件运行时注入
 这类中转适配器。所有工具仍来自同一个 `tools.v1` 注册表。
 
-`loop/src/context.py` 定义 `LoopContext`，保留插件启动时收到的原始 `PluginContext`。
+`loop/src/context.py` 定义 `LoopContext`，保留插件启动时收到的原生 Cordis `Context`。
 `tools`、`tool_catalog`、`approval` 属性在使用时从这个上下文的服务表解析，
 没有复制注册表，也不把服务分别塞进 Loop 构造参数。
 LLM 客户端和会话策略由运行时服务为每次运行创建，绑定到该次运行的上下文，避免不同会话串配置。

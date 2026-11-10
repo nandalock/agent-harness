@@ -1,93 +1,32 @@
 import unittest
-from unittest.mock import patch
 
-from agent_platform_plugin_runtime import (
-    DiscoveryError,
-    EntryPointCatalog,
-    MappingCatalog,
-)
+from minidsh_cordis import Plugin
 
-
-class Marker:
-    pass
-
-
-class FakeEntryPoint:
-    def __init__(self, name, value, error=None):
-        self.name = name
-        self._value = value
-        self._error = error
-
-    def load(self):
-        if self._error is not None:
-            raise self._error
-        return self._value
+from agent_platform_plugin_runtime import DiscoveryError, MappingCatalog, load_module_plugin
+from support import EchoPlugin
 
 
 class CatalogTests(unittest.TestCase):
-    def test_unknown_entry_point_is_reported_without_python_imports(self):
-        catalog = EntryPointCatalog(group="agent_platform.plugins.tests.none")
-        with self.assertRaises(DiscoveryError) as raised:
-            catalog.load("test.missing")
-        self.assertEqual(raised.exception.code, "plugin_runtime.discovery")
-
-    def test_mapping_catalog_calls_the_factory_for_every_load(self):
-        catalog = MappingCatalog({"test.marker": Marker})
-        first = catalog.load("test.marker")
-        second = catalog.load("test.marker")
-        self.assertIsInstance(first, Marker)
+    def test_static_catalog_instantiates_each_entry(self):
+        catalog = MappingCatalog({"test.echo": EchoPlugin})
+        first, second = catalog.load("test.echo"), catalog.load("test.echo")
+        self.assertIsInstance(first, Plugin)
         self.assertIsNot(first, second)
 
-    def test_mapping_catalog_wraps_factory_failures(self):
+    def test_static_catalog_reports_missing_and_failed_factories(self):
         def broken():
-            raise RuntimeError("cannot construct")
+            raise RuntimeError("broken constructor")
 
         catalog = MappingCatalog({"test.broken": broken})
-        with self.assertRaises(DiscoveryError) as raised:
+        with self.assertRaisesRegex(DiscoveryError, "broken constructor"):
             catalog.load("test.broken")
-        self.assertIn("cannot construct", str(raised.exception))
+        with self.assertRaisesRegex(DiscoveryError, "test.missing"):
+            catalog.load("test.missing")
 
-    def test_missing_mapping_entry_is_reported(self):
-        with self.assertRaises(DiscoveryError):
-            MappingCatalog({}).load("test.missing")
+    def test_explicit_class_export_resolves_a_native_plugin(self):
+        self.assertIsInstance(load_module_plugin("support:EchoPlugin"), EchoPlugin)
 
-    def test_entry_point_catalog_instantiates_each_entry(self):
-        entry = FakeEntryPoint("test.marker", Marker)
-        with patch(
-            "agent_platform_plugin_runtime.catalog.entry_points", return_value=[entry]
-        ):
-            catalog = EntryPointCatalog()
-            first = catalog.load("test.marker")
-            second = catalog.load("test.marker")
-        self.assertIsInstance(first, Marker)
-        self.assertIsNot(first, second)
-
-    def test_duplicate_entry_point_names_are_rejected(self):
-        entry = FakeEntryPoint("test.marker", Marker)
-        with patch(
-            "agent_platform_plugin_runtime.catalog.entry_points",
-            return_value=[entry, entry],
-        ):
-            with self.assertRaises(DiscoveryError) as raised:
-                EntryPointCatalog().load("test.marker")
-        self.assertIn("duplicate", str(raised.exception))
-
-    def test_entry_point_import_and_shape_failures_are_reported(self):
-        with patch(
-            "agent_platform_plugin_runtime.catalog.entry_points",
-            return_value=[FakeEntryPoint("test.bad", None, RuntimeError("import failed"))],
-        ):
-            with self.assertRaises(DiscoveryError) as raised:
-                EntryPointCatalog().load("test.bad")
-        self.assertIn("import failed", str(raised.exception))
-
-        with patch(
-            "agent_platform_plugin_runtime.catalog.entry_points",
-            return_value=[FakeEntryPoint("test.bad", object())],
-        ):
-            with self.assertRaises(DiscoveryError):
-                EntryPointCatalog().load("test.bad")
-
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_explicit_export_rejects_missing_or_non_plugin_objects(self):
+        for target in ("missing_minidsh_module:plugin", "support:missing", "support:EchoConfig"):
+            with self.subTest(target=target), self.assertRaisesRegex(DiscoveryError, target):
+                load_module_plugin(target)

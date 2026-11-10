@@ -1,7 +1,7 @@
 """Service keys owned by the session recovery plugin."""
 from typing import Protocol
 
-from agent_platform_plugin_sdk import ServiceKey, ServiceRef
+from agent_platform_plugin_sdk import ServiceKey
 
 
 class SessionRecovery(Protocol):
@@ -9,6 +9,4 @@ class SessionRecovery(Protocol):
     def status(self, events, *, busy=False, last_durable_seq=None) -> dict: ...
 
 
-SESSION_RECOVERY = ServiceKey[SessionRecovery](
-    ServiceRef(name="agent.session-recovery", api_version=1)
-)
+SESSION_RECOVERY = ServiceKey[SessionRecovery]("agent.session-recovery")

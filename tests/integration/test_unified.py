@@ -19,12 +19,10 @@ os.environ.setdefault("PLUGIN_MCP_AUTO", "false")
 os.environ.setdefault("MANAGED_MCP_ENABLED", "false")
 
 try:
-    from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
+    from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
     from agent_platform_plugin_sdk import (
         DATABASE,
-        PluginSpec,
         SdkModel,
-        ServiceRequirement,
         TOOLS,
         ToolDescriptor as SdkToolDescriptor,
         ToolError,
@@ -86,6 +84,7 @@ from agent_platform_tool_host import (
     close_unified_tools,
     set_unified_tools,
 )
+from minidsh_cordis import Plugin
 
 
 def _skip() -> bool:
@@ -205,7 +204,7 @@ class _LazyProvider:
 class _NoopDatabasePlugin:
     """Database provider that never touches a real server during composition tests."""
 
-    spec = PostgresDatabasePlugin.spec
+    spec = PostgresDatabasePlugin
     config_model = PostgresDatabasePlugin.config_model
 
     async def setup(self, ctx, config):
@@ -570,9 +569,9 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
         AGENTS,
         APPROVAL,
         ExecutionScope,
-        PluginConfiguration,
         SETTINGS,
     )
+    from agent_platform_plugin_runtime import PluginConfiguration
     from agent_platform_sandbox_tools import get_sandbox_control
 
     class Settings:
@@ -606,7 +605,7 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
                 {"id": "sandbox-provider", "name": "agent-platform.sandbox-local"},
             ]
         )
-        runtime = PluginRuntime(
+        runtime = PluginLoader(
             config,
             catalog=MappingCatalog(
                 {
@@ -665,12 +664,10 @@ def _consumer_plugin(calls: list):
     class ConsumerConfig(SdkModel):
         pass
 
-    class Consumer:
-        spec = PluginSpec(
-            name="test.consumer",
-            version="0.1.0",
-            requires=(ServiceRequirement(service=TOOLS.ref),),
-        )
+    class Consumer(Plugin[ConsumerConfig]):
+        name = "test.consumer"
+        version = "0.1.0"
+        requires = (TOOLS,)
         config_model = ConsumerConfig
 
         async def setup(self, ctx, config):

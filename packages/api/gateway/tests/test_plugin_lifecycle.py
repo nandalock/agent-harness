@@ -3,8 +3,9 @@ import unittest
 
 from pydantic import BaseModel
 
-from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
-from agent_platform_plugin_sdk import PluginSpec, SdkModel, ServiceRequirement
+from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
+from minidsh_cordis import Plugin
+from agent_platform_plugin_sdk import SdkModel
 from agent_platform_rpc_gateway import (
     RPC_GATEWAY,
     RpcContext,
@@ -26,14 +27,14 @@ class _Config(SdkModel):
     pass
 
 
-class _Controller:
+class _Controller(Plugin[_Config]):
+    name = "test.controller"
+    version = "0.1.0"
+    requires = (RPC_GATEWAY,)
+    config_model = _Config
+
     def __init__(self, method: str):
         self.method = method
-        self.spec = PluginSpec(
-            name="test.controller", version="0.1.0",
-            requires=(ServiceRequirement(service=RPC_GATEWAY.ref),),
-        )
-        self.config_model = _Config
 
     async def setup(self, ctx, config):
         gateway = ctx.require(RPC_GATEWAY)
@@ -45,8 +46,8 @@ class _Controller:
 
 
 class _GatewayTest(unittest.IsolatedAsyncioTestCase):
-    def runtime(self, method: str) -> PluginRuntime:
-        return PluginRuntime(
+    def runtime(self, method: str) -> PluginLoader:
+        return PluginLoader(
             {"plugins": [
                 {"id": "gateway", "name": "agent-platform.rpc-gateway"},
                 {"id": "controller", "name": "test.controller"},

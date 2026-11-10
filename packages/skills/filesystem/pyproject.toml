@@ -8,9 +8,6 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = ["agent-platform-skills>=0.1,<0.2"]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.skills-filesystem" = "agent_platform_skills_filesystem:SkillsFilesystemPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_skills_filesystem"]
 

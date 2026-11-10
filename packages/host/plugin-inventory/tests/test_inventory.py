@@ -1,12 +1,12 @@
 import unittest
 
 from agent_platform_plugin_inventory import PLUGIN_INVENTORY, PluginInventoryPlugin
-from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
+from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
 
 
 class InventoryTests(unittest.IsolatedAsyncioTestCase):
     async def test_inventory_projects_the_runtime_catalog(self):
-        runtime = PluginRuntime(
+        runtime = PluginLoader(
             {"plugins": [{"id": "inventory", "name": "agent-platform.plugin-inventory"}]},
             catalog=MappingCatalog({
                 "agent-platform.plugin-inventory": PluginInventoryPlugin,

@@ -2,13 +2,12 @@
 from collections.abc import Callable
 from typing import Any
 
+from minidsh_cordis import Plugin
+
 from agent_platform_plugin_sdk import (
     ExecutionScope,
-    PluginSpec,
     SdkModel,
     ServiceKey,
-    ServiceRef,
-    ServiceRequirement,
     TOOLS,
     ToolContext,
     ToolDescriptor,
@@ -21,23 +20,16 @@ class EmptyConfig(SdkModel):
     pass
 
 
-def service_ref(name: str) -> ServiceRef:
-    return ServiceRef(name=name, api_version=1)
-
-
 def service_key(name: str) -> ServiceKey[object]:
-    return ServiceKey(service_ref(name))
-
-
-def requirement(name: str, *, optional: bool = False) -> ServiceRequirement:
-    return ServiceRequirement(service=service_ref(name), optional=optional)
+    return ServiceKey(name)
 
 
 def plugin_class(
     name: str,
     *,
-    provides: tuple[ServiceRef, ...] = (),
-    requires: tuple[ServiceRequirement, ...] = (),
+    provides: tuple[ServiceKey, ...] = (),
+    requires: tuple[ServiceKey, ...] = (),
+    optional: tuple[ServiceKey, ...] = (),
     log: list[str] | None = None,
     on_setup: Callable[[Any], None] | None = None,
     fail: BaseException | None = None,
@@ -45,26 +37,18 @@ def plugin_class(
 ) -> type[object]:
     """Build a plugin that records setup/close and exercises declared services."""
 
-    class Plugin:
-        spec = PluginSpec(
-            name=name,
-            version="0.1.0",
-            provides=provides,
-            requires=requires,
-        )
+    class TestPlugin(Plugin[EmptyConfig]):
         config_model = EmptyConfig
 
         async def setup(self, ctx: Any, config: EmptyConfig) -> None:
             if log is not None:
                 log.append(f"setup:{name}")
-            for item in requires:
-                key = ServiceKey(item.service)
-                if item.optional:
-                    ctx.get(key)
-                else:
-                    ctx.require(key)
-            for ref in provides:
-                ctx.provide(ServiceKey(ref), object())
+            for key in requires:
+                ctx.require(key)
+            for key in optional:
+                ctx.get(key)
+            for key in provides:
+                ctx.provide(key, object())
             if cleanup and log is not None:
                 ctx.on_dispose(
                     lambda: log.append(f"close:{name}"), label=f"close {name}"
@@ -74,7 +58,12 @@ def plugin_class(
             if fail is not None:
                 raise fail
 
-    return Plugin
+    TestPlugin.name = name
+    TestPlugin.version = "0.1.0"
+    TestPlugin.provides = provides
+    TestPlugin.requires = requires
+    TestPlugin.optional = optional
+    return TestPlugin
 
 
 class FakeHandle:
@@ -162,12 +151,10 @@ class EchoExecutor:
         return ToolResult(data={"text": self.prefix + str(arguments.get("text", ""))})
 
 
-class EchoPlugin:
-    spec = PluginSpec(
-        name="test.echo",
-        version="0.1.0",
-        requires=(ServiceRequirement(service=TOOLS.ref),),
-    )
+class EchoPlugin(Plugin[EchoConfig]):
+    name = "test.echo"
+    version = "0.1.0"
+    requires = (TOOLS,)
     config_model = EchoConfig
 
     async def setup(self, ctx: Any, config: EchoConfig) -> None:
@@ -190,12 +177,10 @@ class EchoPlugin:
         )
 
 
-class ToolsPlugin:
-    spec = PluginSpec(
-        name="test.tools",
-        version="0.1.0",
-        provides=(TOOLS.ref,),
-    )
+class ToolsPlugin(Plugin[EmptyConfig]):
+    name = "test.tools"
+    version = "0.1.0"
+    provides = (TOOLS,)
     config_model = EmptyConfig
 
     async def setup(self, ctx: Any, config: EmptyConfig) -> None:

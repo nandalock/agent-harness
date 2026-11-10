@@ -5,17 +5,20 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 from agent_platform_agent_runtime import AGENT_RUNTIME, AgentRuntimePlugin
 from agent_platform_agents import AGENT_RUNS
+from agent_platform_chat import CHAT
 from agent_platform_llm import (
     CHUNK_FINISH, CHUNK_TEXT, LLM, LlmResponse, ModelConfig,
     StreamChunk, make_retry_policy,
 )
-from agent_platform_plugin_runtime import PluginRuntime, EntryPointCatalog
-from agent_platform_plugin_sdk import AGENTS, AGENT_EXTENSIONS, APPROVAL, AgentRunContribution, ServiceClosedError
+from agent_platform_plugin_runtime import PluginLoader, load_module_plugin
+from agent_platform_plugin_sdk import AGENTS, AGENT_EXTENSIONS, APPROVAL, DATABASE, AgentRunContribution, ServiceClosedError
 from agent_platform_sandbox.services import AGENT_SANDBOX
 from agent_platform_session import Session
+from agent_platform_session.events import CONTEXT_CHECKPOINT, CONTEXT_USAGE, USER_MESSAGE
 from agent_platform_session_recovery import SESSION_RECOVERY
 from agent_platform_system_prompt import RUNTIME_PROMPTS, PreparedPrompt
 
@@ -96,7 +99,7 @@ class RuntimePluginTests(unittest.IsolatedAsyncioTestCase):
             await runtime.aclose()
         self.temp.cleanup()
 
-    async def start(self, *, skills=False, client=None):
+    async def start(self, *, skills=False, memory=False, client=None):
         client = client or Client()
         sessions = Sessions()
         config = {"provider": "test", "model": "test", "session_title_enabled": False}
@@ -105,21 +108,25 @@ class RuntimePluginTests(unittest.IsolatedAsyncioTestCase):
         async def assemble(**options):
             return PreparedPrompt("Test system prompt", [])
         entries = [
-            {"id": "runtime", "name": "agent-platform.agent-runtime"},
-            {"id": "loop", "name": "agent-platform.agent-loop"},
-            {"id": "agents", "name": "agent-platform.agents"},
-            {"id": "tools", "name": "agent-platform.tools-default"},
+            {"id": "runtime", "name": "agent-platform.agent-runtime", "use": "agent_platform_agent_runtime:AgentRuntimePlugin"},
+            {"id": "loop", "name": "agent-platform.agent-loop", "use": "agent_platform_agent_loop:AgentLoopPlugin"},
+            {"id": "agents", "name": "agent-platform.agents", "use": "agent_platform_agents:AgentsPlugin"},
+            {"id": "tools", "name": "agent-platform.tools-default", "use": "agent_platform_tools_default:ToolsDefaultPlugin"},
         ]
         if skills:
             entries.extend([
-                {"id": "skill-tools", "name": "agent-platform.skill-tools"},
-                {"id": "filesystem", "name": "agent-platform.skills-filesystem", "config": {
+                {"id": "skill-tools", "name": "agent-platform.skill-tools", "use": "agent_platform_skill_tools:SkillToolsPlugin"},
+                {"id": "filesystem", "name": "agent-platform.skills-filesystem", "use": "agent_platform_skills_filesystem:SkillsFilesystemPlugin", "config": {
                     "builtin": False, "include_installed": False,
                     "sources": [{"name": "custom", "path": str(self.root), "tenant_ids": [1]}],
                 }},
-                {"id": "skills", "name": "agent-platform.skills-default"},
+                {"id": "skills", "name": "agent-platform.skills-default", "use": "agent_platform_skills_default:SkillsDefaultPlugin"},
             ])
-        runtime = PluginRuntime({"plugins": entries}, host_services={
+        if memory:
+            entries.append({"id": "memory", "name": "agent-platform.memory", "use": "agent_platform_memory:MemoryPlugin", "config": {
+                "context_window": 4096, "compact_ratio": 0.5,
+            }})
+        runtime = PluginLoader({"plugins": entries}, host_services={
             AGENTS: SimpleNamespace(get_config=get_config),
             APPROVAL: SimpleNamespace(available=False),
             RUNTIME_PROMPTS: SimpleNamespace(assemble=assemble),
@@ -131,13 +138,50 @@ class RuntimePluginTests(unittest.IsolatedAsyncioTestCase):
                 create_client=lambda model, **options: client,
             ),
             AGENT_SANDBOX: SimpleNamespace(policy=lambda session: None),
+            **({DATABASE: object(), CHAT: SimpleNamespace(store=None)} if memory else {}),
         })
         self.runtimes.append(runtime)
-        await runtime.start()
+        with patch.dict("os.environ", {"MINIDSH_MEMORY_DIR": str(self.root / "memory")}):
+            await runtime.start()
         return runtime, client, sessions
 
-    async def test_entry_point_and_skill_plugin_reach_the_real_loop(self):
-        self.assertIsInstance(EntryPointCatalog().load("agent-platform.agent-runtime"), AgentRuntimePlugin)
+    async def test_memory_plugin_compacts_the_actual_request_and_replays_it(self):
+        from agent_platform_memory.notes import MemoryNotes
+
+        runtime, client, sessions = await self.start(memory=True)
+        runner = runtime.require(AGENT_RUNTIME)
+        notes = MemoryNotes(self.root / "memory")
+        notes.write(1, "agent", "test", "Always use Markdown")
+        first = await runner.reply("test", {}, 1, "important old conversation " * 300)
+        self.assertIn("Always use Markdown", client.requests[0].messages[0]["content"])
+        notes.write(1, "session", first.session_id, "Use the current worktree")
+
+        live_events = []
+        await runner.reply("test", {}, 1, "What is next?", session_id=first.session_id,
+                           session_event_sink=live_events.append)
+        self.assertEqual(len(client.requests), 3)
+        self.assertIn("important old conversation", client.requests[1].messages[-1]["content"])
+        sent = client.requests[-1].messages
+        self.assertIn("<agent_memory>", sent[0]["content"])
+        self.assertIn("Use the current worktree", sent[0]["content"])
+        self.assertIn("<session_summary>", sent[1]["content"])
+        self.assertEqual(sent[2], {"role": "user", "content": "What is next?"})
+        session = sessions.sessions[first.session_id]
+        self.assertTrue(any(event.type == USER_MESSAGE and "important old conversation" in event.data["content"]
+                            for event in session.events))
+        self.assertEqual(sum(event.type == CONTEXT_CHECKPOINT for event in session.events), 1)
+        usage = next(event.data for event in live_events if event.type == CONTEXT_USAGE)
+        self.assertTrue(usage["compacted"])
+        self.assertLess(usage["used_tokens"], usage["compact_at"])
+        replay = Session.from_events(session.header, session.events)
+        self.assertEqual(replay.derive_messages(), session.derive_messages())
+
+        await runner.reply("test", {}, 1, "A new session")
+        self.assertIn("Always use Markdown", client.requests[-1].messages[0]["content"])
+        self.assertNotIn("Use the current worktree", str(client.requests[-1].messages))
+
+    async def test_explicit_export_and_skill_plugin_reach_the_real_loop(self):
+        self.assertIsInstance(load_module_plugin("agent_platform_agent_runtime:AgentRuntimePlugin"), AgentRuntimePlugin)
         runtime, client, sessions = await self.start(skills=True)
         reply = await runtime.require(AGENT_RUNTIME).reply("test", {"name": "Test"}, 1, "/demo")
         self.assertEqual(reply.answer, "done")

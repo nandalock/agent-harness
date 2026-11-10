@@ -4,12 +4,12 @@
 执行后端与权限模式独立：默认仍为 `workspace-write`，不会默认开启全权限。
 
 ```text
-PluginRuntime
+PluginLoader → Cordis Context
   ├─ sandbox-local → sandbox.v1 服务
   └─ sandbox-tools → ctx.require(SANDBOX) → confine → 宿主机子进程
 ```
 
-`sandbox-local` 和 `sandbox-docker` 都由 `packages/sandbox/core` 提供 entry point，
+`sandbox-local` 和 `sandbox-docker` 都由 `packages/sandbox/core` 导出 Cordis 插件类，
 发布同一个服务；它们自身不注册工具。`sandbox-tools` 注册 bash、python，
 在 Windows 本地后端额外注册 powershell。工具绑定和审批继续走原有单轨入口。
 一个 runtime 只选择一个 sandbox.v1 提供方。
@@ -54,7 +54,7 @@ Docker 的受限模式仍由容器隔离；原有全权限模式同样直接执�
 Windows runner 直接依赖 MIT 许可的
 [@deepseek-ai/dsh-sandbox-windows-acl](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/sandbox/sandbox-windows-acl)，
 锁定 0.2.1-rc.2，通过本包 native/package-lock.json 安装，不依赖全局 dsh。
-更新 Python 包的 entry point 和 Windows runner，运行：
+更新 Python 包和 Windows runner，运行：
 
 ```sh
 python minidsh.py setup

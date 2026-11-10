@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from typing import Any, Protocol
 
-from agent_platform_plugin_sdk import ServiceClosedError, ServiceKey, ServiceRef, ServiceUnavailableError
+from agent_platform_plugin_sdk import ServiceClosedError, ServiceKey, ServiceUnavailableError
 
 EventSink = Callable[[dict], Awaitable[None]]
 NEXT_STEP = "next-step"
@@ -138,7 +138,7 @@ class AgentService(RunRegistry):
             raise ServiceClosedError("agent service is closed")
         registration = self._factory
         if registration is None:
-            raise ServiceUnavailableError(ServiceRef(name="agent.loop", api_version=1))
+            raise ServiceUnavailableError(ServiceKey("agent.loop"))
         session_id = options["session"].header.id
         if session_id in self._runs:
             raise RunConflict(session_id)
@@ -177,4 +177,4 @@ class AgentService(RunRegistry):
         await asyncio.gather(*(registration.aclose() for registration in registrations))
 
 
-AGENT_RUNS: ServiceKey[AgentService] = ServiceKey(ServiceRef(name="agent.runs", api_version=1))
+AGENT_RUNS: ServiceKey[AgentService] = ServiceKey("agent.runs")

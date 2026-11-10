@@ -15,9 +15,6 @@ dependencies = [
     "websockets>=13",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.xianyu" = "agent_platform_xianyu:XianyuPlugin"
-
 [tool.setuptools.packages.find]
 where = ["src"]
 

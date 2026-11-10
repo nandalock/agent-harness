@@ -1,10 +1,7 @@
 """Session controller plugin: session RPC methods."""
 from agent_platform_plugin_sdk import (
     DATABASE,
-    PluginContext,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
 )
 from agent_platform_rpc_gateway import RPC_GATEWAY, RpcMethodContract
 from agent_platform_session import SESSIONS
@@ -21,6 +18,7 @@ from .models import (
 )
 from .service import SessionApiService
 from .services import SESSION_API
+from minidsh_cordis import Context, Plugin
 
 METHODS = (
     RpcMethodContract("session.recovery", SessionIdParams, SessionRecoveryResult),
@@ -34,22 +32,14 @@ class SessionApiConfig(SdkModel):
     pass
 
 
-class SessionApiPlugin:
-    spec = PluginSpec(
-        name="agent-platform.api-sessions",
-        version="0.1.0",
-        provides=(SESSION_API.ref,),
-        requires=(
-            ServiceRequirement(service=RPC_GATEWAY.ref),
-            ServiceRequirement(service=DATABASE.ref),
-            ServiceRequirement(service=SESSIONS.ref),
-            ServiceRequirement(service=SESSION_PERSISTENCE.ref),
-            ServiceRequirement(service=SESSION_RECOVERY.ref),
-        ),
-    )
+class SessionApiPlugin(Plugin[SessionApiConfig]):
+    name = "agent-platform.api-sessions"
+    version = "0.1.0"
+    provides = (SESSION_API,)
+    requires = (RPC_GATEWAY, DATABASE, SESSIONS, SESSION_PERSISTENCE, SESSION_RECOVERY)
     config_model = SessionApiConfig
 
-    async def setup(self, ctx: PluginContext, config: SessionApiConfig) -> None:
+    async def setup(self, ctx: Context, config: SessionApiConfig) -> None:
         service = SessionApiService(
             ctx.require(DATABASE),
             ctx.require(SESSIONS),

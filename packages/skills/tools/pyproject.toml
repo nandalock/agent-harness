@@ -17,9 +17,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["build>=1", "mypy>=1.10"]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.skill-tools" = "agent_platform_skill_tools:SkillToolsPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_skill_tools"]
 

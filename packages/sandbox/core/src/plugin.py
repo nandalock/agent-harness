@@ -1,19 +1,22 @@
 """Sandbox service providers, independent from model-facing tool plugins."""
 import os
 
-from agent_platform_plugin_sdk import PluginSpec, SdkModel
+from agent_platform_plugin_sdk import SdkModel
 
 from .provider import SandboxProvider
 from .runtime import create_provider
 from .services import SANDBOX
+from minidsh_cordis import Plugin
 
 
 class SandboxConfig(SdkModel):
     pass
 
 
-class LocalSandboxPlugin:
-    spec = PluginSpec(name="agent-platform.sandbox-local", version="0.1.0", provides=(SANDBOX.ref,))
+class LocalSandboxPlugin(Plugin[SandboxConfig]):
+    name = "agent-platform.sandbox-local"
+    version = "0.1.0"
+    provides = (SANDBOX,)
     config_model = SandboxConfig
     backend = "local"
 
@@ -28,5 +31,7 @@ class LocalSandboxPlugin:
 
 
 class DockerSandboxPlugin(LocalSandboxPlugin):
-    spec = PluginSpec(name="agent-platform.sandbox-docker", version="0.1.0", provides=(SANDBOX.ref,))
+    name = "agent-platform.sandbox-docker"
+    version = "0.1.0"
+    provides = (SANDBOX,)
     backend = "docker"

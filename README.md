@@ -20,8 +20,8 @@
 
 <p align="center"><sub>当前界面截图，使用固定演示数据；新安装不预置图中的 Agent 和会话。</sub></p>
 
-minidsh 把 Agent 执行循环、模型接入、工具、技能、会话持久化和 HTTP API 拆成可以组合的包。
-通过 YAML 选择插件，由运行时发现包、解析服务依赖并管理启动与关闭。
+minidsh 把 Agent 执行循环、模型接入、工具、技能、记忆、会话持久化和 HTTP API 拆成可以组合的包。
+通过 YAML 选择插件，由 `PluginLoader` 导入，再由 `minidsh-cordis` 管理服务依赖与生命周期。
 默认提供浏览器工作台，也可以使用无 HTTP 的命令行入口执行 Agent。
 
 项目参考 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的插件与客户端模块设计，
@@ -36,9 +36,10 @@ minidsh 把 Agent 执行循环、模型接入、工具、技能、会话持久�
 | 工具执行 | 通过统一工具服务调用 PowerShell、bash、Python 及 MCP 工具，支持超时、并发和审批 |
 | 渐进式技能加载 | 初始展示技能摘要；任务匹配后读取 `SKILL.md`，再按需加载参考资料 |
 | 会话持久化与恢复 | 以事件日志记录执行事实，从日志派生历史、轨迹和恢复状态 |
+| 智能体记忆 | 自动压缩较早的对话，按智能体和会话维护 Markdown 笔记，在工作区查看上下文用量 |
 | 可视化工作流 | 在 React Flow 画布上连接 Agent、路由和条件节点，保存、预览与运行流程 |
 | MCP 集成 | 管理外部 MCP 服务，接入论文、Overleaf 等独立配置的集成 |
-| 知识库与缓存 | 管理 FAQ，按需启用向量检索、重排和 Redis 缓存；另有记忆管理页面 |
+| 知识库与缓存 | 管理 FAQ，按需启用向量检索、重排和 Redis 缓存 |
 | 插件化前端 | 页面功能通过客户端插件和 slots 组合，功能包可同时携带后端和页面 |
 
 > 仓库正在持续进行插件化与 RPC 迁移。Workspace、Agent 配置、部分 Session 操作和工作流
@@ -92,7 +93,7 @@ minidsh web
 `~/.minidsh/profiles/web/.venv`，启用状态写入同一个 profile 的 `plugins.yaml`。
 
 ```powershell
-minidsh plugin install D:/downloads/my_plugin-0.1.0-py3-none-any.whl
+minidsh plugin install D:/downloads/agent_platform_example_echo-0.1.0-py3-none-any.whl --use example_echo_plugin:plugin --id echo
 minidsh plugin list
 ```
 
@@ -209,10 +210,11 @@ python minidsh.py web --dir /path/to/your/frontend
 
 ```mermaid
 flowchart TB
-    CLI["minidsh 启动器"] --> PR["PluginRuntime：配置 / 发现 / 依赖 / 生命周期"]
-    PR --> WEB["HTTP API 插件"]
-    PR --> AR["Agent Runtime / Loop"]
-    PR --> CAP["模型 / 会话 / 工具 / 技能 / 数据库插件"]
+    CLI["minidsh 启动器"] --> LOADER["PluginLoader<br/>合并 YAML、导入模块、校验参数"]
+    LOADER --> CTX["minidsh-cordis 根 Context<br/>服务注册、依赖顺序、启动和清理"]
+    CTX --> WEB["HTTP API 插件"]
+    CTX --> AR["Agent Runtime / Loop"]
+    CTX --> CAP["模型 / 会话 / 工具 / 技能 / 记忆 / 数据库插件"]
     UI["React + Vite 客户端插件壳"] -->|JSON-RPC / HTTP / SSE| WEB
     WEB --> GW["RPC Connection / Gateway"]
     GW --> CT["Agent / Session / Workspace Controller"]
@@ -226,8 +228,9 @@ flowchart TB
     LOG --> VIEW["历史 / 执行轨迹 / 恢复状态"]
 ```
 
-- **服务端插件**：包用 `pyproject.toml` entry points 声明入口，YAML 选择实例；
-  `setup(ctx, config)` 注册服务、工具或扩展，运行时按依赖排序启动并管理释放。
+- **服务端插件**通过 YAML 的 `use: 模块:导出对象` 指定。Cordis 按必选和可选依赖启动插件。
+  插件在 `setup(ctx, config)` 中用 `ctx.provide()` 发布服务、用 `ctx.require()` 获取依赖，
+  用 `ctx.track()` 绑定工具、扩展等注册的生命周期。SDK 定义这些服务的业务契约。
 - **Agent Runtime 与 Loop**：Runtime 装配一次请求与插件扩展，Loop 执行模型与工具循环；
   skill-tools 提供 pre-step 钩子，向模型按需注入技能目录和指令。
 - **统一工具服务**：tools-default 持有模型侧工具注册表。一个插件可以提供零个或多个工具，
@@ -243,21 +246,24 @@ RPC 已覆盖的操作见 [接口清单](docs/rpc-api.md)。
 ### 配置插件
 
 默认实例定义在 [默认插件清单](packages/plugin/default/src/plugins.yaml)。
-日常覆盖写到 `config/plugins.yaml`；不存在该文件时仍加载默认清单。
-例如调整 Loop 的工具并发上限：
+源码版的覆盖配置写到 `config/plugins.yaml`，发布版写到当前 profile 的 `plugins.yaml`。
+例如把 Agent Loop 的工具并发上限改为 2。
 
 ```yaml
 version: 1
-plugins:
+patches:
   - id: agent-loop
-    name: agent-platform.agent-loop
     config:
       max_parallel_tools: 2
 ```
 
-可以从 `config/plugins.yaml.example` 复制开始。`PLUGIN_CONFIG` 可指定其他配置路径。
-新增外部插件包时，先安装到应用的 Python 环境，再在 YAML 中声明；YAML 本身不下载代码。
-配置修改后重启应用。详见 [插件 SDK](packages/plugin/sdk/README.md) 和 [插件运行时](packages/plugin/runtime/README.md)。
+用 `includes` 引入其他 YAML，用 `groups` 批量启停，用 `patches` 按实例 ID 覆盖配置。
+启动时还可以传 `--plugin-patch override.yaml` 叠加一层。
+Web 运行中会读取 YAML 变更，重装受影响的插件。涉及宿主绑定的 HTTP 或工具服务时需要重启。
+
+源码版可以从 [配置示例](config/plugins.yaml.example) 开始。外部插件先安装到目标 Python 环境，
+再在 YAML 中声明 `use`。发布版的安装命令会把入口写进 profile。旧第三方插件需要改为导出
+Cordis 插件，并补上 `use`。 [分层配置与热更新](docs/startup.md#叠加配置与热更新) · [插件开发](docs/plugin-development.md)
 
 ## 配置与数据放在哪里
 
@@ -291,12 +297,13 @@ apps/
   cli/                 agent-platform run / serve
 packages/
   plugin/              SDK、加载器与默认插件清单
-  boot/app-boot/       组合发现与 PluginRuntime 启动
+  boot/app-boot/       合并配置并启动 Cordis
   agent/               配置、运行时、Loop 与系统提示词
   api/                 RPC Connection、Gateway 与业务 Controller
   host/http-api/       FastAPI 应用与 HTTP 适配
   host/plugin-inventory/ 已启动插件投影
   session/             事件、存储、持久化、标题、恢复与投影
+  memory/              上下文压缩、会话笔记与智能体记忆
   llm/                 模型公共契约与 provider
   tools/               工具服务、调度与宿主适配
   skills/              技能中心、文件来源与 skill 工具
@@ -306,6 +313,7 @@ packages/
   sandbox/             沙箱 provider、策略与工具
   mcp/                 MCP 连接与各类集成
   client/              React + Vite 插件壳与页面
+vendor/cordis/         Python 插件内核 minidsh-cordis
 tests/integration/     跨包集成测试
 config/                环境与插件配置模板
 docs/                  部署、架构与使用说明
@@ -318,6 +326,7 @@ docs/                  部署、架构与使用说明
 | [插件架构](docs/plugin-architecture.md) | 服务契约、依赖、生命周期与宿主边界 |
 | [RPC API](docs/rpc-api.md) | 方法清单、请求格式、客户端与迁移范围 |
 | [Agent 插件](packages/agent/README.md) | Runtime、Loop、上下文与运行生命周期 |
+| [智能体记忆](docs/memory.md) | 上下文用量、压缩摘要、SESSION.md 与 MEMORY.md |
 | [技能与命令](docs/skills-commands.md) | 技能绑定、安装和按需加载 |
 | [客户端](packages/client/README.md) | 启动图、模块加载与 slots |
 | [原生沙箱](docs/native-sandbox.md) | 宿主机执行与受限模式 |
@@ -342,5 +351,6 @@ Playwright 需要可用的浏览器；可安装 Chromium，或通过 `PLAYWRIGHT
 
 ## 致谢
 
-插件装配、Agent Loop 与客户端模块设计参考 DeepSeek Harness；界面使用 React、Vite、React Flow 等开源项目。
+插件装配、Agent Loop 与客户端模块设计参考 DeepSeek Harness。Python 插件内核参考
+[Cordis](https://github.com/cordiverse/cordis)。界面使用 React、Vite、React Flow 等开源项目。
 各包附带的第三方技能与集成遵循其来源许可，详见对应目录中的 NOTICE / LICENSE。

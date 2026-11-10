@@ -2,7 +2,6 @@
 
 from asyncio import Event
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -12,11 +11,39 @@ if TYPE_CHECKING:
     from .context import Context, _Runtime
 
 
-@dataclass(frozen=True)
 class Plugin[Config]:
-    setup: Callable[["Context", Config], Awaitable[None] | None]
+    """One plugin definition. Subclasses can declare metadata and implement setup."""
+
+    name: str = ""
+    version: str = ""
+    web_package: str | None = None
+    config_model: type[Config] | None = None
     requires: tuple[ServiceKey[Any], ...] = ()
+    optional: tuple[ServiceKey[Any], ...] = ()
     provides: tuple[ServiceKey[Any], ...] = ()
+
+    def __init__(
+        self, setup: Callable[["Context", Config], Awaitable[None] | None] | None = None, *,
+        requires: tuple[ServiceKey[Any], ...] = (),
+        optional: tuple[ServiceKey[Any], ...] = (),
+        provides: tuple[ServiceKey[Any], ...] = (),
+    ) -> None:
+        if setup is None and type(self) is Plugin:
+            raise TypeError("a Cordis plugin needs a setup function")
+        self._setup = setup
+        if setup is not None:
+            self.requires = requires
+            self.optional = optional
+            self.provides = provides
+
+    def setup(self, ctx: "Context", config: Config) -> Awaitable[None] | None:
+        if self._setup is None:
+            raise NotImplementedError("implement setup() on the plugin")
+        return self._setup(ctx, config)
+
+    @property
+    def dependencies(self) -> tuple[ServiceKey[Any], ...]:
+        return self.requires + self.optional
 
 
 class FiberState(StrEnum):

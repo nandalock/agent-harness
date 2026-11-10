@@ -5,8 +5,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from agent_platform_llm import LlmClient
-from agent_platform_plugin_sdk import APPROVAL, TOOLS, ApprovalService, PluginContext, ToolsService
+from agent_platform_plugin_sdk import APPROVAL, TOOLS, ApprovalService, ToolsService
 from agent_platform_tools_default import TOOL_CATALOG, ToolCatalog
+from minidsh_cordis import Context
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,7 @@ class LoopContext:
     their lifetime still belong to plugin_ctx; this creates no second registry.
     """
 
-    plugin_ctx: PluginContext
+    plugin_ctx: Context
     llm: LlmClient
     sandbox_policy_factory: Callable[[], Any] | None = None
 

@@ -1,8 +1,8 @@
-"""Two PluginRuntimes in one process must not share service instances."""
+"""Two PluginLoaders in one process must not share service instances."""
 import asyncio
 import unittest
 
-from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
+from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
 from agent_platform_plugin_sdk import DATABASE
 from agent_platform_session import SESSIONS, SessionPlugin
 from agent_platform_llm import LLM, LLMPlugin
@@ -15,8 +15,8 @@ class _Database:
         raise AssertionError("no database access expected")
 
 
-def _runtime() -> PluginRuntime:
-    return PluginRuntime(
+def _runtime() -> PluginLoader:
+    return PluginLoader(
         {"plugins": [
             {"id": "session", "name": "agent-platform.session"},
             {"id": "llm", "name": "agent-platform.llm"},

@@ -11,10 +11,7 @@ from agent_platform_llm import LLM
 from agent_platform_plugin_sdk import (
     AGENTS,
     DATABASE,
-    PluginContext,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
 )
 
 from .cache.config import CacheConfig
@@ -24,6 +21,7 @@ from .contracts import WORKFLOW, WORKFLOW_NODES
 from .nodes import BUILTIN_NODES
 from .registry import WorkflowNodeRegistry
 from .service import WorkflowService
+from minidsh_cordis import Context, Plugin
 
 
 class WorkflowConfig(SdkModel):
@@ -31,22 +29,15 @@ class WorkflowConfig(SdkModel):
     cache_enabled: bool = Field(default=True, alias="cacheEnabled")
 
 
-class WorkflowPlugin:
-    spec = PluginSpec(
-        name="agent-platform.workflow",
-        web_package=__package__,
-        version="0.1.0",
-        provides=(WORKFLOW_NODES.ref, WORKFLOW.ref),
-        requires=(
-            ServiceRequirement(service=DATABASE.ref),
-            ServiceRequirement(service=AGENT_ENTRY.ref),
-            ServiceRequirement(service=AGENTS.ref),
-            ServiceRequirement(service=LLM.ref),
-        ),
-    )
+class WorkflowPlugin(Plugin[WorkflowConfig]):
+    name = "agent-platform.workflow"
+    web_package = __package__
+    version = "0.1.0"
+    provides = (WORKFLOW_NODES, WORKFLOW)
+    requires = (DATABASE, AGENT_ENTRY, AGENTS, LLM)
     config_model = WorkflowConfig
 
-    async def setup(self, ctx: PluginContext, config: WorkflowConfig) -> None:
+    async def setup(self, ctx: Context, config: WorkflowConfig) -> None:
         registry = WorkflowNodeRegistry()
         for kind, factory in BUILTIN_NODES.items():
             ctx.track(registry.register(kind, factory))

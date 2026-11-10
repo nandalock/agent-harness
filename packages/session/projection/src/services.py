@@ -1,5 +1,5 @@
 """Service key owned by the session projection plugin."""
-from agent_platform_plugin_sdk import ServiceKey, ServiceRef
+from agent_platform_plugin_sdk import ServiceKey
 
 
 class SessionProjectionService:
@@ -21,6 +21,4 @@ class SessionProjectionService:
         return TraceProjection
 
 
-SESSION_PROJECTION = ServiceKey[SessionProjectionService](
-    ServiceRef(name="agent.session-projection", api_version=1)
-)
+SESSION_PROJECTION = ServiceKey[SessionProjectionService]("agent.session-projection")

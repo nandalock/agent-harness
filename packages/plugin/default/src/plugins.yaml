@@ -1,90 +1,179 @@
 # A composition lists plugin instances, never individual tools.
 # Services determine startup order through requires/provides.
 version: 1
+groups:
+  storage: {}
+  agent: {}
+  tools: {}
+  web: {}
 plugins:
   - id: database
     name: agent-platform.database-postgres
+    use: agent_platform_database_postgres:PostgresDatabasePlugin
+    group: storage
     config:
       initializeSchema: true
   - id: settings
     name: agent-platform.settings-postgres
+    use: agent_platform_settings_postgres:PostgresSettingsPlugin
+    group: storage
   - id: agent-config
     name: agent-platform.agent-config
+    use: agent_platform_agent_config:AgentConfigPlugin
+    group: agent
   - id: session
     name: agent-platform.session
+    use: agent_platform_session:SessionPlugin
+    group: storage
   - id: session-persistence-postgres
     name: agent-platform.session-persistence-postgres
+    use: agent_platform_session_persistence_postgres:PostgresPersistencePlugin
+    group: storage
   - id: llm
     name: agent-platform.llm
+    use: agent_platform_llm:LLMPlugin
+    group: agent
   - id: llm-deepseek
     name: agent-platform.llm-deepseek
+    use: agent_platform_llm_deepseek:DeepSeekProviderPlugin
+    group: agent
   - id: session-title
     name: agent-platform.session-title
+    use: agent_platform_session_title:SessionTitlePlugin
+    group: storage
   - id: session-recovery
     name: agent-platform.session-recovery
+    use: agent_platform_session_recovery:SessionRecoveryPlugin
+    group: storage
   - id: session-projection
     name: agent-platform.session-projection
+    use: agent_platform_session_projection:SessionProjectionPlugin
+    group: storage
   - id: tools
     name: agent-platform.tools-default
+    use: agent_platform_tools_default:ToolsDefaultPlugin
+    group: tools
   - id: tool-host
     name: agent-platform.tool-host
+    use: agent_platform_tool_host:ToolHostPlugin
+    group: tools
   - id: system-prompt
     name: agent-platform.system-prompt
+    use: agent_platform_system_prompt:SystemPromptPlugin
+    group: agent
   - id: agents
     name: agent-platform.agents
+    use: agent_platform_agents:AgentsPlugin
+    group: agent
   - id: user-approval
     name: agent-platform.user-approval
+    use: agent_platform_user_approval:UserApprovalPlugin
+    group: agent
   - id: agent-loop
     name: agent-platform.agent-loop
+    use: agent_platform_agent_loop:AgentLoopPlugin
+    group: agent
   - id: agent-runtime
     name: agent-platform.agent-runtime
+    use: agent_platform_agent_runtime:AgentRuntimePlugin
+    group: agent
   - id: agent-entry
     name: agent-platform.agent-entry
+    use: agent_platform_agent_entry:AgentEntryPlugin
+    group: agent
   - id: chat
     name: agent-platform.chat
+    use: agent_platform_chat:ChatPlugin
+    group: agent
   - id: memory
     name: agent-platform.memory
+    use: agent_platform_memory:MemoryPlugin
+    group: agent
   - id: mcp-manager
     name: agent-platform.mcp-manager
+    use: agent_platform_mcp_client:McpManagerPlugin
+    group: tools
   - id: mcp-database
     name: agent-platform.mcp-database
+    use: agent_platform_mcp_database:McpDatabasePlugin
+    group: tools
   - id: skills
     name: agent-platform.skills-default
+    use: agent_platform_skills_default:SkillsDefaultPlugin
+    group: agent
   - id: skills-filesystem
     name: agent-platform.skills-filesystem
+    use: agent_platform_skills_filesystem:SkillsFilesystemPlugin
+    group: agent
   - id: skill-tools
     name: agent-platform.skill-tools
+    use: agent_platform_skill_tools:SkillToolsPlugin
+    group: agent
   - id: sandbox-tools
     name: agent-platform.sandbox-tools
+    use: agent_platform_sandbox_tools:SandboxToolsPlugin
+    group: tools
   - id: sandbox-provider
     name: agent-platform.sandbox-local
+    use: agent_platform_sandbox.plugin:LocalSandboxPlugin
+    group: tools
   - id: sandbox-policy
     name: agent-platform.sandbox-policy
+    use: agent_platform_sandbox_policy:SandboxPolicyPlugin
+    group: tools
   - id: builtin-mcp
     name: agent-platform.builtin-mcp
+    use: agent_platform_managed_mcp:BuiltinPlugin
+    group: tools
   - id: paper-mcp
     name: agent-platform.paper-mcp
+    use: agent_platform_managed_mcp:PaperPlugin
+    group: tools
   - id: overleaf-mcp
     name: agent-platform.overleaf-mcp
+    use: agent_platform_managed_mcp:OverleafPlugin
+    group: tools
   - id: overleaf-rt-mcp
     name: agent-platform.overleaf-rt-mcp
+    use: agent_platform_managed_mcp:OverleafRtPlugin
+    group: tools
   - id: workflow
     name: agent-platform.workflow
+    use: agent_platform_workflow:WorkflowPlugin
+    group: agent
   - id: faq
     name: agent-platform.faq
+    use: agent_platform_faq:FaqPlugin
+    group: agent
   - id: xianyu
     name: agent-platform.xianyu
+    use: agent_platform_xianyu:XianyuPlugin
+    group: agent
   - id: plugin-inventory
     name: agent-platform.plugin-inventory
+    use: agent_platform_plugin_inventory:PluginInventoryPlugin
+    group: web
   - id: rpc-gateway
     name: agent-platform.rpc-gateway
+    use: agent_platform_rpc_gateway:RpcGatewayPlugin
+    group: web
   - id: rpc-connection
     name: agent-platform.rpc-connection
+    use: agent_platform_rpc_connection:RpcConnectionPlugin
+    group: web
   - id: api-workspace
     name: agent-platform.api-workspace
+    use: agent_platform_api_workspace:WorkspaceControllerPlugin
+    group: web
   - id: api-agents
     name: agent-platform.api-agents
+    use: agent_platform_api_agents:AgentApiPlugin
+    group: web
   - id: api-sessions
     name: agent-platform.api-sessions
+    use: agent_platform_api_sessions:SessionApiPlugin
+    group: web
   - id: http-api
     name: agent-platform.http-api
+    use: agent_platform_http_api:HttpApiPlugin
+    group: web

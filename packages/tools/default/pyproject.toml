@@ -13,9 +13,6 @@ dependencies = ["agent-platform-plugin-sdk>=0.1,<0.2"]
 [project.optional-dependencies]
 dev = ["build>=1", "mypy>=1.10"]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.tools-default" = "agent_platform_tools_default:ToolsDefaultPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_tools_default"]
 

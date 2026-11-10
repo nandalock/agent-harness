@@ -1,11 +1,10 @@
 """Service contracts shared by capability plugins and host adapters."""
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, Protocol
+from typing import Any, ContextManager, Literal, Protocol
 import uuid
 
-from .lifecycle import ServiceKey
-from .models import ServiceRef
+from minidsh_cordis import ServiceKey
 
 # ── approval.v1 ──
 
@@ -61,9 +60,7 @@ def new_approval_id() -> str:
     return uuid.uuid4().hex[:12]
 
 
-APPROVAL: ServiceKey[ApprovalService] = ServiceKey(
-    ServiceRef(name="approval", api_version=1)
-)
+APPROVAL: ServiceKey[ApprovalService] = ServiceKey("approval")
 
 
 # ── settings.v1 ──
@@ -76,9 +73,7 @@ class SettingsService(Protocol):
     async def set(self, namespace: str, value: dict[str, Any]) -> None: ...
 
 
-SETTINGS: ServiceKey[SettingsService] = ServiceKey(
-    ServiceRef(name="settings", api_version=1)
-)
+SETTINGS: ServiceKey[SettingsService] = ServiceKey("settings")
 
 
 # ── agents.v1 ──
@@ -103,9 +98,7 @@ class AgentConfigService(Protocol):
     async def delete_l1_keyword(self, rule_id: int, router_key: str) -> bool: ...
 
 
-AGENTS: ServiceKey[AgentConfigService] = ServiceKey(
-    ServiceRef(name="agents", api_version=1)
-)
+AGENTS: ServiceKey[AgentConfigService] = ServiceKey("agents")
 
 
 # ── tool-bindings.v1 ──
@@ -116,9 +109,7 @@ class ToolBindingsService(Protocol):
     def get_bindings(self, agent_key: str) -> list[str]: ...
 
 
-TOOL_BINDINGS: ServiceKey[ToolBindingsService] = ServiceKey(
-    ServiceRef(name="tool-bindings", api_version=1)
-)
+TOOL_BINDINGS: ServiceKey[ToolBindingsService] = ServiceKey("tool-bindings")
 
 
 # ── database.v1 ──
@@ -126,12 +117,10 @@ TOOL_BINDINGS: ServiceKey[ToolBindingsService] = ServiceKey(
 class Database(Protocol):
     """Host-provided pooled connection factory (context manager)."""
 
-    def get_conn(self): ...
+    def get_conn(self) -> ContextManager[Any]: ...
 
 
-DATABASE: ServiceKey[Database] = ServiceKey(
-    ServiceRef(name="database", api_version=1)
-)
+DATABASE: ServiceKey[Database] = ServiceKey("database")
 
 
 # ── plugin-catalog.v1 ──
@@ -148,6 +137,4 @@ class PluginCatalog(Protocol):
     def web_packages(self) -> tuple[str, ...]: ...
 
 
-PLUGIN_CATALOG: ServiceKey[PluginCatalog] = ServiceKey(
-    ServiceRef(name="plugin-catalog", api_version=1)
-)
+PLUGIN_CATALOG: ServiceKey[PluginCatalog] = ServiceKey("plugin-catalog")

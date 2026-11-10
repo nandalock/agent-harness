@@ -10,7 +10,7 @@ system prompt 不进 Event Log：它由 SystemPrompt 每轮组装，在 AgentLoo
 消息时前置为 messages[0]。session_headers.seed_length 是 seed 机制的历史字段，
 新会话写 0 / NULL，无读取方。
 
-按规格暂不实现：steering/message、todo/write、request/header、compaction、delegation。
+context/checkpoint 改变模型可见前缀，context/usage 只记录输入用量。
 """
 import uuid
 from dataclasses import dataclass
@@ -30,6 +30,8 @@ ASSISTANT_MESSAGE = "assistant/message"  # 完整 assistant message（含 tool_c
 TOOL_CALL = "tool/call"
 TOOL_RESULT = "tool/result"
 REQUEST_HEADER = "request/header"
+CONTEXT_CHECKPOINT = "context/checkpoint"  # Replace a prefix of the model surface, keeping the raw log.
+CONTEXT_USAGE = "context/usage"  # Projected input and budget for the next model call.
 TASK_INPUT = "task/input"
 TOOL_PROGRESS = "tool/progress"  # 长耗时 Tool 的阶段进度（data: tool + tool_call_id + stage + seconds），
                                  # 过程事件（log-only），不进 surface / 不参与 derive_messages

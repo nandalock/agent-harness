@@ -1,9 +1,6 @@
-"""Plugin that owns the single-track tools runtime for one PluginRuntime."""
+"""Plugin that owns the single-track tools runtime for one PluginLoader."""
 from agent_platform_plugin_sdk import (
-    PluginContext,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
     TOOLS,
     TOOL_BINDINGS,
 )
@@ -13,26 +10,22 @@ from agent_platform_tool_system.runtime import ToolRuntime
 
 from .services import UNIFIED_TOOLS
 from .unified import UnifiedToolsRuntime
+from minidsh_cordis import Context, Plugin
 
 
 class ToolHostConfig(SdkModel):
     pass
 
 
-class ToolHostPlugin:
-    spec = PluginSpec(
-        name="agent-platform.tool-host",
-        version="0.1.0",
-        provides=(UNIFIED_TOOLS.ref,),
-        requires=(
-            ServiceRequirement(service=TOOLS.ref),
-            ServiceRequirement(service=TOOL_CATALOG.ref),
-            ServiceRequirement(service=TOOL_BINDINGS.ref, optional=True),
-        ),
-    )
+class ToolHostPlugin(Plugin[ToolHostConfig]):
+    name = "agent-platform.tool-host"
+    version = "0.1.0"
+    provides = (UNIFIED_TOOLS,)
+    requires = (TOOLS, TOOL_CATALOG)
+    optional = (TOOL_BINDINGS,)
     config_model = ToolHostConfig
 
-    async def setup(self, ctx: PluginContext, config: ToolHostConfig) -> None:
+    async def setup(self, ctx: Context, config: ToolHostConfig) -> None:
         bindings = ctx.get(TOOL_BINDINGS)
         registry = ToolRegistry(
             providers=[],

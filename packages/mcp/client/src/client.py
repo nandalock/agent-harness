@@ -38,6 +38,12 @@ class McpConnection:
         self._transport: Any = None
         self._session: ClientSession | None = None
         self._tools: tuple[McpToolInfo, ...] = ()
+        self._owner: asyncio.Task[None] | None = None
+        self._stop: asyncio.Event | None = None
+        self._closing = False
+        self._calls = 0
+        self._idle = asyncio.Event()
+        self._idle.set()
 
     @staticmethod
     def _outer_cancellation() -> bool:
@@ -50,6 +56,40 @@ class McpConnection:
         return "Cancelled via cancel scope" in str(exc)
 
     async def connect(self) -> None:
+        if self._owner is not None:
+            raise RuntimeError("MCP connection is already open")
+        self._closing = False
+        ready: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+        stop = asyncio.Event()
+        self._stop = stop
+
+        async def own_transport() -> None:
+            try:
+                await self._open()
+                ready.set_result(None)
+                await stop.wait()
+            except BaseException as exc:
+                if not ready.done():
+                    ready.set_exception(exc)
+                elif not isinstance(exc, asyncio.CancelledError):
+                    logger.warning("MCP transport stopped: %s", exc)
+            finally:
+                await self._close_transport()
+
+        task = self._owner = asyncio.create_task(own_transport(), name=f"mcp:{self._config.server_name}")
+        try:
+            await asyncio.shield(ready)
+        except asyncio.CancelledError:
+            ready.cancel()
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+            self._owner = self._stop = None
+            raise
+        except BaseException:
+            await self.aclose()
+            raise
+
+    async def _open(self) -> None:
         try:
             if self._config.transport == "http":
                 assert self._config.url is not None
@@ -99,6 +139,18 @@ class McpConnection:
         )
 
     async def aclose(self) -> None:
+        task, stop = self._owner, self._stop
+        if task is not None and stop is not None:
+            self._closing = True
+            await self._idle.wait()
+            stop.set()
+            try:
+                await asyncio.shield(task)
+            finally:
+                if task.done() and self._owner is task:
+                    self._owner = self._stop = None
+
+    async def _close_transport(self) -> None:
         if self._session is not None:
             try:
                 await self._session.__aexit__(None, None, None)
@@ -129,17 +181,23 @@ class McpConnection:
         return self._tools
 
     async def call(self, raw_name: str, arguments: JsonObject) -> ToolResult:
-        if self._session is None:
+        session = self._session
+        if session is None or self._closing:
             return ToolResult(
                 status="error",
                 error=ToolError(
                     code=TOOL_UNAVAILABLE, message="MCP 会话未连接"
                 ),
             )
-        result = await asyncio.wait_for(
-            self._session.call_tool(raw_name, arguments),
-            timeout=self._config.timeout_seconds,
-        )
+        self._calls += 1
+        self._idle.clear()
+        try:
+            result = await asyncio.wait_for(session.call_tool(raw_name, arguments),
+                                            timeout=self._config.timeout_seconds)
+        finally:
+            self._calls -= 1
+            if not self._calls:
+                self._idle.set()
         content: list[JsonObject] = []
         rows: list[JsonValue] = []
         for block in result.content:

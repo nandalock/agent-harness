@@ -1,9 +1,9 @@
 from pathlib import Path
-from zipfile import ZipFile
 
 import pytest
 
-from agent_platform_cli.profiles import Profile, atomic_write, main, wheel_entries
+from agent_platform_cli._profile_worker import owns_export
+from agent_platform_cli.profiles import Profile, atomic_write, main
 
 
 def test_managed_profile_uses_home_and_ignores_repository_plugin_configuration(tmp_path, monkeypatch):
@@ -35,13 +35,13 @@ def test_profile_lock_refuses_an_overlapping_operation(tmp_path, monkeypatch):
         assert profile.root.is_dir()
 
 
-def test_wheel_entries_are_read_without_importing_plugin(tmp_path):
-    wheel = tmp_path / "example_plugin-0.1-py3-none-any.whl"
-    with ZipFile(wheel, "w") as archive:
-        archive.writestr("example_plugin-0.1.dist-info/entry_points.txt",
-                         "[agent_platform.plugins]\nexample.echo = echo:Plugin\n")
-        archive.writestr("echo.py", "raise AssertionError('must not import')")
-    assert wheel_entries(wheel) == ("example.echo",)
+def test_export_must_belong_to_distribution():
+    files = {"example/__init__.py", "example/tools.py", "single.py"}
+    assert owns_export(files, "example:Plugin")
+    assert owns_export(files, "example.tools:plugin")
+    assert owns_export(files, "single:factory")
+    assert not owns_export(files, "example.other:Plugin")
+    assert not owns_export(files, "os:Other")
 
 
 def test_uninitialized_profile_provides_setup_hint(tmp_path, monkeypatch, capsys):

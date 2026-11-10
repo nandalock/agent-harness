@@ -13,10 +13,10 @@ from agent_platform_plugin_sdk import (
 
 class HostContractTests(unittest.TestCase):
     def test_service_keys_are_stable_and_distinct(self):
-        self.assertEqual(str(APPROVAL.ref), "approval.v1")
-        self.assertEqual(str(SETTINGS.ref), "settings.v1")
-        self.assertEqual(str(AGENTS.ref), "agents.v1")
-        self.assertEqual(len({APPROVAL.ref, SETTINGS.ref, AGENTS.ref}), 3)
+        self.assertEqual(str(APPROVAL), "approval.v1")
+        self.assertEqual(str(SETTINGS), "settings.v1")
+        self.assertEqual(str(AGENTS), "agents.v1")
+        self.assertEqual(len({APPROVAL, SETTINGS, AGENTS}), 3)
 
     def test_approval_request_is_domain_neutral_and_serializable(self):
         req = ApprovalRequest(

@@ -9,13 +9,14 @@ from agent_platform_agents import AGENT_RUNS, AgentsPlugin, RunConflict
 from agent_platform_agent_loop import AgentLoopPlugin
 from agent_platform_agent_loop.plugin import LoopConfig, LoopFactory
 from agent_platform_llm import LlmResponse, make_retry_policy
-from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
+from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
 from agent_platform_plugin_sdk import (
-    APPROVAL, TOOLS, PluginSpec, SdkModel, ServiceClosedError, ServiceRequirement,
+    APPROVAL, TOOLS, SdkModel, ServiceClosedError,
     ServiceUnavailableError, ToolDescriptor, ToolResult,
 )
 from agent_platform_session import Session
 from agent_platform_tools_default import ToolsDefaultPlugin
+from minidsh_cordis import Plugin
 
 
 class Approval:
@@ -83,7 +84,7 @@ def runtime(*, extra=(), catalog_extra=None, loop=True):
     ]
     if not loop:
         entries.pop(0)
-    return PluginRuntime({"plugins": entries + list(extra)}, catalog=MappingCatalog({
+    return PluginLoader({"plugins": entries + list(extra)}, catalog=MappingCatalog({
         "agent-platform.agent-loop": AgentLoopPlugin,
         "agent-platform.agents": AgentsPlugin,
         "agent-platform.tools-default": ToolsDefaultPlugin,
@@ -100,13 +101,13 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         await self.runtime.aclose()
 
     def loop_plugin_context(self):
-        return next(ctx for record, ctx in self.runtime._contexts if record.entry.id == "loop")
+        return next(fiber.ctx for fiber in self.runtime.ctx.fibers if fiber.id == "loop")
 
-    async def test_entry_points_are_discoverable(self):
-        from agent_platform_plugin_runtime import EntryPointCatalog
-        catalog = EntryPointCatalog()
-        self.assertIsInstance(catalog.load("agent-platform.agent-loop"), AgentLoopPlugin)
-        self.assertIsInstance(catalog.load("agent-platform.agents"), AgentsPlugin)
+    async def test_explicit_exports_are_loadable(self):
+        from agent_platform_plugin_runtime import load_module_plugin
+
+        self.assertIsInstance(load_module_plugin("agent_platform_agent_loop:AgentLoopPlugin"), AgentLoopPlugin)
+        self.assertIsInstance(load_module_plugin("agent_platform_agents:AgentsPlugin"), AgentsPlugin)
 
     async def test_loop_runs_through_the_service(self):
         runs = self.runtime.require(AGENT_RUNS)
@@ -206,9 +207,10 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
                 finally:
                     order.append("tool drained")
 
-        class Provider:
-            spec = PluginSpec(name="test.provider", version="0.1.0",
-                              requires=(ServiceRequirement(service=TOOLS.ref),))
+        class Provider(Plugin[SdkModel]):
+            name = "test.provider"
+            version = "0.1.0"
+            requires = (TOOLS,)
             config_model = SdkModel
 
             async def setup(self, ctx, config):
@@ -269,9 +271,10 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
             def answer_text(self):
                 return "custom driver"
 
-        class CustomPlugin:
-            spec = PluginSpec(name="test.custom-loop", version="0.1.0",
-                              requires=(ServiceRequirement(service=AGENT_RUNS.ref),))
+        class CustomPlugin(Plugin[SdkModel]):
+            name = "test.custom-loop"
+            version = "0.1.0"
+            requires = (AGENT_RUNS,)
             config_model = SdkModel
 
             async def setup(self, ctx, config):

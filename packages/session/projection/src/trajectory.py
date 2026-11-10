@@ -25,7 +25,7 @@ usage）供 SSE 实时推送。这是「Session Event → Conversation Node → 
 import json
 import logging
 
-from agent_platform_session.events import SessionEvent, usage_field
+from agent_platform_session.events import CONTEXT_USAGE, SessionEvent, usage_field
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +99,7 @@ class TrajectoryProjection:
         self.nodes: list[dict] = []        # 有序 node（插入序 = 执行序）
         self._by_id: dict[str, dict] = {}
         self.usage: list[dict] = []
+        self.context_usage: dict | None = None
         self._seg_buf = ""                 # 当前 assistant 段的 text chunk 累积（对账用）
         self._last_msg_at = -1             # 上一个 assistant/message 的 seq（对账边界）
         self._opening_seen = False         # 本轮的开启输入是否已过（之后的 user/message 才是运行中输入）
@@ -134,6 +135,9 @@ class TrajectoryProjection:
             return self._on_turn_end()
         if t == "llm/usage":
             return self._on_usage(d)
+        if t == CONTEXT_USAGE:
+            self.context_usage = {**d, "event_seq": ev.seq}
+            return [{"type": CONTEXT_USAGE, "usage": self.context_usage}]
         if t == "user/message":
             return self._on_user_message(d, ev.seq)
         # session/seed 等：无 UI 投影
@@ -141,7 +145,10 @@ class TrajectoryProjection:
 
     def finish(self) -> dict:
         """返回当前投影快照（nodes + usage）。事件流完整（turn/end 已到）时即终态。"""
-        return {"nodes": list(self.nodes), "usage": list(self.usage)}
+        snapshot = {"nodes": list(self.nodes), "usage": list(self.usage)}
+        if self.context_usage is not None:
+            snapshot["context_usage"] = self.context_usage
+        return snapshot
 
     # ── node 基础操作（内部）──
 

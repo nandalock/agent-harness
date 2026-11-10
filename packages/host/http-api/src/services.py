@@ -9,21 +9,19 @@ from __future__ import annotations
 from contextvars import ContextVar, Token
 from typing import Any, Protocol
 
-from agent_platform_plugin_sdk import ServiceKey, ServiceRef
+from agent_platform_plugin_sdk import ServiceKey
 
 
 class HttpAppService(Protocol):
     def __call__(self, scope, receive, send) -> Any: ...
 
 
-HTTP_APP: ServiceKey[HttpAppService] = ServiceKey(
-    ServiceRef(name="http.app", api_version=1)
-)
+HTTP_APP: ServiceKey[HttpAppService] = ServiceKey("http.app")
 
-_current: ContextVar[dict[str, Any]] = ContextVar("http_services", default={})
+_current: ContextVar[dict[ServiceKey[Any], Any]] = ContextVar("http_services", default={})
 
 
-def set_services(services: dict[str, Any]) -> Token:
+def set_services(services: dict[ServiceKey[Any], Any]) -> Token:
     return _current.set(services)
 
 
@@ -33,11 +31,11 @@ def reset_services(token: Token) -> None:
 
 def require(key: ServiceKey[Any]) -> Any:
     services = _current.get()
-    service = services.get(key.ref)
+    service = services.get(key)
     if service is None:
         from agent_platform_plugin_sdk import ServiceUnavailableError
 
-        raise ServiceUnavailableError(key.ref)
+        raise ServiceUnavailableError(key)
     return service
 
 

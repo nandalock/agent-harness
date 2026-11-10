@@ -23,7 +23,7 @@ class RuntimeASGIApp:
         from agent_platform_app_boot import init_plugin_host
         from agent_platform_http_api import HTTP_APP
 
-        host = await init_plugin_host()
+        host = await init_plugin_host(pinned=frozenset({HTTP_APP}))
         http_app = host.runtime.require(HTTP_APP)
         try:
             if os.environ.get("MINIDSH_SERVE_WEB") == "1":

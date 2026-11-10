@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from agent_platform_plugin_sdk import PluginConfiguration
+from .models import PluginConfiguration
 
 from .errors import ConfigurationError
 

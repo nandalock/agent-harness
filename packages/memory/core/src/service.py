@@ -1,11 +1,15 @@
 """Runtime-owned memory services and the read-only debug pipeline."""
+import asyncio
 import json
 import logging
 import time
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from agent_platform_session import Session
+from agent_platform_session.events import CONTEXT_CHECKPOINT
 
+from .admission import estimate_tokens, latest_memory, summarize
 from .compressor import MemoryCompressor
 from .config import MemoryConfig
 from .context import MemoryContext
@@ -26,12 +30,97 @@ class MemoryRequestError(ValueError):
 
 
 class MemoryService:
-    def __init__(self, database, agents, chat_store):
+    def __init__(self, database, agents, chat_store, *, notes, sessions=None, persistence=None, llm=None):
         self.config = MemoryConfig(database)
         self.experience = ExperienceMemory(database)
         self._extractor = ProfileExtractor(self.experience)
         self._agents = agents
         self._chat = chat_store
+        self._database = database
+        self._notes = notes
+        self._sessions = sessions
+        self._persistence = persistence
+        self._llm = llm
+
+    async def list_agents(self) -> list[dict]:
+        return [{"agent_key": item["agent_key"], "name": item.get("name") or item["agent_key"]}
+                for item in await self._agents.list_definitions()]
+
+    async def agent_memory(self, tenant_id: int, agent_key: str, content: str | None = None) -> dict:
+        if await self._agents.get_definition(agent_key) is None:
+            raise MemoryConversationNotFound("智能体不存在")
+        return {"markdown": await self._note(tenant_id, "agent", agent_key, content)}
+
+    def _session_owner(self, tenant_id: int, session_id: str) -> dict:
+        with self._database.get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT agent_key FROM conversations WHERE tenant_id = %s AND session_id = %s "
+                    "ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1",
+                    (tenant_id, session_id),
+                )
+                row = cur.fetchone()
+        if row is None:
+            raise MemoryConversationNotFound("会话不存在")
+        return row
+
+    async def session_memory(self, tenant_id: int, session_id: str, content: str | None = None) -> dict:
+        owner = await asyncio.to_thread(self._session_owner, tenant_id, session_id)
+        markdown = await self._note(tenant_id, "session", session_id, content)
+        session = await self._load_session(session_id)
+        checkpoint, usage = latest_memory(session.events if session else [])
+        return {"agent_key": owner["agent_key"], "markdown": markdown,
+                "summary": checkpoint.get("summary", ""), "usage": usage}
+
+    async def _load_session(self, session_id: str) -> Session | None:
+        session = self._sessions.get(session_id) if self._sessions is not None else None
+        if session is not None or self._persistence is None:
+            return session
+        loaded = await asyncio.to_thread(self._persistence.load, session_id)
+        return Session.from_events(*loaded) if loaded else None
+
+    async def draft_session_notes(self, tenant_id: int, session_id: str) -> dict:
+        owner = await asyncio.to_thread(self._session_owner, tenant_id, session_id)
+        session = await self._load_session(session_id)
+        if session is None or self._llm is None or not owner["agent_key"]:
+            raise MemoryRequestError("当前会话缺少对话或模型配置")
+        config = await self._agents.get_config(owner["agent_key"]) or {}
+        model = self._llm.resolve(config)
+        if not model.configured:
+            raise MemoryRequestError("请先为当前智能体配置模型")
+        checkpoint, _ = latest_memory(session.events)
+        lines = []
+        used = 0
+        for event in reversed(session.surface.events):
+            if event.type == CONTEXT_CHECKPOINT:
+                continue
+            message = session.derive_event_message(event)
+            if message is None:
+                continue
+            content = message.get("content") or ""
+            line = f"[{message['role']}] {str(content)[:1600]}"
+            used += estimate_tokens(line)
+            if used > 3200:
+                break
+            lines.append(line)
+        if not lines:
+            raise MemoryRequestError("当前会话没有可总结的消息")
+        try:
+            draft = await summarize(self._llm.create_client(model, max_llm_retries=0), model.model,
+                                    "\n".join(reversed(lines)), checkpoint.get("summary", ""),
+                                    max_tokens=768, timeout=25.0)
+        except Exception as exc:
+            logger.exception("Could not generate session notes")
+            raise MemoryRequestError("生成笔记失败，请稍后重试") from exc
+        if not draft:
+            raise MemoryRequestError("模型未返回完整的笔记草稿")
+        return {"markdown": draft[:6000]}
+
+    async def _note(self, tenant_id: int, scope: str, identity: str, content: str | None) -> str:
+        if content is None:
+            return await asyncio.to_thread(self._notes.read, tenant_id, scope, identity)
+        await asyncio.to_thread(self._notes.write, tenant_id, scope, identity, content)
+        return content
 
     def create_context(self) -> MemoryContext:
         return MemoryContext(config=self.config, summarizer=self._extractor, experience=self.experience)

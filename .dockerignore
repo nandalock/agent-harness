@@ -24,3 +24,7 @@ packages/**/src/**/web/client.js
 packages/**/src/**/web/client.json
 apps/server/src/agent_platform_server/web
 apps/**/build
+vendor/**/build
+vendor/**/dist
+vendor/**/*.egg-info
+vendor/**/.mypy_cache

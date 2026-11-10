@@ -14,8 +14,5 @@ dependencies = [
     "psycopg2-binary>=2.9,<3",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.mcp-database" = "agent_platform_mcp_database:McpDatabasePlugin"
-
 [tool.setuptools.packages.find]
 where = ["src"]

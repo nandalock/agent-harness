@@ -2,30 +2,26 @@
 from agent_platform_plugin_sdk import (
     AGENTS,
     DATABASE,
-    PluginContext,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
     TOOL_BINDINGS,
 )
 
 from .service import AgentConfigService, ToolBindingsService
+from minidsh_cordis import Context, Plugin
 
 
 class AgentConfigPluginConfig(SdkModel):
     pass
 
 
-class AgentConfigPlugin:
-    spec = PluginSpec(
-        name="agent-platform.agent-config",
-        version="0.1.0",
-        provides=(AGENTS.ref, TOOL_BINDINGS.ref),
-        requires=(ServiceRequirement(service=DATABASE.ref),),
-    )
+class AgentConfigPlugin(Plugin[AgentConfigPluginConfig]):
+    name = "agent-platform.agent-config"
+    version = "0.1.0"
+    provides = (AGENTS, TOOL_BINDINGS)
+    requires = (DATABASE,)
     config_model = AgentConfigPluginConfig
 
-    async def setup(self, ctx: PluginContext, config: AgentConfigPluginConfig) -> None:
+    async def setup(self, ctx: Context, config: AgentConfigPluginConfig) -> None:
         database = ctx.require(DATABASE)
         ctx.provide(AGENTS, AgentConfigService(database))
         ctx.provide(TOOL_BINDINGS, ToolBindingsService(database))

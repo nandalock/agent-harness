@@ -2,13 +2,11 @@ import unittest
 
 from agent_platform_agent_entry import AGENT_ENTRY
 from agent_platform_llm import LLM
-from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
+from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
 from agent_platform_plugin_sdk import (
     AGENTS,
     DATABASE,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
 )
 
 from agent_platform_workflow import (
@@ -19,6 +17,7 @@ from agent_platform_workflow import (
     WorkflowPlugin,
     WorkflowService,
 )
+from minidsh_cordis import Plugin
 
 
 class FakeDatabase:
@@ -41,12 +40,10 @@ class FakeLLM:
         return None
 
 
-class NodeContributor:
-    spec = PluginSpec(
-        name="test.workflow-node",
-        version="0.1.0",
-        requires=(ServiceRequirement(service=WORKFLOW_NODES.ref),),
-    )
+class NodeContributor(Plugin[SdkModel]):
+    name = "test.workflow-node"
+    version = "0.1.0"
+    requires = (WORKFLOW_NODES,)
     config_model = SdkModel
 
     def __init__(self):
@@ -68,7 +65,7 @@ class NodeContributor:
 class WorkflowPluginTests(unittest.IsolatedAsyncioTestCase):
     async def test_plugin_provides_service_and_accepts_node_extensions(self):
         contributor = NodeContributor()
-        runtime = PluginRuntime(
+        runtime = PluginLoader(
             {"plugins": [
                 {"id": "workflow", "name": "agent-platform.workflow"},
                 {"id": "contributor", "name": "test.workflow-node"},

@@ -198,7 +198,7 @@ npm --prefix packages/client run build
 python -m pip wheel --no-deps -w dist ./packages/api/workspace
 ```
 
-Declare `web_package=__package__` on the Python plugin's `PluginSpec` to expose
+Declare `web_package=__package__` on the Python Cordis plugin to expose
 its bundle. `GET /api/plugins` advertises browser entries from started packages.
 The shell loads those URLs and calls their `setup(ctx)`. Disabling the Python
 entry in YAML also removes its browser entry. Browser assets are generated on

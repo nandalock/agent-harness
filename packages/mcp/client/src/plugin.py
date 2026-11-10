@@ -3,10 +3,6 @@ import asyncio
 import logging
 
 from agent_platform_plugin_sdk import (
-    Plugin,
-    PluginContext,
-    PluginSpec,
-    ServiceRequirement,
     TOOLS,
 )
 
@@ -14,22 +10,19 @@ from .client import McpConnection
 from .config import McpServerConfig
 from .manager import MCP_MANAGER, ManagedMcpServer, McpManager
 from .registration import register_mcp_tools
+from minidsh_cordis import Context, Plugin
 
 logger = logging.getLogger(__name__)
 
 
-class McpClientPlugin:
-    spec = PluginSpec(
-        name="agent-platform.mcp-client",
-        version="0.1.0",
-        requires=(
-            ServiceRequirement(service=TOOLS.ref),
-            ServiceRequirement(service=MCP_MANAGER.ref, optional=True),
-        ),
-    )
+class McpClientPlugin(Plugin[McpServerConfig]):
+    name = "agent-platform.mcp-client"
+    version = "0.1.0"
+    requires = (TOOLS,)
+    optional = (MCP_MANAGER,)
     config_model = McpServerConfig
 
-    async def setup(self, ctx: PluginContext, config: McpServerConfig) -> None:
+    async def setup(self, ctx: Context, config: McpServerConfig) -> None:
         tools = ctx.require(TOOLS)
         manager: McpManager | None = ctx.get(MCP_MANAGER)
         connection = McpConnection(config)

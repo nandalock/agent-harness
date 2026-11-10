@@ -9,7 +9,7 @@ from agent_platform_plugin_sdk import (
     ToolContext,
 )
 
-from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
+from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
 from support import EchoPlugin, FakeTools, ToolsPlugin
 
 
@@ -22,7 +22,7 @@ def echo_context() -> ToolContext:
 
 class IntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_plugin_provided_tools_service_is_resolved_and_closed(self):
-        runtime = PluginRuntime(
+        runtime = PluginLoader(
             {
                 "version": 1,
                 "plugins": [
@@ -49,7 +49,7 @@ class IntegrationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_host_provided_tools_service_is_borrowed_not_closed(self):
         hosted = FakeTools()
-        runtime = PluginRuntime(
+        runtime = PluginLoader(
             {
                 "version": 1,
                 "plugins": [
@@ -84,7 +84,7 @@ plugins:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "plugins.yaml"
             path.write_text(document, encoding="utf-8")
-            runtime = PluginRuntime.from_yaml(
+            runtime = PluginLoader.from_yaml(
                 path,
                 catalog=MappingCatalog(
                     {"test.echo": EchoPlugin, "test.tools": ToolsPlugin}

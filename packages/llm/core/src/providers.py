@@ -1,7 +1,7 @@
 """Provider-neutral model configuration vocabulary.
 
 The routing table itself lives in :class:`agent_platform_llm.service.LLMService`
-(one instance per PluginRuntime). This module only owns pure types and the
+(one instance per PluginLoader). This module only owns pure types and the
 DB-only fallback used when no provider plugin registered the requested route.
 """
 from __future__ import annotations

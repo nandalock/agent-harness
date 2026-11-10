@@ -9,8 +9,5 @@ description = "Read-only projection of the plugin runtime's started instances"
 requires-python = ">=3.12"
 dependencies = ["agent-platform-plugin-sdk>=0.1,<0.2"]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.plugin-inventory" = "agent_platform_plugin_inventory:PluginInventoryPlugin"
-
 [tool.setuptools.packages.find]
 where = ["src"]

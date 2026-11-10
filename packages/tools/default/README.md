@@ -14,12 +14,7 @@ cd packages/tools/default && python -m mypy
 
 ## 启用
 
-插件包通过 entry point 暴露：
-
-```toml
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.tools-default" = "agent_platform_tools_default:ToolsDefaultPlugin"
-```
+默认清单通过 `use: agent_platform_tools_default:ToolsDefaultPlugin` 装配插件。
 
 在插件 YAML 中启用它，并让工具插件依赖它：
 

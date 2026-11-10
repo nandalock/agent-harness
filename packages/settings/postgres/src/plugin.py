@@ -1,28 +1,24 @@
 """Settings plugin: database-backed settings.v1."""
 from agent_platform_plugin_sdk import (
     DATABASE,
-    PluginContext,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
     SETTINGS,
 )
 
 from .service import PostgresSettingsService
+from minidsh_cordis import Context, Plugin
 
 
 class SettingsConfig(SdkModel):
     pass
 
 
-class PostgresSettingsPlugin:
-    spec = PluginSpec(
-        name="agent-platform.settings-postgres",
-        version="0.1.0",
-        provides=(SETTINGS.ref,),
-        requires=(ServiceRequirement(service=DATABASE.ref),),
-    )
+class PostgresSettingsPlugin(Plugin[SettingsConfig]):
+    name = "agent-platform.settings-postgres"
+    version = "0.1.0"
+    provides = (SETTINGS,)
+    requires = (DATABASE,)
     config_model = SettingsConfig
 
-    async def setup(self, ctx: PluginContext, config: SettingsConfig) -> None:
+    async def setup(self, ctx: Context, config: SettingsConfig) -> None:
         ctx.provide(SETTINGS, PostgresSettingsService(ctx.require(DATABASE)))

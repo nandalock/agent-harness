@@ -9,7 +9,6 @@ from agent_platform_plugin_sdk import (
     AgentConfigService,
     Registration,
     ServiceKey,
-    ServiceRef,
 )
 
 from .state import WorkflowState
@@ -109,10 +108,6 @@ class WorkflowService(Protocol):
     ) -> AsyncIterator[dict[str, Any]]: ...
 
 
-WORKFLOW: ServiceKey[WorkflowService] = ServiceKey(
-    ServiceRef(name="workflow", api_version=1)
-)
+WORKFLOW: ServiceKey[WorkflowService] = ServiceKey("workflow")
 
-WORKFLOW_NODES: ServiceKey[WorkflowNodeRegistry] = ServiceKey(
-    ServiceRef(name="workflow.nodes", api_version=1)
-)
+WORKFLOW_NODES: ServiceKey[WorkflowNodeRegistry] = ServiceKey("workflow.nodes")

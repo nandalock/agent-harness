@@ -2,7 +2,6 @@ import asyncio
 import unittest
 
 from agent_platform_plugin_sdk import (
-    PluginSpec,
     RegistrationConflictError,
     ServiceClosedError,
     ServiceKey,
@@ -12,21 +11,20 @@ from agent_platform_plugin_sdk import (
 from agent_platform_plugin_runtime import (
     LifecycleError,
     MappingCatalog,
-    PluginRuntime,
-    RuntimeState,
+    PluginLoader,
+    LoaderState,
     UndeclaredServiceError,
 )
 from support import (
     EmptyConfig,
     plugin_class,
-    requirement,
     service_key,
-    service_ref,
 )
+from minidsh_cordis import Plugin
 
 
 def runtime_for(entries, catalog, host_services=None):
-    return PluginRuntime(
+    return PluginLoader(
         {"version": 1, "plugins": entries},
         catalog=MappingCatalog(catalog),
         host_services=host_services,
@@ -47,11 +45,11 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_setup_failure_rolls_back_started_plugins_in_reverse_order(self):
         log = []
         provider = plugin_class(
-            "test.provider", provides=(service_ref("test.service"),), log=log
+            "test.provider", provides=(service_key("test.service"),), log=log
         )
         failing = plugin_class(
             "test.failing",
-            requires=(requirement("test.service"),),
+            requires=(service_key("test.service"),),
             log=log,
             fail=RuntimeError("boom"),
         )
@@ -73,16 +71,17 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
                 "close:test.provider",
             ],
         )
-        self.assertEqual(runtime.state, RuntimeState.NEW)
+        self.assertEqual(runtime.state, LoaderState.NEW)
         self.assertEqual(runtime.plugins, ())
         await runtime.aclose()
-        self.assertEqual(runtime.state, RuntimeState.CLOSED)
+        self.assertEqual(runtime.state, LoaderState.CLOSED)
 
     async def test_cleanup_failure_is_attached_to_the_original_startup_error(self):
         log = []
 
-        class Partial:
-            spec = PluginSpec(name="test.partial", version="0.1.0")
+        class Partial(Plugin[EmptyConfig]):
+            name = "test.partial"
+            version = "0.1.0"
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
@@ -106,8 +105,9 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_close_attempts_every_cleanup_and_aggregates_failures(self):
         log = []
 
-        class Cleanup:
-            spec = PluginSpec(name="test.cleanup", version="0.1.0")
+        class Cleanup(Plugin[EmptyConfig]):
+            name = "test.cleanup"
+            version = "0.1.0"
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
@@ -129,20 +129,20 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(
             any("cleanup exploded" in message for message in flatten(raised.exception))
         )
-        self.assertEqual(runtime.state, RuntimeState.CLOSED)
+        self.assertEqual(runtime.state, LoaderState.CLOSED)
         await runtime.aclose()
 
     async def test_registration_conflict_fails_setup_and_rolls_back(self):
-        ref = service_ref("test.conflict")
+        ref = service_key("test.conflict")
 
-        class Conflicting:
-            spec = PluginSpec(
-                name="test.conflict", version="0.1.0", provides=(ref,)
-            )
+        class Conflicting(Plugin[EmptyConfig]):
+            name = "test.conflict"
+            version = "0.1.0"
+            provides = (ref,)
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
-                key = ServiceKey(ref)
+                key = ref
                 ctx.provide(key, "first")
                 ctx.provide(key, "second")
 
@@ -152,14 +152,16 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(RegistrationConflictError):
             await runtime.start()
-        self.assertEqual(runtime.state, RuntimeState.NEW)
+        self.assertEqual(runtime.state, LoaderState.NEW)
 
     async def test_stale_registration_does_not_remove_its_replacement(self):
-        ref = service_ref("test.stale")
-        key = ServiceKey(ref)
+        ref = service_key("test.stale")
+        key = ref
 
-        class Stale:
-            spec = PluginSpec(name="test.stale", version="0.1.0", provides=(ref,))
+        class Stale(Plugin[EmptyConfig]):
+            name = "test.stale"
+            version = "0.1.0"
+            provides = (ref,)
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
@@ -188,8 +190,9 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
 
         external = External()
 
-        class Owner:
-            spec = PluginSpec(name="test.owner", version="0.1.0")
+        class Owner(Plugin[EmptyConfig]):
+            name = "test.owner"
+            version = "0.1.0"
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
@@ -213,8 +216,9 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(log, ["async", "sync", "external"])
 
     async def test_undeclared_service_access_is_rejected(self):
-        class Undeclared:
-            spec = PluginSpec(name="test.undeclared", version="0.1.0")
+        class Undeclared(Plugin[EmptyConfig]):
+            name = "test.undeclared"
+            version = "0.1.0"
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
@@ -228,8 +232,9 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
             await runtime.start()
 
     async def test_undeclared_service_publication_is_rejected(self):
-        class Undeclared:
-            spec = PluginSpec(name="test.undeclared", version="0.1.0")
+        class Undeclared(Plugin[EmptyConfig]):
+            name = "test.undeclared"
+            version = "0.1.0"
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
@@ -245,8 +250,9 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_closed_context_rejects_new_work(self):
         captured = []
 
-        class Capture:
-            spec = PluginSpec(name="test.capture", version="0.1.0")
+        class Capture(Plugin[EmptyConfig]):
+            name = "test.capture"
+            version = "0.1.0"
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
@@ -258,7 +264,7 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         await runtime.start()
         await runtime.aclose()
         ctx = captured[0]
-        key = ServiceKey(service_ref("test.anything"))
+        key = service_key("test.anything")
 
         class Handle:
             async def aclose(self):
@@ -278,8 +284,9 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         started = asyncio.Event()
         cleaned = []
 
-        class Slow:
-            spec = PluginSpec(name="test.slow", version="0.1.0")
+        class Slow(Plugin[EmptyConfig]):
+            name = "test.slow"
+            version = "0.1.0"
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
@@ -296,26 +303,26 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(asyncio.CancelledError):
             await task
         self.assertEqual(cleaned, ["closed"])
-        self.assertEqual(runtime.state, RuntimeState.NEW)
+        self.assertEqual(runtime.state, LoaderState.NEW)
         await runtime.aclose()
 
     async def test_runtime_state_transitions(self):
         runtime = runtime_for([], {})
         with self.assertRaises(LifecycleError):
-            runtime.require(ServiceKey(service_ref("test.anything")))
+            runtime.require(service_key("test.anything"))
 
         await runtime.start()
         with self.assertRaises(LifecycleError):
             await runtime.start()
-        self.assertEqual(runtime.state, RuntimeState.RUNNING)
+        self.assertEqual(runtime.state, LoaderState.RUNNING)
 
         await runtime.aclose()
         await runtime.aclose()
-        self.assertEqual(runtime.state, RuntimeState.CLOSED)
+        self.assertEqual(runtime.state, LoaderState.CLOSED)
         with self.assertRaises(ServiceClosedError):
             await runtime.start()
         with self.assertRaises(LifecycleError):
-            runtime.require(ServiceKey(service_ref("test.anything")))
+            runtime.require(service_key("test.anything"))
 
     async def test_host_services_remain_owned_by_the_host(self):
         class HostService:

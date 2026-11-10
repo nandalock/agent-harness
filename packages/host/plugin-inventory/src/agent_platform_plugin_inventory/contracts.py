@@ -1,7 +1,7 @@
 """Plugin inventory contract."""
 from typing import Any, Protocol
 
-from agent_platform_plugin_sdk import ServiceKey, ServiceRef
+from agent_platform_plugin_sdk import ServiceKey
 
 from .client import ClientModule
 
@@ -16,6 +16,4 @@ class PluginInventory(Protocol):
     def script(self, client_id: str, revision: str) -> bytes | None: ...
 
 
-PLUGIN_INVENTORY: ServiceKey[PluginInventory] = ServiceKey(
-    ServiceRef(name="plugin.inventory", api_version=1)
-)
+PLUGIN_INVENTORY: ServiceKey[PluginInventory] = ServiceKey("plugin.inventory")

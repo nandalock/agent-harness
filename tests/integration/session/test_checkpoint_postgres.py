@@ -247,14 +247,14 @@ def _chat_app(monkeypatch, connection, persistence, agent):
             return await agent.reply(context.tenant_id, question, session_id=context.session_id, **options)
 
     db = SimpleNamespace(get_conn=connection)
-    store = ChatStore(db, agent.service.services[SESSIONS.ref], persistence)
+    store = ChatStore(db, agent.service.services[SESSIONS], persistence)
     session_api = SessionApiService(
-        db, agent.service.services[SESSIONS.ref], persistence,
-        agent.service.services[SESSION_RECOVERY.ref],
+        db, agent.service.services[SESSIONS], persistence,
+        agent.service.services[SESSION_RECOVERY],
     )
     app = create_app(
         chat=ChatService(Entry(), store), database=db,
-        services={SESSION_API.ref: session_api},
+        services={SESSION_API: session_api},
     )
     return app, store
 
@@ -307,7 +307,7 @@ def test_read_trajectory_then_resume_repairs_once_and_rejects_repeat(database, m
     assert response.status_code == 200
     from agent_platform_session import SESSIONS
 
-    assert agent.service.services[SESSIONS.ref].get(source.header.id) is None
+    assert agent.service.services[SESSIONS].get(source.header.id) is None
     before = persistence.load(source.header.id)[1]
     state = http.get(f"/api/agents/sessions/{source.header.id}/recovery", headers={"X-Tenant-ID": "1"}).json()
     assert state["can_resume"] and state["source_turn_start_seq"] == 1

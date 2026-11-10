@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from time import monotonic
 from typing import AsyncIterator
 
-from .errors import RegistrationConflictError, ServiceClosedError
+from minidsh_cordis import RegistrationConflictError, ServiceClosedError
 from .models import ExecutionScope, JsonObject
 from .tools import (
     TOOL_DENIED, TOOL_NOT_FOUND, TOOL_TIMEOUT, TOOL_UNAVAILABLE,

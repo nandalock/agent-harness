@@ -9,8 +9,8 @@ from typing import Annotated, Any, Literal, Protocol, Self
 
 from pydantic import Field, StrictFloat, model_validator
 
-from .lifecycle import Registration, ServiceKey
-from .models import ExecutionScope, JsonObject, JsonValue, NonEmptyString, SdkModel, ServiceRef
+from minidsh_cordis import Closeable as Registration, ServiceKey
+from .models import ExecutionScope, JsonObject, JsonValue, NonEmptyString, SdkModel
 
 TOOL_NOT_FOUND = "tool.not_found"
 TOOL_DENIED = "tool.denied"
@@ -147,4 +147,4 @@ class ToolsService(Protocol):
     async def aclose(self) -> None: ...
 
 
-TOOLS: ServiceKey[ToolsService] = ServiceKey(ServiceRef(name="tools", api_version=1))
+TOOLS: ServiceKey[ToolsService] = ServiceKey("tools")

@@ -4,11 +4,12 @@ import os
 
 from pydantic import Field
 
-from agent_platform_plugin_sdk import PluginContext, PluginSpec, SdkModel
+from agent_platform_plugin_sdk import SdkModel
 
 from .database import DEFAULT_DATABASE_URL, PostgresDatabase
 from .schema import init_db
 from .services import DATABASE
+from minidsh_cordis import Context, Plugin
 
 
 class DatabaseConfig(SdkModel):
@@ -16,15 +17,13 @@ class DatabaseConfig(SdkModel):
     initialize_schema: bool = Field(default=False, alias="initializeSchema")
 
 
-class PostgresDatabasePlugin:
-    spec = PluginSpec(
-        name="agent-platform.database-postgres",
-        version="0.1.0",
-        provides=(DATABASE.ref,),
-    )
+class PostgresDatabasePlugin(Plugin[DatabaseConfig]):
+    name = "agent-platform.database-postgres"
+    version = "0.1.0"
+    provides = (DATABASE,)
     config_model = DatabaseConfig
 
-    async def setup(self, ctx: PluginContext, config: DatabaseConfig) -> None:
+    async def setup(self, ctx: Context, config: DatabaseConfig) -> None:
         database = PostgresDatabase(
             config.dsn or os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
         )

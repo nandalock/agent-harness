@@ -14,9 +14,6 @@ dependencies = [
     "agent-platform-session-title>=0.1,<0.2",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.session-recovery" = "agent_platform_session_recovery:SessionRecoveryPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_session_recovery"]
 

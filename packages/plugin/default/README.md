@@ -1,7 +1,7 @@
 # Default composition
 
 `plugins.yaml` is the default application assembly. Backend loads this package,
-adds host configuration such as database MCP servers, and starts PluginRuntime.
+adds host configuration such as database MCP servers, and starts Cordis through PluginLoader.
 It does not enumerate individual tools.
 
 A plugin package is a lifecycle and assembly unit. Each configured instance may
@@ -44,7 +44,7 @@ native mode also registers powershell. See [native sandbox](../../../docs/native
 
 Library packages such as skills, sandbox, and tool-system provide reusable
 implementations. A package is discoverable as a plugin only when it exports a
-plugin entry point. This composition package is a preset, not a runtime plugin.
+plugin module export. This composition package is a preset, not a runtime plugin.
 
 `compose(user_config)` fills absent defaults. Override by package name or default
 instance id. Explicit `disabled: true` is respected, including for tools-default;

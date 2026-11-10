@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from agent_platform_mcp_client import MCP_MANAGER
 from agent_platform_mcp_database import McpDatabasePlugin, config_from_row
-from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
+from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
 from agent_platform_plugin_sdk import DATABASE
 
 
@@ -93,7 +93,7 @@ class McpDatabasePluginTests(unittest.IsolatedAsyncioTestCase):
             {"id": 2, "name": "overleaf", "transport": "stdio", "url": None,
              "command": "/python", "args": None, "env": None},
         ])
-        runtime = PluginRuntime(
+        runtime = PluginLoader(
             {"plugins": [{"id": "mcp-db", "name": "agent-platform.mcp-database"}]},
             catalog=MappingCatalog({"agent-platform.mcp-database": McpDatabasePlugin}),
             host_services={MCP_MANAGER: manager, DATABASE: database},

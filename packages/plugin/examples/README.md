@@ -1,6 +1,6 @@
 # 端到端示例
 
-这个示例用真实的 entry point 发现跑通整条链路：YAML → 插件包发现 → `setup()` → 工具调用 → 关闭。工具注册表由 `tools-default` 插件持有，`example.echo` 只是注册工具。
+这个示例用显式的 Cordis 模块入口跑通整条链路：YAML → 插件包发现 → `setup()` → 工具调用 → 关闭。工具注册表由 `tools-default` 插件持有，`example.echo` 只是注册工具。
 
 ## 运行
 
@@ -33,7 +33,7 @@ Windows 终端如果不是 UTF-8，可以加 `PYTHONIOENCODING=utf-8`；这只�
 
 | 文件 | 用途 |
 |---|---|
-| `echo-plugin/` | 独立工具插件，通过 `[project.entry-points."agent_platform.plugins"]` 暴露 `example.echo` |
+| `echo-plugin/` | 独立工具插件，入口为 `example_echo_plugin:plugin` |
 | `plugins.yaml` | 声明启用 `tools-default` 和 `example.echo` |
 | `host.py` | 最小宿主：启动运行时、从运行时取 tools.v1、调用工具、关闭 |
 | `../../tools/default/` | tools.v1 的默认实现，持有注册表并执行插件工具 |

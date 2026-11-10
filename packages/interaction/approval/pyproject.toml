@@ -10,9 +10,6 @@ dependencies = [
     "agent-platform-plugin-sdk>=0.1,<0.2",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.user-approval" = "agent_platform_user_approval:UserApprovalPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_user_approval"]
 

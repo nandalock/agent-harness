@@ -30,9 +30,6 @@ dependencies = [
     "agent-platform-plugin-inventory>=0.1,<0.2",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.http-api" = "agent_platform_http_api:HttpApiPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_http_api", "agent_platform_http_api.routes"]
 

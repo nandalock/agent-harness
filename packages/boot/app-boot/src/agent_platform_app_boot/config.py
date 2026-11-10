@@ -5,8 +5,8 @@ import os
 from pathlib import Path
 
 from agent_platform_default import compose
-from agent_platform_plugin_runtime import load_yaml_config
-from agent_platform_plugin_sdk import PluginConfiguration
+from agent_platform_plugin_runtime import load_layers, merge_layers
+from agent_platform_plugin_runtime import PluginConfiguration
 
 
 def resolve_config_path() -> Path | None:
@@ -23,9 +23,11 @@ def resolve_config_path() -> Path | None:
     return None
 
 
-def load_config() -> PluginConfiguration:
+def load_config(document: PluginConfiguration | None = None) -> PluginConfiguration:
     path = resolve_config_path()
-    config = load_yaml_config(path) if path is not None else PluginConfiguration()
+    config = load_layers(path, document=document) if path is not None else (document or PluginConfiguration())
+    if patch := os.environ.get("MINIDSH_PLUGIN_PATCH"):
+        config = merge_layers(config, load_layers(patch))
     return compose_plugins(config)
 
 

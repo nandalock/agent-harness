@@ -50,6 +50,6 @@ Verification:
 python -m unittest discover -s packages/agent/runtime/tests -v
 ```
 
-The tests load real installed plugin entry points with memory-only host ports,
+The tests load real plugin module exports with memory-only host ports,
 exercise model-driven skill loading, and verify isolation, cancellation,
 checkpoint failure, and ordered shutdown without a backend import.

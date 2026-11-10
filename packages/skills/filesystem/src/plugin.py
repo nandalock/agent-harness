@@ -1,10 +1,11 @@
 """Register configured local directories as one scoped skill provider."""
 from pathlib import Path
 from pydantic import Field
-from agent_platform_plugin_sdk import PluginContext, PluginSpec, SdkModel, ServiceRequirement
+from agent_platform_plugin_sdk import SdkModel
 from agent_platform_skills import SKILLS, SkillError, SkillSource
 from .provider import FilesystemSkillProvider
 from .sources import default_sources
+from minidsh_cordis import Context, Plugin
 
 
 class SourceConfig(SdkModel):
@@ -23,14 +24,13 @@ class FilesystemConfig(SdkModel):
     sources: tuple[SourceConfig, ...] = Field(default_factory=tuple)
 
 
-class SkillsFilesystemPlugin:
-    spec = PluginSpec(
-        name="agent-platform.skills-filesystem", version="0.1.0",
-        requires=(ServiceRequirement(service=SKILLS.ref),),
-    )
+class SkillsFilesystemPlugin(Plugin[FilesystemConfig]):
+    name = "agent-platform.skills-filesystem"
+    version = "0.1.0"
+    requires = (SKILLS,)
     config_model = FilesystemConfig
 
-    async def setup(self, ctx: PluginContext, config: FilesystemConfig) -> None:
+    async def setup(self, ctx: Context, config: FilesystemConfig) -> None:
         sources = default_sources(include_builtin=config.builtin)
         for source in config.sources:
             path = Path(source.path)

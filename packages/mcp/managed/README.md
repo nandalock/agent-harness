@@ -13,7 +13,7 @@ It exports four independent plugin entries:
 Each instance requires mcp.manager.v1. Setup awaits HTTP readiness before
 connecting. Connections register tools with the instance's plugin_id. Disposal
 removes the current owned connection generation before closing its HTTP server.
-Setup failure rolls back already acquired resources through PluginContext.
+Setup failure rolls back already acquired resources through the Cordis context.
 Each HTTP activation uses a fresh FastMCP instance, so close/start is repeatable.
 
 Default composition lives in packages/plugin/default/plugins.yaml. For example:

@@ -12,9 +12,6 @@ dependencies = [
     "agent-platform-rpc-gateway>=0.1,<0.2",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.rpc-connection" = "agent_platform_rpc_connection:RpcConnectionPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_rpc_connection"]
 

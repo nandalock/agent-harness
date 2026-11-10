@@ -13,11 +13,9 @@ from agent_platform_mcp_client import MCP_MANAGER, McpServerConfig
 from agent_platform_managed_mcp import owns_database_row
 from agent_platform_plugin_sdk import (
     DATABASE,
-    PluginContext,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
 )
+from minidsh_cordis import Context, Plugin
 
 logger = logging.getLogger(__name__)
 
@@ -77,18 +75,13 @@ def config_from_row(row: dict[str, Any]) -> McpServerConfig | None:
         return None
 
 
-class McpDatabasePlugin:
-    spec = PluginSpec(
-        name="agent-platform.mcp-database",
-        version="0.1.0",
-        requires=(
-            ServiceRequirement(service=MCP_MANAGER.ref),
-            ServiceRequirement(service=DATABASE.ref),
-        ),
-    )
+class McpDatabasePlugin(Plugin[McpDatabaseConfig]):
+    name = "agent-platform.mcp-database"
+    version = "0.1.0"
+    requires = (MCP_MANAGER, DATABASE)
     config_model = McpDatabaseConfig
 
-    async def setup(self, ctx: PluginContext, config: McpDatabaseConfig) -> None:
+    async def setup(self, ctx: Context, config: McpDatabaseConfig) -> None:
         if not config.enabled:
             return
         if os.environ.get("PLUGIN_MCP_AUTO", "true").lower() in ("0", "false", "no"):

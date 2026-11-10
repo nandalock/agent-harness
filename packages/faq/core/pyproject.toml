@@ -12,9 +12,6 @@ dependencies = [
     "pydantic>=2.10,<3",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.faq" = "agent_platform_faq:FaqPlugin"
-
 [tool.setuptools.packages.find]
 where = ["src"]
 

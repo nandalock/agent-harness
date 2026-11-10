@@ -9,8 +9,7 @@ from pathlib import Path
 
 from agent_platform_agent_entry import AGENT_ENTRY, RequestContext
 from agent_platform_app_boot import load_config
-from agent_platform_plugin_runtime import PluginRuntime
-from agent_platform_plugin_sdk import PluginConfiguration
+from agent_platform_plugin_runtime import PluginLoader
 
 
 def _load_local_env() -> None:
@@ -28,7 +27,7 @@ async def run_agent(agent_key: str, question: str, tenant_id: int) -> str:
     config = load_config()
     interactive = {"agent-platform.http-api", "agent-platform.user-approval"}
     plugins = tuple(entry for entry in config.plugins if entry.name not in interactive)
-    runtime = PluginRuntime(PluginConfiguration(plugins=plugins))
+    runtime = PluginLoader(config.model_copy(update={"plugins": plugins}))
     await runtime.start()
     try:
         reply = await runtime.require(AGENT_ENTRY).chat(

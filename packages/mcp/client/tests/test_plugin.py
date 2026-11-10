@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch
 
-from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
+from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
 from agent_platform_plugin_sdk import (
     ExecutionScope,
     TOOLS,
@@ -76,7 +76,7 @@ class McpPluginTests(unittest.IsolatedAsyncioTestCase):
             ],
         }
         with patch("agent_platform_mcp_client.plugin.McpConnection", FakeConnection):
-            runtime = PluginRuntime(
+            runtime = PluginLoader(
                 config,
                 catalog=MappingCatalog(
                     {
@@ -126,7 +126,7 @@ class McpPluginTests(unittest.IsolatedAsyncioTestCase):
         with patch(
             "agent_platform_mcp_client.plugin.McpConnection", FailingConnection
         ):
-            runtime = PluginRuntime(
+            runtime = PluginLoader(
                 config,
                 catalog=MappingCatalog(
                     {
@@ -162,7 +162,7 @@ class McpPluginTests(unittest.IsolatedAsyncioTestCase):
             "agent_platform_mcp_client.plugin.McpConnection",
             DuplicateToolConnection,
         ):
-            runtime = PluginRuntime(
+            runtime = PluginLoader(
                 config,
                 catalog=MappingCatalog(
                     {
@@ -199,7 +199,7 @@ class McpPluginTests(unittest.IsolatedAsyncioTestCase):
             ],
         }
         with patch("agent_platform_mcp_client.plugin.McpConnection", FakeConnection):
-            runtime = PluginRuntime(
+            runtime = PluginLoader(
                 config,
                 catalog=MappingCatalog(
                     {

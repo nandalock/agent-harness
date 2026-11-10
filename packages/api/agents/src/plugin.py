@@ -3,10 +3,7 @@ from agent_platform_llm import LLM
 from agent_platform_plugin_sdk import (
     AGENTS,
     DATABASE,
-    PluginContext,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
 )
 from agent_platform_rpc_gateway import RPC_GATEWAY, RpcMethodContract
 
@@ -23,6 +20,7 @@ from .models import (
 )
 from .service import AgentApiService
 from .services import AGENT_API
+from minidsh_cordis import Context, Plugin
 
 METHODS = (
     RpcMethodContract("agent.list", AgentListParams, AgentListResult),
@@ -36,22 +34,15 @@ class AgentsApiConfig(SdkModel):
     pass
 
 
-class AgentApiPlugin:
-    spec = PluginSpec(
-        name="agent-platform.api-agents",
-        web_package=__package__,
-        version="0.1.0",
-        provides=(AGENT_API.ref,),
-        requires=(
-            ServiceRequirement(service=RPC_GATEWAY.ref),
-            ServiceRequirement(service=AGENTS.ref),
-            ServiceRequirement(service=LLM.ref),
-            ServiceRequirement(service=DATABASE.ref),
-        ),
-    )
+class AgentApiPlugin(Plugin[AgentsApiConfig]):
+    name = "agent-platform.api-agents"
+    web_package = __package__
+    version = "0.1.0"
+    provides = (AGENT_API,)
+    requires = (RPC_GATEWAY, AGENTS, LLM, DATABASE)
     config_model = AgentsApiConfig
 
-    async def setup(self, ctx: PluginContext, config: AgentsApiConfig) -> None:
+    async def setup(self, ctx: Context, config: AgentsApiConfig) -> None:
         service = AgentApiService(
             ctx.require(AGENTS), ctx.require(LLM), ctx.require(DATABASE),
         )

@@ -10,5 +10,6 @@
 | 从源码开发、构建发布包、运行测试 | [开发指南](development.md) |
 | 服务依赖和前后端协议 | [插件架构](plugin-architecture.md) · [RPC API](rpc-api.md) |
 | 技能、沙箱与恢复 | [技能与命令](skills-commands.md) · [沙箱设计](sandbox-design.md) · [Agent Loop](agent-loop-design.md) |
+| 上下文用量、自动压缩和 Markdown 笔记 | [智能体记忆](memory.md) |
 
 [回到项目首页](../README.md)

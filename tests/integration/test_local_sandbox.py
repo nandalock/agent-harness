@@ -76,7 +76,7 @@ class NativeSandboxTests(unittest.IsolatedAsyncioTestCase):
 
     @unittest.skipUnless(sys.platform == "win32" or shutil.which("bwrap") or sys.platform == "darwin", "Native runner not installed")
     async def test_tools_use_the_plugin_owned_sandbox_service(self):
-        from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
+        from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
         from agent_platform_plugin_sdk import SETTINGS, TOOLS, ExecutionScope, ToolCall, ToolContext as SdkContext
         from agent_platform_tools_default import ToolsDefaultPlugin
         from agent_platform_sandbox_tools import SandboxToolsPlugin
@@ -88,7 +88,7 @@ class NativeSandboxTests(unittest.IsolatedAsyncioTestCase):
             async def set(self, namespace, value):
                 pass
 
-        runtime = PluginRuntime({"plugins": [
+        runtime = PluginLoader({"plugins": [
             {"id": "tools", "name": "agent-platform.tools-default"},
             {"id": "sandbox-provider", "name": "agent-platform.sandbox-local"},
             {"id": "sandbox-tools", "name": "agent-platform.sandbox-tools"},
@@ -122,8 +122,8 @@ class BackendSelectionTests(unittest.TestCase):
             self.assertEqual(init_sandbox(backend="docker", probe=False).backend, "docker")
 
     def test_native_and_docker_publish_the_same_service(self):
-        self.assertEqual(LocalSandboxPlugin.spec.provides, (SANDBOX.ref,))
-        self.assertEqual(DockerSandboxPlugin.spec.provides, (SANDBOX.ref,))
+        self.assertEqual(LocalSandboxPlugin.provides, (SANDBOX,))
+        self.assertEqual(DockerSandboxPlugin.provides, (SANDBOX,))
 
     def test_linux_does_not_fall_back_to_unrestricted_spawn(self):
         with patch("sys.platform", "linux"), patch("shutil.which", return_value=None):

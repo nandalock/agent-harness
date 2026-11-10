@@ -18,10 +18,7 @@ from agent_platform_plugin_sdk import (
     AGENTS,
     AGENT_EXTENSIONS,
     DATABASE,
-    PluginContext,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
     TOOL_BINDINGS,
     TOOLS,
 )
@@ -30,41 +27,36 @@ from agent_platform_workflow import WORKFLOW
 
 from .app import create_app
 from .services import HTTP_APP
+from minidsh_cordis import Context, Plugin
 
 
 class HttpConfig(SdkModel):
     pass
 
 
-class HttpApiPlugin:
-    spec = PluginSpec(
-        name="agent-platform.http-api",
-        version="0.1.0",
-        provides=(HTTP_APP.ref,),
-        requires=(
-            *(ServiceRequirement(service=key.ref) for key in (
-                CONNECTION, AGENT_ENTRY, CHAT, AGENTS, DATABASE, AGENT_EXTENSIONS,
-            )),
-            *(ServiceRequirement(service=key.ref, optional=True) for key in (
-                APPROVAL_INBOX, MEMORY, WORKFLOW, FAQ, XIANYU, PLUGIN_INVENTORY,
-                AGENT_API, SESSION_API, WORKSPACE_CONTROLLER, RUNTIME_PROMPTS,
-                TOOLS, UNIFIED_TOOLS, TOOL_BINDINGS, SKILLS, MCP_MANAGER, SANDBOX,
-            )),
-        ),
+class HttpApiPlugin(Plugin[HttpConfig]):
+    name = "agent-platform.http-api"
+    version = "0.1.0"
+    provides = (HTTP_APP,)
+    requires = (CONNECTION, AGENT_ENTRY, CHAT, AGENTS, DATABASE, AGENT_EXTENSIONS)
+    optional = (
+        APPROVAL_INBOX, MEMORY, WORKFLOW, FAQ, XIANYU, PLUGIN_INVENTORY, AGENT_API, SESSION_API,
+        WORKSPACE_CONTROLLER, RUNTIME_PROMPTS, TOOLS, UNIFIED_TOOLS, TOOL_BINDINGS, SKILLS, MCP_MANAGER,
+        SANDBOX,
     )
     config_model = HttpConfig
 
-    async def setup(self, ctx: PluginContext, config: HttpConfig) -> None:
+    async def setup(self, ctx: Context, config: HttpConfig) -> None:
         services = {
-            AGENTS.ref: ctx.require(AGENTS),
-            AGENT_EXTENSIONS.ref: ctx.require(AGENT_EXTENSIONS),
-            CHAT.ref: ctx.require(CHAT),
+            AGENTS: ctx.require(AGENTS),
+            AGENT_EXTENSIONS: ctx.require(AGENT_EXTENSIONS),
+            CHAT: ctx.require(CHAT),
         }
         for key in (AGENT_API, SESSION_API, WORKSPACE_CONTROLLER, RUNTIME_PROMPTS,
                     TOOLS, UNIFIED_TOOLS, TOOL_BINDINGS, SKILLS, MCP_MANAGER, SANDBOX):
             service = ctx.get(key)
             if service is not None:
-                services[key.ref] = service
+                services[key] = service
         ctx.provide(HTTP_APP, create_app(
             ctx.require(CONNECTION), entry=ctx.require(AGENT_ENTRY),
             chat=ctx.require(CHAT), approval=ctx.get(APPROVAL_INBOX), agent_config=ctx.require(AGENTS),

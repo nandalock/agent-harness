@@ -16,9 +16,6 @@ dependencies = [
     "agent-platform-session-title>=0.1,<0.2",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.api-workspace" = "agent_platform_api_workspace:WorkspaceControllerPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_api_workspace"]
 

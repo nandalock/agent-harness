@@ -2,7 +2,7 @@
 
 [文档首页](README.md) · [启动与插件运行](startup.md) · [插件开发](plugin-development.md)
 
-`PluginRuntime` is the only service container. Plugins publish typed services
+The root Cordis `Context` is the only service container. Plugins publish typed services
 through `ctx.provide(...)`, resolve declared dependencies with `ctx.require(...)`
 or `ctx.get(...)` (optional), and own every effect through their context.
 
@@ -15,7 +15,7 @@ or `ctx.get(...)` (optional), and own every effect through their context.
 4. Importing a package must not create a service instance or register anything.
 5. Concrete providers (PostgreSQL persistence, database pool, LLM adapters)
    are plugins; consumers only import the contract and service key.
-6. Two `PluginRuntime` instances in one process share no service state.
+6. Two Cordis contexts in one process share no service state.
 
 ## Service map
 
@@ -40,7 +40,7 @@ or `ctx.get(...)` (optional), and own every effect through their context.
 | `faq.v1` | `agent-platform.faq` | FAQ HTTP routes |
 | `xianyu.v1` | `agent-platform.xianyu` | Xianyu HTTP/WS routes, chat persistence |
 | `approval.v1` / `approval.inbox.v1` | `agent-platform.user-approval` | Agent Loop, sandbox tools, HTTP approval routes |
-| `plugin-catalog.v1` | `PluginRuntime` (native) | plugin inventory |
+| `plugin-catalog.v1` | `PluginLoader` (native) | plugin inventory |
 | `plugin.inventory.v1` | `agent-platform.plugin-inventory` | HTTP `/api/plugins`, frontend boot filter |
 | `http.app.v1` | `agent-platform.http-api` | ASGI proxy |
 
@@ -156,10 +156,10 @@ boot packages:
 | --- | --- |
 | `apps/server` | ASGI carrier for uvicorn: start runtime, resolve `http.app.v1` |
 | `apps/cli` | `agent-platform run` (headless turn) and `agent-platform serve` |
-| `packages/boot/app-boot` | composition discovery + `PluginRuntime` start/stop |
+| `packages/boot/app-boot` | composition discovery + `PluginLoader` start/stop |
 | `packages/host/plugin-inventory` | `plugin.inventory.v1` projection of started instances |
 
-`PluginRuntime` provides `plugin-catalog.v1` natively; the inventory plugin
+`PluginLoader` provides `plugin-catalog.v1` natively; the inventory plugin
 projects it for the HTTP plugin. MCP rows are loaded by
 `agent-platform.mcp-database` after the database plugin starts, so boot never
 reads a business table.

@@ -37,7 +37,7 @@ import asyncio
 import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from agent_platform_llm import (
     DEFAULT_MAX_LLM_RETRIES,
@@ -238,6 +238,7 @@ class AgentLoop:
         )
         self._request_error: RequestErrorHook | None = None if hooks is None else hooks.request_error
         self._pre_step = None if hooks is None else hooks.pre_step
+        self._prepare_request = None if hooks is None else hooks.prepare_request
         # Session 必填：Event Log 是唯一事实源，Loop 只 append。
         self.session = session
         self._checkpoint = checkpoint
@@ -600,11 +601,33 @@ class AgentLoop:
         """
         step = self._running().step - 1     # 0-based：事件与日志口径是 1-based（同旧 _run_step）
         request = self._build_request(state)
+        system_prompt = self.system_prompt
+        if self._prepare_request is not None:
+            try:
+                prepared = await self._run_cancellable(
+                    asyncio.wait_for(self._prepare_request(self.session, request, self.loop_ctx.llm),
+                                     timeout=max(0, state.deadline - time.perf_counter())),
+                    state.cancel,
+                )
+            except asyncio.TimeoutError:
+                return _StepOutcome("max_wall_time")
+            except RunCancelled:
+                raise
+            except Exception:
+                logger.exception("模型请求准备失败，继续使用原上下文")
+            else:
+                for event_type, data in prepared.events:
+                    self.session.append(event_type, data)
+                system_prompt = "\n\n".join(part for part in (system_prompt, prepared.system_context) if part)
+                messages = self.session.derive_messages()
+                if system_prompt:
+                    messages.insert(0, {"role": "system", "content": system_prompt})
+                request = replace(request, messages=messages, timeout=max(state.deadline - time.perf_counter(), 1.0))
         if self._checkpoint and self._checkpoint.enabled:
             self.session.append(REQUEST_HEADER, {
                 "agent": self.key, "model": request.model,
                 "temperature": request.temperature, "max_tokens": request.max_tokens,
-                "tools": request.tools, "system_prompt": self.system_prompt,
+                "tools": request.tools, "system_prompt": system_prompt,
             })
             await self._checkpoint.flush("before_model")
             if state.cancel.is_set():

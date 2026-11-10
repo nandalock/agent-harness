@@ -6,8 +6,9 @@ import sys
 
 from pydantic import Field
 
-from agent_platform_plugin_sdk import PluginSpec, SdkModel, ServiceRequirement
+from agent_platform_plugin_sdk import SdkModel
 from agent_platform_mcp_client import MCP_MANAGER, McpServerConfig
+from minidsh_cordis import Plugin
 
 logger = logging.getLogger(__name__)
 
@@ -49,10 +50,11 @@ def server_id(kind):
             return cur.fetchone()["id"]
 
 
-class BuiltinPlugin:
+class BuiltinPlugin(Plugin[Config]):
     kind = "builtin"
-    spec = PluginSpec(name="agent-platform.builtin-mcp", version="0.1.0",
-                      requires=(ServiceRequirement(service=MCP_MANAGER.ref),))
+    name = "agent-platform.builtin-mcp"
+    version = "0.1.0"
+    requires = (MCP_MANAGER,)
     config_model = Config
 
     async def setup(self, ctx, config):
@@ -100,14 +102,20 @@ class BuiltinPlugin:
 
 class PaperPlugin(BuiltinPlugin):
     kind = "paper"
-    spec = PluginSpec(name="agent-platform.paper-mcp", version="0.1.0", requires=BuiltinPlugin.spec.requires)
+    name = "agent-platform.paper-mcp"
+    version = "0.1.0"
+    requires = BuiltinPlugin.requires
 
 
 class OverleafPlugin(BuiltinPlugin):
     kind = "overleaf"
-    spec = PluginSpec(name="agent-platform.overleaf-mcp", version="0.1.0", requires=BuiltinPlugin.spec.requires)
+    name = "agent-platform.overleaf-mcp"
+    version = "0.1.0"
+    requires = BuiltinPlugin.requires
 
 
 class OverleafRtPlugin(BuiltinPlugin):
     kind = "overleaf-rt"
-    spec = PluginSpec(name="agent-platform.overleaf-rt-mcp", version="0.1.0", requires=BuiltinPlugin.spec.requires)
+    name = "agent-platform.overleaf-rt-mcp"
+    version = "0.1.0"
+    requires = BuiltinPlugin.requires

@@ -112,7 +112,7 @@ class SkillBindingTests(unittest.IsolatedAsyncioTestCase):
 
         with patch(
             "agent_platform_http_api.services.skills",
-            side_effect=ServiceUnavailableError(SKILLS.ref),
+            side_effect=ServiceUnavailableError(SKILLS),
         ):
             self.assertEqual(await skills_api.list_skill_catalog("alpha", x_tenant_id=7), {"skills": [], "available": False})
 

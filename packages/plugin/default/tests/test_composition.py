@@ -1,25 +1,29 @@
 import unittest
 
 from agent_platform_default import compose
-from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
+from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
 from agent_platform_plugin_sdk import (
-    ExecutionScope, PluginConfiguration, PluginSpec, RegistrationConflictError,
-    SdkModel, ServiceKey, ServiceRef, ServiceRequirement, TOOLS,
+    ExecutionScope, RegistrationConflictError,
+    SdkModel, ServiceKey, TOOLS,
     ToolCall, ToolContext, ToolDescriptor, ToolResult,
 )
+from agent_platform_plugin_runtime import PluginConfiguration
 from agent_platform_tools_default import ToolsDefaultService
+from minidsh_cordis import Plugin
 
 
-PREFIX = ServiceKey[str](ServiceRef(name="example.prefix"))
+PREFIX = ServiceKey[str]("example.prefix")
 
 
 class EmptyConfig(SdkModel):
     pass
 
 
-class PrefixPlugin:
+class PrefixPlugin(Plugin[EmptyConfig]):
     """A service-only package: no tools and no dependency on tools.v1."""
-    spec = PluginSpec(name="example.prefix", version="0.1.0", provides=(PREFIX.ref,))
+    name = "example.prefix"
+    version = "0.1.0"
+    provides = (PREFIX,)
     config_model = EmptyConfig
 
     async def setup(self, ctx, config):
@@ -36,12 +40,11 @@ class TextExecutor:
         return ToolResult(data=self.prefix + output)
 
 
-class TextPlugin:
+class TextPlugin(Plugin[EmptyConfig]):
     """One feature package, one executor, two tools per configured instance."""
-    spec = PluginSpec(
-        name="example.text", version="0.1.0",
-        requires=(ServiceRequirement(service=TOOLS.ref), ServiceRequirement(service=PREFIX.ref)),
-    )
+    name = "example.text"
+    version = "0.1.0"
+    requires = (TOOLS, PREFIX)
     config_model = EmptyConfig
 
     async def setup(self, ctx, config):
@@ -99,14 +102,17 @@ class CompositionTests(unittest.TestCase):
             {"id": "sandbox-tools", "name": "example.replacement"},
         ]})
         result = compose(override)
-        self.assertEqual(result.plugins[:2], override.plugins)
+        self.assertEqual(result.plugins[:2], (
+            override.plugins[0].model_copy(update={"use": "agent_platform_tools_default:ToolsDefaultPlugin"}),
+            override.plugins[1],
+        ))
         self.assertNotIn("agent-platform.sandbox-tools", [p.name for p in result.plugins])
         self.assertEqual(sum(p.name == "agent-platform.tools-default" for p in result.plugins), 1)
 
 
 class PackageLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_service_plugin_runs_without_any_tool_service(self):
-        runtime = PluginRuntime({"plugins": [
+        runtime = PluginLoader({"plugins": [
             {"id": "prefix", "name": "example.prefix"},
         ]}, catalog=MappingCatalog({"example.prefix": PrefixPlugin}))
         try:
@@ -118,7 +124,7 @@ class PackageLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_zero_tool_service_and_multiple_multi_tool_instances(self):
         tools = ToolsDefaultService()
         scope = ExecutionScope(tenant_id=1, agent_key="test")
-        runtime = PluginRuntime({"plugins": [
+        runtime = PluginLoader({"plugins": [
             {"id": "first", "name": "example.text"},
             {"id": "second", "name": "example.text"},
             {"id": "prefix", "name": "example.prefix"},
@@ -147,7 +153,7 @@ class PackageLifecycleTests(unittest.IsolatedAsyncioTestCase):
         scope = ExecutionScope(tenant_id=1, agent_key="test")
         existing = tools.register_tool(ToolDescriptor(
             name="first.lower", executor="external", description="Pre-existing tool"))
-        runtime = PluginRuntime({"plugins": [
+        runtime = PluginLoader({"plugins": [
             {"id": "first", "name": "example.text"},
             {"id": "prefix", "name": "example.prefix"},
         ]}, catalog=MappingCatalog({"example.text": TextPlugin, "example.prefix": PrefixPlugin}),

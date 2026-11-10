@@ -20,9 +20,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["mypy>=1.10"]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.workflow" = "agent_platform_workflow:WorkflowPlugin"
-
 [tool.setuptools.packages.find]
 where = ["src"]
 

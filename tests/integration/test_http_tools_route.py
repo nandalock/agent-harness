@@ -1,7 +1,7 @@
 """The HTTP tools route must use the runtime-provided tools.v1 service.
 
 Regression: after the pluginization refactor the route still read the legacy
-process singleton ``get_unified_tools_optional()``, which the PluginRuntime
+process singleton ``get_unified_tools_optional()``, which the PluginLoader
 never initializes. ``GET /api/mcp/tools/all`` returned 503 and the tools page
 crashed into a black screen.
 """
@@ -17,7 +17,7 @@ class FakeUnifiedTools:
 
 
 def test_tools_route_reads_unified_tools_from_runtime_services():
-    app = create_app(services={UNIFIED_TOOLS.ref: FakeUnifiedTools()})
+    app = create_app(services={UNIFIED_TOOLS: FakeUnifiedTools()})
 
     response = TestClient(app).get("/api/mcp/tools/all")
 

@@ -12,22 +12,24 @@ import unittest
 class TypingTests(unittest.TestCase):
     def test_service_key_prevents_widening_to_object(self):
         source = """
-from agent_platform_plugin_sdk import TOOLS, PluginContext
+from agent_platform_plugin_sdk import TOOLS
+from minidsh_cordis import Context
 
-def wrong_service(ctx: PluginContext) -> None:
+def wrong_service(ctx: Context) -> None:
     ctx.provide(TOOLS, object())
 """
         with tempfile.TemporaryDirectory() as directory:
             # Static analyzers do not execute PEP 660 editable import hooks.
             # Materialize the imported SDK under its real import name, as in a
             # regular wheel install, so this tests the typed API in both layouts.
-            spec = importlib.util.find_spec("agent_platform_plugin_sdk")
-            assert spec is not None and spec.submodule_search_locations
-            shutil.copytree(
-                next(iter(spec.submodule_search_locations)),
-                Path(directory) / "agent_platform_plugin_sdk",
-                ignore=shutil.ignore_patterns("__pycache__"),
-            )
+            for package in ("agent_platform_plugin_sdk", "minidsh_cordis"):
+                spec = importlib.util.find_spec(package)
+                assert spec is not None and spec.submodule_search_locations
+                shutil.copytree(
+                    next(iter(spec.submodule_search_locations)),
+                    Path(directory) / package,
+                    ignore=shutil.ignore_patterns("__pycache__"),
+                )
             path = Path(directory) / "wrong_service.py"
             path.write_text(source, encoding="utf-8")
             result = subprocess.run([sys.executable, "-m", "mypy", "--strict", str(path)],

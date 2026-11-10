@@ -3,10 +3,7 @@ from agent_platform_llm import LLM
 from agent_platform_plugin_sdk import (
     AGENTS,
     AGENT_EXTENSIONS,
-    PluginContext,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
 )
 from agent_platform_sandbox.services import AGENT_SANDBOX
 from agent_platform_session_recovery import SESSION_RECOVERY
@@ -16,29 +13,25 @@ from agent_platform_system_prompt import RUNTIME_PROMPTS
 from .contracts import AGENT_RUNTIME
 from .extensions import AgentExtensionRegistry
 from .service import RuntimeService
+from minidsh_cordis import Context, Plugin
 
 
 class RuntimeConfig(SdkModel):
     pass
 
 
-class AgentRuntimePlugin:
-    spec = PluginSpec(
-        name="agent-platform.agent-runtime", version="0.1.0",
-        provides=(AGENT_RUNTIME.ref, AGENT_EXTENSIONS.ref),
-        requires=(
-            ServiceRequirement(service=AGENTS.ref),
-            ServiceRequirement(service=AGENT_RUNS.ref),
-            ServiceRequirement(service=RUNTIME_PROMPTS.ref),
-            ServiceRequirement(service=LLM.ref),
-            ServiceRequirement(service=AGENT_SANDBOX.ref),
-            ServiceRequirement(service=SESSION_RECOVERY.ref),
-            ServiceRequirement(service=SESSION_TITLE.ref, optional=True),
-        ),
+class AgentRuntimePlugin(Plugin[RuntimeConfig]):
+    name = "agent-platform.agent-runtime"
+    version = "0.1.0"
+    provides = (AGENT_RUNTIME, AGENT_EXTENSIONS)
+    requires = (
+        AGENTS, AGENT_RUNS, RUNTIME_PROMPTS, LLM, AGENT_SANDBOX,
+        SESSION_RECOVERY,
     )
+    optional = (SESSION_TITLE,)
     config_model = RuntimeConfig
 
-    async def setup(self, ctx: PluginContext, config: RuntimeConfig) -> None:
+    async def setup(self, ctx: Context, config: RuntimeConfig) -> None:
         extensions = AgentExtensionRegistry()
         ctx.provide(AGENT_EXTENSIONS, extensions)
         ctx.on_dispose(extensions.aclose, label="agent extensions")

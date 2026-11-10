@@ -3,7 +3,7 @@ import re
 from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Protocol, Sequence
-from agent_platform_plugin_sdk import Registration, ServiceClosedError, ServiceKey, ServiceRef, RegistrationConflictError
+from agent_platform_plugin_sdk import Registration, ServiceClosedError, ServiceKey, RegistrationConflictError
 
 NAME = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 MAX_SKILL_BYTES = 128 * 1024
@@ -98,7 +98,7 @@ class SkillsService(Protocol):
     def load(self, name: str, scope: SkillScope, resource: str | None = None) -> dict: ...
 
 
-SKILLS: ServiceKey[SkillsService] = ServiceKey(ServiceRef(name="skills", api_version=1))
+SKILLS: ServiceKey[SkillsService] = ServiceKey("skills")
 
 
 class _ProviderRegistration:

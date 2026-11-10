@@ -6,7 +6,7 @@ their service keys live with the contracts they belong to.
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from agent_platform_plugin_sdk import ServiceKey, ServiceRef
+from agent_platform_plugin_sdk import ServiceKey
 
 
 @dataclass
@@ -23,4 +23,4 @@ class AgentRuntimeService(Protocol):
     async def plain(self, key: str, messages: list[dict], config: dict) -> tuple[str, bool]: ...
 
 
-AGENT_RUNTIME: ServiceKey[AgentRuntimeService] = ServiceKey(ServiceRef(name="agent.runtime", api_version=1))
+AGENT_RUNTIME: ServiceKey[AgentRuntimeService] = ServiceKey("agent.runtime")

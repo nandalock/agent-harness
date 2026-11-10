@@ -1,9 +1,13 @@
 import tempfile
 import unittest
+
+from pydantic import ValidationError
 from pathlib import Path
 
 from agent_platform_plugin_runtime import (
     ConfigurationError,
+    PluginConfiguration,
+    PluginEntry,
     load_yaml_config,
     parse_config,
     parse_yaml,
@@ -68,6 +72,42 @@ class ConfigurationTests(unittest.TestCase):
     def test_configuration_instance_is_accepted_directly(self):
         config = parse_config({"version": 1, "plugins": []})
         self.assertEqual(config.plugins, ())
+
+
+class ConfigurationModelTests(unittest.TestCase):
+    def test_yaml_shaped_document_round_trips_without_losing_instance_identity(self):
+        config = PluginConfiguration.model_validate({"version": 1, "plugins": [
+            {"id": "tools", "name": "agent-platform.tools-default", "config": {}},
+            {"id": "echo", "name": "example.echo", "disabled": True, "config": {"prefix": "收到："}},
+        ]})
+        self.assertEqual(config.plugins[0].id, "tools")
+        self.assertEqual(config.plugins[0].name, "agent-platform.tools-default")
+        self.assertEqual(PluginConfiguration.model_validate_json(config.model_dump_json()), config)
+
+    def test_instances_are_unique_but_implementation_names_can_repeat(self):
+        entries = [{"id": "first", "name": "example.echo"}, {"id": "second", "name": "example.echo"}]
+        self.assertEqual(len(PluginConfiguration(plugins=entries).plugins), 2)
+        entries[1]["id"] = "first"
+        with self.assertRaises(ValidationError):
+            PluginConfiguration(plugins=entries)
+
+    def test_invalid_or_ambiguous_configuration_is_rejected(self):
+        for value in ({"id": "bad id", "name": "example.echo"},
+                      {"id": "echo", "name": "backend.module:Plugin"},
+                      {"id": "echo", "name": "example.echo", "disabled": "false"},
+                      {"id": "echo", "name": "example.echo", "extra": True},
+                      {"id": "echo", "name": "example.echo", "config": {"callback": object()}},
+                      {"id": "echo", "name": "example.echo", "config": {"number": float("nan")}}):
+            with self.subTest(value=value), self.assertRaises(ValidationError):
+                PluginEntry.model_validate(value)
+        for version in (2, True, "1"):
+            with self.subTest(version=version), self.assertRaises(ValidationError):
+                PluginConfiguration(version=version)
+
+    def test_plugin_config_defaults_are_isolated(self):
+        entry = PluginEntry(id="one", name="example.one")
+        entry.config["changed"] = True
+        self.assertEqual(PluginEntry(id="two", name="example.two").config, {})
 
 
 if __name__ == "__main__":

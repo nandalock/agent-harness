@@ -49,10 +49,10 @@ class _Context:
         self._services = services
 
     def require(self, key):
-        return self._services[key.ref]
+        return self._services[key]
 
     def get(self, key):
-        return self._services.get(key.ref)
+        return self._services.get(key)
 
 
 def runtime_service(runs, config, *, llm=None, persistence=None, store=None):
@@ -67,15 +67,15 @@ def runtime_service(runs, config, *, llm=None, persistence=None, store=None):
     sp = SystemPrompt()
     register_platform_sections(sp, unified_tool_provider(_NoTools()))
     services = {
-        AGENTS.ref: SimpleNamespace(get_config=get_config),
-        AGENT_RUNS.ref: runs,
-        RUNTIME_PROMPTS.ref: SystemPromptService(sp),
-        LLM.ref: fake_llm,
-        AGENT_SANDBOX.ref: _NoSandboxPolicy(),
-        SESSIONS.ref: store,
-        SESSION_PERSISTENCE.ref: persistence,
-        SESSION_RECOVERY.ref: recovery,
-        SESSION_TITLE.ref: title,
+        AGENTS: SimpleNamespace(get_config=get_config),
+        AGENT_RUNS: runs,
+        RUNTIME_PROMPTS: SystemPromptService(sp),
+        LLM: fake_llm,
+        AGENT_SANDBOX: _NoSandboxPolicy(),
+        SESSIONS: store,
+        SESSION_PERSISTENCE: persistence,
+        SESSION_RECOVERY: recovery,
+        SESSION_TITLE: title,
     }
     service = RuntimeService(_Context(services), AgentExtensionRegistry())
     service.services = services

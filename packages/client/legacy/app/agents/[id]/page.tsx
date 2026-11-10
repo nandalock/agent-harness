@@ -287,6 +287,10 @@ export default function AgentDetailPage() {
 
   async function handleSaveConfig() {
     if (configLoading || configError) return;
+    if (config.context_window != null && (!Number.isSafeInteger(config.context_window) || Number(config.context_window) < 2048)) {
+      setSaveMsg('上下文窗口需要填写至少 2048 的整数');
+      return;
+    }
     setSaving(true); setSaveMsg('');
     try {
       const body: any = { ...config };
@@ -508,6 +512,13 @@ export default function AgentDetailPage() {
                 <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
               </optgroup>
             </select>
+          </label>
+
+          <label style={labelField}>上下文窗口（tokens）
+            <input type="number" min={2048} step={1} placeholder="留空使用记忆插件默认值"
+              value={typeof config.context_window === 'number' ? config.context_window : ''}
+              onChange={e => setConfig(p => ({ ...p, context_window: e.target.value ? e.target.valueAsNumber : null }))}
+              style={inputField} />
           </label>
 
           <div style={{ paddingTop:S.sm }}>

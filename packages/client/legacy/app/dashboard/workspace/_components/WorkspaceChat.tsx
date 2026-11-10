@@ -18,6 +18,7 @@ import RecoveryBanner from '@/app/agents/_components/RecoveryBanner';
 import VirtualTranscript, { type TranscriptHandle } from '@/components/VirtualTranscript';
 import { useOlderMessages } from '@/components/useOlderMessages';
 import { fetchHistoryPage, messageKey, type ChatMessage } from '@/lib/chatHistory';
+import { fetchMemory, type ContextUsage } from '@/lib/memory';
 import { Fish, PanelRight, ShieldAlert } from 'lucide-react';
 import { W, R, WS, CHAT_COLUMN } from '../theme';
 import { useTrajectoryBatch } from '@/app/agents/_components/useTrajectoryBatch';
@@ -96,6 +97,7 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
   const [approvals, setApprovals] = useState<PendingApproval[]>([]);
   const { nodes: trajNodes, nodesRef, enqueue, forceFlush, reset } = useTrajectoryBatch();
   const [liveUsage, setLiveUsage] = useState<UsageRow[]>([]);
+  const [contextUsage, setContextUsage] = useState<{ sessionId: string; usage?: ContextUsage }>();
   const usageRef = useRef<UsageRow[]>([]);
   // 当前在飞的 SSE 观看连接。abort 它只是 detach（后端继续跑）；停止必须走 /chat/cancel。
   const stopRef = useRef<AbortController | null>(null);
@@ -109,6 +111,25 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
   // 首问交接：consumedKey 记「哪条已认领」，historySettled 是「历史加载完了」的闸
   const consumedKeyRef = useRef<string | null>(null);
   const [historySettled, setHistorySettled] = useState(false);
+
+  function updateContextUsage(sessionId: string, usage?: ContextUsage) {
+    setContextUsage(previous => {
+      if (previous?.sessionId === sessionId && (previous.usage?.event_seq ?? 0) > (usage?.event_seq ?? 0)) {
+        return previous;
+      }
+      return { sessionId, usage };
+    });
+  }
+
+  useEffect(() => {
+    const sessionId = session?.session_id;
+    if (!sessionId) return;
+    const controller = new AbortController();
+    fetchMemory('sessions', sessionId, controller.signal).then(document => {
+      if (!controller.signal.aborted) updateContextUsage(sessionId, document.usage ?? undefined);
+    }).catch(() => { /* Memory can be disabled for this profile. */ });
+    return () => controller.abort();
+  }, [session?.session_id]);
 
   // ── 会话切换：最近 50 条消息及对应回合的轨迹 ──
   useEffect(() => {
@@ -234,6 +255,12 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
     let doneTrace: TraceSummary | undefined;
     let legacyThink = '';
     let legacyAns = '';
+    let contextSessionId = session?.session_id;
+    const updateContext = (usage: ContextUsage | undefined) => {
+      if (usage && contextSessionId && !controller.signal.aborted) {
+        updateContextUsage(contextSessionId, usage);
+      }
+    };
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -250,6 +277,8 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
         try { ev = JSON.parse(line.slice(5).trim()); } catch { continue; }
         switch (ev.type) {
           case 'live/snapshot': {
+            contextSessionId = ev.session_id || contextSessionId;
+            updateContext(ev.context_usage);
             // 回到正在跑的会话：先清空实时投影，再用后端快照重建，之后继续吃增量。
             reset();
             for (const node of Array.isArray(ev.nodes) ? ev.nodes : []) {
@@ -267,6 +296,12 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
             }).filter((a: PendingApproval) => !!a.approvalId));
             break;
           }
+          case 'session/ready':
+            contextSessionId = ev.session_id || contextSessionId;
+            break;
+          case 'context/usage':
+            updateContext(ev.usage);
+            break;
           case 'traj/open':
           case 'traj/delta':
           case 'traj/update':
@@ -582,6 +617,8 @@ export default function WorkspaceChat({ session, onTurnDone, uploading, uploadEr
           <Composer
             agentKey={session?.agent_key}
             sessionId={session?.session_id}
+            contextUsage={contextUsage?.sessionId === session?.session_id ? contextUsage?.usage : undefined}
+            memoryAvailable={contextUsage?.sessionId === session?.session_id}
             disabled={!session}   /* 发送中不禁用：那时的发送语义是「并入当前轮」（steer） */
             sending={sending}
             onStop={() => { void handleStop(); }}

@@ -14,9 +14,6 @@ dependencies = [
     "psycopg2-binary>=2.9",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.session-persistence-postgres" = "agent_platform_session_persistence_postgres:PostgresPersistencePlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_session_persistence_postgres"]
 

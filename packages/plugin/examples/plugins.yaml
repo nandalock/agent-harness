@@ -2,7 +2,9 @@ version: 1
 plugins:
   - id: tools
     name: agent-platform.tools-default
+    use: agent_platform_tools_default:ToolsDefaultPlugin
   - id: echo
     name: example.echo
+    use: example_echo_plugin:plugin
     config:
       prefix: "收到："

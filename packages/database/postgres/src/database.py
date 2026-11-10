@@ -1,4 +1,4 @@
-"""Pooled PostgreSQL database owned by one PluginRuntime."""
+"""Pooled PostgreSQL database owned by one PluginLoader."""
 from __future__ import annotations
 
 import re

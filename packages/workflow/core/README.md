@@ -14,14 +14,14 @@ and `router`. A `NodeFactory` receives a `NodeContext` with the agent entry,
 agent config and node cache, and returns a `NodeDefinition`:
 
 ```python
+from minidsh_cordis import Plugin
+from agent_platform_plugin_sdk import SdkModel
 from agent_platform_workflow.contracts import NodeContext, NodeDefinition, WORKFLOW_NODES
 
-class KnowledgeNodePlugin:
-    spec = PluginSpec(
-        name="example.knowledge-node",
-        version="0.1.0",
-        requires=(ServiceRequirement(service=WORKFLOW_NODES.ref),),
-    )
+class KnowledgeNodePlugin(Plugin[SdkModel]):
+    name = "example.knowledge-node"
+    version = "0.1.0"
+    requires = (WORKFLOW_NODES,)
     config_model = SdkModel
 
     async def setup(self, ctx, config):

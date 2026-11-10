@@ -4,10 +4,8 @@ import unittest
 
 from agent_platform_plugin_sdk import (
     ExecutionScope,
-    PluginSpec,
     RegistrationConflictError,
     SdkModel,
-    ServiceRequirement,
     TOOLS,
     ToolCall,
     ToolContext,
@@ -18,12 +16,13 @@ from agent_platform_plugin_sdk import (
     TOOL_TIMEOUT,
     TOOL_UNAVAILABLE,
 )
-from agent_platform_plugin_runtime import MappingCatalog, PluginRuntime
+from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
 from agent_platform_tools_default import (
     TOOL_CATALOG,
     ToolsDefaultPlugin,
     ToolsDefaultService,
 )
+from minidsh_cordis import Plugin
 
 
 def scope() -> ExecutionScope:
@@ -157,12 +156,10 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         class ConsumerConfig(SdkModel):
             pass
 
-        class Consumer:
-            spec = PluginSpec(
-                name="test.consumer",
-                version="0.1.0",
-                requires=(ServiceRequirement(service=TOOLS.ref),),
-            )
+        class Consumer(Plugin[ConsumerConfig]):
+            name = "test.consumer"
+            version = "0.1.0"
+            requires = (TOOLS,)
             config_model = ConsumerConfig
 
             async def setup(self, ctx, config):
@@ -170,7 +167,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
                 ctx.track(tools.register_executor("echo", EchoExecutor("c:")))
                 ctx.track(tools.register_tool(descriptor("echo")))
 
-        runtime = PluginRuntime(
+        runtime = PluginLoader(
             {
                 "version": 1,
                 "plugins": [

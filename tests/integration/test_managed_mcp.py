@@ -2,11 +2,12 @@ import socket
 import unittest
 from unittest.mock import patch
 
-from agent_platform_plugin_runtime import PluginRuntime, MappingCatalog
-from agent_platform_plugin_sdk import PluginSpec, SdkModel, ServiceRequirement, TOOLS, ExecutionScope, ToolCall, ToolContext
+from agent_platform_plugin_runtime import PluginLoader, MappingCatalog
+from agent_platform_plugin_sdk import SdkModel, TOOLS, ExecutionScope, ToolCall, ToolContext
 from agent_platform_tools_default import ToolsDefaultPlugin
 from agent_platform_mcp_client import McpManagerPlugin, MCP_MANAGER
 from agent_platform_managed_mcp import BuiltinPlugin, PaperPlugin, OverleafPlugin
+from minidsh_cordis import Plugin
 
 
 def free_port():
@@ -16,8 +17,10 @@ def free_port():
 
 
 def runtime_for(plugin, port, failing=False):
-    class Fail:
-        spec = PluginSpec(name="test.fail", version="0.1.0", requires=(ServiceRequirement(service=MCP_MANAGER.ref),))
+    class Fail(Plugin[SdkModel]):
+        name = "test.fail"
+        version = "0.1.0"
+        requires = (MCP_MANAGER,)
         config_model = SdkModel
 
         async def setup(self, ctx, config):
@@ -26,13 +29,13 @@ def runtime_for(plugin, port, failing=False):
     entries = [
         {"id": "tools", "name": "agent-platform.tools-default"},
         {"id": "manager", "name": "agent-platform.mcp-manager"},
-        {"id": "service", "name": plugin.spec.name, "config": {"port": port}},
+        {"id": "service", "name": plugin.name, "config": {"port": port}},
     ]
     if failing:
         entries.append({"id": "failure", "name": "test.fail"})
-    return PluginRuntime({"plugins": entries}, catalog=MappingCatalog({
+    return PluginLoader({"plugins": entries}, catalog=MappingCatalog({
         "agent-platform.tools-default": ToolsDefaultPlugin, "agent-platform.mcp-manager": McpManagerPlugin,
-        plugin.spec.name: plugin, "test.fail": Fail,
+        plugin.name: plugin, "test.fail": Fail,
     }))
 
 

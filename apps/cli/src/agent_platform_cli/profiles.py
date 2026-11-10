@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import configparser
 from contextlib import contextmanager
 import json
 import os
@@ -11,7 +10,6 @@ import re
 import subprocess
 import sys
 import tempfile
-from zipfile import ZipFile
 import venv
 
 from dotenv import dotenv_values
@@ -19,8 +17,7 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name, parse_wheel_filename
 import yaml
 
-from agent_platform_plugin_runtime import load_yaml_config
-from agent_platform_plugin_sdk import PLUGIN_ENTRY_POINT_GROUP, PluginConfiguration, PluginEntry
+from agent_platform_plugin_runtime import PluginConfiguration, PluginEntry, PluginPatch, load_yaml_config
 
 
 def atomic_write(path: Path, content: str) -> None:
@@ -99,8 +96,8 @@ class Profile:
             encoding="utf-8", input=input,
         )
 
-    def worker(self, action):
-        return json.loads(self.execute("-m", "agent_platform_cli._profile_worker", action, capture=True).stdout)
+    def worker(self, action, *args):
+        return json.loads(self.execute("-m", "agent_platform_cli._profile_worker", action, *args, capture=True).stdout)
 
     def inventory(self):
         return {row["distribution"]: row for row in self.worker("inventory")}
@@ -136,35 +133,44 @@ class Profile:
             print(self.root)
 
     def validate_and_save(self, entries) -> None:
-        config = PluginConfiguration(plugins=tuple(entries))
+        document = load_yaml_config(self.config)
+        entries = tuple(entries)
+        removed = {entry.id for entry in document.plugins} - {entry.id for entry in entries}
+        config = document.model_copy(update={
+            "plugins": entries, "patches": tuple(patch for patch in document.patches if patch.id not in removed),
+        })
+        self._save_configuration(config)
+
+    def _save_configuration(self, config: PluginConfiguration) -> None:
         self.execute("-m", "agent_platform_cli._profile_worker", "validate", input=config.model_dump_json())
-        atomic_write(self.config, yaml.safe_dump(config.model_dump(mode="json"), sort_keys=False, allow_unicode=True))
+        atomic_write(self.config, yaml.safe_dump(config.model_dump(mode="json", exclude_defaults=True),
+                                                sort_keys=False, allow_unicode=True))
 
     def list_plugins(self) -> None:
         config = self.worker("config")
-        configured = set()
         for row in config["plugins"]:
-            configured.add(row["name"])
-            state = "disabled" if row["disabled"] else "enabled"
-            print(f'{row["id"]:<26} {state:<12} {row["name"]}')
-        for dist in self.inventory().values():
-            for entry in dist["entries"]:
-                if entry not in configured:
-                    print(f'{"":26} {"installed":12} {entry} ({dist["distribution"]} {dist["version"]})')
+            group = config["groups"].get(row.get("group"), {})
+            state = "disabled" if row["disabled"] or group.get("disabled") else "enabled"
+            print(f'{row["id"]:<26} {state:<12} {row["use"] or row["name"]}')
 
     def toggle(self, plugin_id: str, *, disabled: bool) -> None:
-        entries = list(load_yaml_config(self.config).plugins)
+        document = load_yaml_config(self.config)
         current = PluginConfiguration.model_validate(self.worker("config"))
         target = next((row for row in current.plugins if row.id == plugin_id), None)
         if target is None:
             raise ValueError(f"Unknown plugin ID: {plugin_id}. Use minidsh plugin list.")
+        group = current.groups.get(target.group) if target.group is not None else None
+        if not disabled and group is not None and group.disabled:
+            raise ValueError(f"Plugin group {target.group!r} is disabled in the configuration.")
         if target.disabled == disabled:
             return
-        entries = [row for row in entries if row.id != plugin_id]
-        entries.append(target.model_copy(update={"disabled": disabled}))
-        self.validate_and_save(entries)
+        patches = [patch.model_copy(update={"disabled": None}) if patch.id == plugin_id else patch
+                   for patch in document.patches]
+        patches = [patch for patch in patches if patch.config or patch.disabled is not None]
+        patches.append(PluginPatch(id=target.id, disabled=disabled))
+        self._save_configuration(document.model_copy(update={"patches": tuple(patches)}))
 
-    def install(self, source: str, *, entry_name: str | None, plugin_id: str | None,
+    def install(self, source: str, *, target: str, plugin_id: str | None,
                 config: dict, wheelhouse: Path | None, disabled: bool = False) -> None:
         local = Path(source).expanduser()
         if local.is_file():
@@ -181,22 +187,19 @@ class Profile:
             installed = self.inventory()
             if distribution in installed:
                 raise ValueError(f"{distribution} is already installed in this profile")
-            entries = wheel_entries(wheel)
-            if entry_name is None and len(entries) == 1:
-                entry_name = entries[0]
-            if entry_name not in entries:
-                raise ValueError("Select a declared entry with --entry: " + (", ".join(entries) or "(none)"))
-            if any(entry in row["entries"] for row in installed.values() for entry in entries):
-                raise ValueError("This wheel collides with an installed plugin entry point")
-            candidate = PluginEntry(id=plugin_id or entry_name, name=entry_name, config=config, disabled=disabled)
             overrides = load_yaml_config(self.config).plugins
             effective = PluginConfiguration.model_validate(self.worker("config")).plugins
-            if any(row.id == candidate.id for row in effective):
-                raise ValueError(f"Plugin ID already in use: {candidate.id}")
             self.refresh_lock()
             try:
                 self.execute("-m", "pip", "install", "--constraint", self.lockfile, *links, wheel)
                 try:
+                    export = self.worker("describe", distribution, target)
+                    candidate = PluginEntry(
+                        id=plugin_id or export["name"], name=export["name"], use=export["use"],
+                        config=config, disabled=disabled,
+                    )
+                    if any(row.id == candidate.id or row.name == candidate.name for row in effective):
+                        raise ValueError(f"Plugin ID or name already in use: {candidate.id} ({candidate.name})")
                     self.validate_and_save((*overrides, candidate))
                 except Exception:
                     self.execute("-m", "pip", "uninstall", "--yes", distribution)
@@ -208,7 +211,7 @@ class Profile:
         distribution = canonicalize_name(distribution)
         installed = self.inventory()
         dist = installed.get(distribution)
-        if dist is None or not dist["entries"]:
+        if dist is None:
             raise ValueError(f"No installed plugin distribution: {distribution}")
         protected = {line.partition("==")[0] for line in self.base.read_text(encoding="utf-8").splitlines()}
         if distribution in protected:
@@ -222,26 +225,21 @@ class Profile:
                     requirement.marker is None or requirement.marker.evaluate()
                 ):
                     raise ValueError(f"{name} depends on {distribution}")
-        entries = [
-            row for row in load_yaml_config(self.config).plugins
-            if row.name not in dist["entries"]
-        ]
+        ownership = self.worker("owned", distribution)
+        if ownership["included"]:
+            raise ValueError("Remove this plugin's declarations from the included YAML files first.")
+        owned = set(ownership["configured"])
+        if not owned:
+            raise ValueError(f"No configured exports belong to {distribution}")
+        document = load_yaml_config(self.config)
+        if owned - {row.id for row in document.plugins}:
+            raise ValueError("Remove this plugin's declarations from the included YAML files first.")
+        entries = [row for row in document.plugins if row.id not in owned]
         self.validate_and_save(entries)
         try:
             self.execute("-m", "pip", "uninstall", "--yes", distribution)
         finally:
             self.refresh_lock()
-
-
-def wheel_entries(wheel: Path) -> tuple[str, ...]:
-    with ZipFile(wheel) as archive:
-        entries = [name for name in archive.namelist() if name.endswith(".dist-info/entry_points.txt")]
-        if len(entries) != 1:
-            return ()
-        config = configparser.ConfigParser(interpolation=None)
-        config.optionxform = str
-        config.read_string(archive.read(entries[0]).decode("utf-8"))
-        return tuple(config[PLUGIN_ENTRY_POINT_GROUP]) if config.has_section(PLUGIN_ENTRY_POINT_GROUP) else ()
 
 
 def parser() -> argparse.ArgumentParser:
@@ -260,6 +258,7 @@ def parser() -> argparse.ArgumentParser:
     web = profile_option(commands.add_parser("web", help="start the profile's Web application"))
     web.add_argument("--host", default="127.0.0.1")
     web.add_argument("--port", type=int, default=4000)
+    web.add_argument("--plugin-patch", type=Path, help="override the profile's plugin configuration")
     run = profile_option(commands.add_parser("run", help="run one Agent turn in the profile"))
     run.add_argument("question")
     run.add_argument("--agent", required=True)
@@ -270,7 +269,7 @@ def parser() -> argparse.ArgumentParser:
     profile_option(plugin_commands.add_parser("list"))
     install = profile_option(plugin_commands.add_parser("install"))
     install.add_argument("source")
-    install.add_argument("--entry")
+    install.add_argument("--use", required=True, help="Cordis export as module:object")
     install.add_argument("--id")
     install.add_argument("--config", default="{}", help="initial plugin config as a JSON object")
     install.add_argument("--wheelhouse", type=Path)
@@ -295,6 +294,8 @@ def main(argv=None) -> int:
         with profile.exclusive():
             if args.command == "web":
                 env = {**profile.environment(), "MINIDSH_SERVE_WEB": "1"}
+                if args.plugin_patch is not None:
+                    env["MINIDSH_PLUGIN_PATCH"] = str(args.plugin_patch.expanduser().resolve())
                 profile.execute("-m", "uvicorn", "agent_platform_server:app",
                                 "--host", args.host, "--port", args.port, env=env)
             elif args.command == "run":
@@ -305,7 +306,7 @@ def main(argv=None) -> int:
                 if not isinstance(config, dict):
                     raise ValueError("--config must be a JSON object")
                 wheelhouse = args.wheelhouse.expanduser().resolve() if args.wheelhouse else None
-                profile.install(args.source, entry_name=args.entry, plugin_id=args.id,
+                profile.install(args.source, target=args.use, plugin_id=args.id,
                                 config=config, wheelhouse=wheelhouse, disabled=args.disabled)
             elif args.action in ("enable", "disable"):
                 profile.toggle(args.id, disabled=args.action == "disable")

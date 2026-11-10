@@ -28,6 +28,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from agent_platform_plugin_sdk.agents import PrepareRequest
 from agent_platform_llm.errors import LlmError
 
 
@@ -67,3 +68,5 @@ class LoopHooks:
     request_error: RequestErrorHook | None = None
     # 认领输入并记录用户消息后、构造模型请求前调用；Loop 记录返回的注入消息。
     pre_step: PreStepHook | None = None
+    # Runs after pre_step injections, before the final request and its checkpoint.
+    prepare_request: PrepareRequest | None = None

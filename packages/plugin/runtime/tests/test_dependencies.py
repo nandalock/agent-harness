@@ -4,14 +4,14 @@ from agent_platform_plugin_runtime import (
     DependencyCycleError,
     MissingServiceError,
     MappingCatalog,
-    PluginRuntime,
+    PluginLoader,
     ServiceConflictError,
 )
-from support import plugin_class, requirement, service_key, service_ref
+from support import plugin_class, service_key
 
 
 def runtime_for(entries, catalog, host_services=None):
-    return PluginRuntime(
+    return PluginLoader(
         {"version": 1, "plugins": entries},
         catalog=MappingCatalog(catalog),
         host_services=host_services,
@@ -21,9 +21,9 @@ def runtime_for(entries, catalog, host_services=None):
 class DependencyTests(unittest.IsolatedAsyncioTestCase):
     async def test_provider_starts_before_consumer_regardless_of_config_order(self):
         log = []
-        ref = service_ref("test.service")
+        ref = service_key("test.service")
         consumer = plugin_class(
-            "test.consumer", requires=(requirement("test.service"),), log=log
+            "test.consumer", requires=(service_key("test.service"),), log=log
         )
         provider = plugin_class("test.provider", provides=(ref,), log=log)
         runtime = runtime_for(
@@ -49,7 +49,7 @@ class DependencyTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_required_service_is_reported_before_setup(self):
         log = []
         consumer = plugin_class(
-            "test.consumer", requires=(requirement("test.absent"),), log=log
+            "test.consumer", requires=(service_key("test.absent"),), log=log
         )
         runtime = runtime_for(
             [{"id": "consumer", "name": "test.consumer"}],
@@ -66,7 +66,7 @@ class DependencyTests(unittest.IsolatedAsyncioTestCase):
         log = []
         consumer = plugin_class(
             "test.consumer",
-            requires=(requirement("test.absent", optional=True),),
+            optional=(service_key("test.absent"),),
             log=log,
         )
         runtime = runtime_for(
@@ -78,7 +78,7 @@ class DependencyTests(unittest.IsolatedAsyncioTestCase):
         await runtime.aclose()
 
     async def test_two_plugins_cannot_provide_the_same_service(self):
-        ref = service_ref("test.service")
+        ref = service_key("test.service")
         first = plugin_class("test.first", provides=(ref,))
         second = plugin_class("test.second", provides=(ref,))
         runtime = runtime_for(
@@ -93,7 +93,7 @@ class DependencyTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("test.service.v1", str(raised.exception))
 
     async def test_plugin_cannot_shadow_a_host_service(self):
-        consumer = plugin_class("test.hosted", provides=(service_ref("test.service"),))
+        consumer = plugin_class("test.hosted", provides=(service_key("test.service"),))
         runtime = runtime_for(
             [{"id": "hosted", "name": "test.hosted"}],
             {"test.hosted": consumer},
@@ -106,7 +106,7 @@ class DependencyTests(unittest.IsolatedAsyncioTestCase):
         hosted = object()
         log = []
         consumer = plugin_class(
-            "test.consumer", requires=(requirement("test.service"),), log=log
+            "test.consumer", requires=(service_key("test.service"),), log=log
         )
         runtime = runtime_for(
             [{"id": "consumer", "name": "test.consumer"}],
@@ -121,13 +121,13 @@ class DependencyTests(unittest.IsolatedAsyncioTestCase):
     async def test_required_cycle_is_rejected(self):
         first = plugin_class(
             "test.first",
-            provides=(service_ref("test.a"),),
-            requires=(requirement("test.b"),),
+            provides=(service_key("test.a"),),
+            requires=(service_key("test.b"),),
         )
         second = plugin_class(
             "test.second",
-            provides=(service_ref("test.b"),),
-            requires=(requirement("test.a"),),
+            provides=(service_key("test.b"),),
+            requires=(service_key("test.a"),),
         )
         runtime = runtime_for(
             [
@@ -143,12 +143,12 @@ class DependencyTests(unittest.IsolatedAsyncioTestCase):
     async def test_optional_edges_still_order_and_can_form_a_cycle(self):
         log = []
         provider = plugin_class(
-            "test.provider", provides=(service_ref("test.b"),), log=log
+            "test.provider", provides=(service_key("test.b"),), log=log
         )
         consumer = plugin_class(
             "test.consumer",
-            provides=(service_ref("test.a"),),
-            requires=(requirement("test.b", optional=True),),
+            provides=(service_key("test.a"),),
+            optional=(service_key("test.b"),),
             log=log,
         )
         runtime = runtime_for(
@@ -164,13 +164,13 @@ class DependencyTests(unittest.IsolatedAsyncioTestCase):
 
         first = plugin_class(
             "test.one",
-            provides=(service_ref("test.c"),),
-            requires=(requirement("test.d", optional=True),),
+            provides=(service_key("test.c"),),
+            optional=(service_key("test.d"),),
         )
         second = plugin_class(
             "test.two",
-            provides=(service_ref("test.d"),),
-            requires=(requirement("test.c", optional=True),),
+            provides=(service_key("test.d"),),
+            optional=(service_key("test.c"),),
         )
         cyclic = runtime_for(
             [
@@ -185,8 +185,8 @@ class DependencyTests(unittest.IsolatedAsyncioTestCase):
     async def test_self_requirement_is_rejected(self):
         plugin = plugin_class(
             "test.self",
-            provides=(service_ref("test.self-service"),),
-            requires=(requirement("test.self-service"),),
+            provides=(service_key("test.self-service"),),
+            requires=(service_key("test.self-service"),),
         )
         runtime = runtime_for(
             [{"id": "self", "name": "test.self"}], {"test.self": plugin}
@@ -194,9 +194,9 @@ class DependencyTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(DependencyCycleError):
             await runtime.start()
 
-    async def test_disabled_provider_cannot_satisfy_a_requirement(self):
+    async def test_disabled_provider_cannot_satisfy_a_service_key(self):
         consumer = plugin_class(
-            "test.consumer", requires=(requirement("test.service"),)
+            "test.consumer", requires=(service_key("test.service"),)
         )
         runtime = runtime_for(
             [

@@ -1,6 +1,6 @@
 # skills-default
 
-Service-only plugin providing `skills.v1`. Each PluginRuntime receives a fresh
+Service-only plugin providing `skills.v1`. Each PluginLoader receives a fresh
 registry. It has no dependency on tools, agents or filesystem discovery.
 
 Providers register through `ctx.require(SKILLS).register_provider(provider)` and

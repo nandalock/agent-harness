@@ -6,6 +6,8 @@
 # 默认装配清单来自 packages/plugin/default。每条配置是一个插件实例，
 # 不是一个工具：skill-tools 提供两个工具，mcp-client 提供服务器的 0～N 个工具，
 # tools-default 只提供服务。显式 disabled: true 会禁止补入对应默认插件。
+# 可以用 includes 引用其他 YAML、用 groups 批量启停、用 patches 按实例 ID 覆盖参数。
+# 显式 Python 入口写作 use: module:export，详见 docs/startup.md。
 #
 # 下面这些默认实例会自动补入，不需要在这里重复：
 #   database-postgres    id: database
@@ -87,6 +89,7 @@
 # plugins:
 #   - id: echo
 #     name: example.echo
+#     use: example_echo_plugin:plugin
 #     config:
 #       prefix: "收到："
 version: 1

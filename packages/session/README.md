@@ -101,7 +101,7 @@ B——沙箱执行侧的 `cwd or workspace_for_session` 链与读侧 `_resolve_
 | `recovery/` | `agent_platform_session_recovery` | `SessionCheckpoint` 具体实现 · `prepare_session` / `recovery_status` |
 | `projection/` | `agent_platform_session_projection` | **只读**派生视图：沙箱模式覆盖 · trace 运行统计 · trajectory UI 轨迹 |
 
-每个包通过 `pyproject.toml` 的 `agent_platform.plugins` 入口点注册插件，服务键依次是
+默认清单按 `use` 导入各会话插件，服务键依次是
 `agent.sessions.v1`、`agent.session-persistence.v1`、`agent.session-title.v1`、
 `agent.session-recovery.v1`、`agent.session-projection.v1`。后端只保留
 `tests/integration/session/` 集成测试，不再有兼容 shim。

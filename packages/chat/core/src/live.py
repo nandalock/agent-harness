@@ -105,6 +105,7 @@ class LiveRun:
             "conversation_id": self.conversation_id,
             "nodes": nodes,
             "usage": usage,
+            **({"context_usage": dict(base["context_usage"])} if "context_usage" in base else {}),
             "pending_approvals": copy.deepcopy(list(self._pending_approvals.values())),
         }
 

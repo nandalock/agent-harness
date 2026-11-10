@@ -1,8 +1,6 @@
 """Service key owned by the RPC connection plugin."""
-from agent_platform_plugin_sdk import ServiceKey, ServiceRef
+from agent_platform_plugin_sdk import ServiceKey
 
 from .connection import RpcConnection
 
-CONNECTION: ServiceKey[RpcConnection] = ServiceKey(
-    ServiceRef(name="rpc.connection", api_version=1)
-)
+CONNECTION: ServiceKey[RpcConnection] = ServiceKey("rpc.connection")

@@ -1,8 +1,7 @@
 import asyncio
-from graphlib import CycleError
 from unittest import IsolatedAsyncioTestCase
 
-from minidsh_cordis import Context, EventKey, FiberState, Plugin, ServiceKey
+from minidsh_cordis import Context, DependencyCycleError, EventKey, FiberState, Plugin, ServiceKey
 
 PREFIX = ServiceKey[str]("prefix")
 LABEL = ServiceKey[str]("label")
@@ -126,7 +125,7 @@ class LifecycleTests(IsolatedAsyncioTestCase):
             ctx.provide(LABEL, ctx.require(PREFIX))
 
         use = await self.root.plugin(Plugin(consumer, requires=(PREFIX,), provides=(LABEL,)), id="use", config=None)
-        with self.assertRaises(CycleError):
+        with self.assertRaises(DependencyCycleError):
             await self.root.plugin(Plugin(provide_prefix, requires=(LABEL,), provides=(PREFIX,)), id="bad", config="a")
         self.assertEqual(self.root.fibers, (use,))
         await self.root.plugin(Plugin(provide_prefix, provides=(PREFIX,)), id="source", config="a")
@@ -184,3 +183,49 @@ class LifecycleTests(IsolatedAsyncioTestCase):
         await handles[0].aclose()
         self.assertTrue(handles[0].closed)
         self.assertEqual(await self.root.waterfall(RENDER, "text"), "[text]")
+
+    async def test_batch_rollback_drains_before_cleanup_on_the_caller_task(self):
+        root = Context(host_services={PREFIX: "host"}, lifecycle_in_caller=True)
+        self.addAsyncCleanup(root.aclose)
+        caller = asyncio.current_task()
+        timeline = []
+
+        def driver(ctx, _):
+            self.assertIs(asyncio.current_task(), caller)
+            self.assertEqual(ctx.require(PREFIX), "host")
+            ctx.on_quiesce(lambda: timeline.append("quiesce"))
+            ctx.on_dispose(lambda: timeline.append("close driver"))
+
+        def failure(ctx, _):
+            def cleanup():
+                self.assertIs(asyncio.current_task(), caller)
+                timeline.append("close partial")
+
+            ctx.on_dispose(cleanup)
+            raise ValueError("invalid setup")
+
+        with self.assertRaisesRegex(ValueError, "invalid setup"):
+            await root.start([("driver", Plugin(driver, requires=(PREFIX,)), None),
+                              ("failure", Plugin(failure), None)])
+        self.assertEqual(timeline, ["quiesce", "close partial", "close driver"])
+        self.assertEqual(root.fibers, ())
+        self.assertEqual(root.require(PREFIX), "host")
+
+    async def test_withdrawal_suspends_consumers_before_the_binding_is_removed(self):
+        registrations = []
+        disposed = []
+
+        def provider(ctx, config):
+            registrations.append(ctx.provide(PREFIX, config))
+
+        def consumer(ctx, _):
+            ctx.on_dispose(lambda: disposed.append(ctx.require(PREFIX)))
+
+        provider_fiber = await self.root.plugin(Plugin(provider, provides=(PREFIX,)), id="source", config="prefix")
+        consumer_fiber = await self.root.plugin(Plugin(consumer, requires=(PREFIX,)), id="use", config=None)
+        await registrations[0].aclose()
+        self.assertIs(provider_fiber.state, FiberState.ACTIVE)
+        self.assertIs(consumer_fiber.state, FiberState.PENDING)
+        self.assertEqual(disposed, ["prefix"])
+        with self.assertRaises(LookupError):
+            self.root.require(PREFIX)

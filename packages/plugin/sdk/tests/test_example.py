@@ -6,7 +6,7 @@ import unittest
 
 from pydantic import ValidationError
 
-from agent_platform_plugin_sdk import TOOLS, ToolCall, ToolContext, ensure_sdk_compatible
+from agent_platform_plugin_sdk import TOOLS, ToolCall, ToolContext
 from test_contract import MemoryTools
 from agent_platform_plugin_sdk import ExecutionScope
 
@@ -20,7 +20,6 @@ class ExampleTests(unittest.IsolatedAsyncioTestCase):
         try:
             module_spec.loader.exec_module(module)
             plugin = module.EchoPlugin()
-            ensure_sdk_compatible(plugin.spec)
             config = plugin.config_model.model_validate({"prefix": "收到："})
             with self.assertRaises(ValidationError):
                 plugin.config_model.model_validate({"prefix": "", "unrecognized": True})

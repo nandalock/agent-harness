@@ -1,10 +1,7 @@
 """Workspace controller plugin: registers workspace.* RPC methods."""
 from agent_platform_plugin_sdk import (
     DATABASE,
-    PluginContext,
-    PluginSpec,
     SdkModel,
-    ServiceRequirement,
 )
 from agent_platform_rpc_gateway import RPC_GATEWAY, RpcMethodContract
 from agent_platform_session_persistence import SESSION_PERSISTENCE
@@ -34,6 +31,7 @@ from .models import (
 )
 from .service import WorkspaceService
 from .services import WORKSPACE_CONTROLLER
+from minidsh_cordis import Context, Plugin
 
 METHODS = (
     RpcMethodContract("workspace.sessions.list", WorkspaceSessionsListParams, WorkspaceSessionsListResult),
@@ -53,22 +51,15 @@ class WorkspaceConfig(SdkModel):
     pass
 
 
-class WorkspaceControllerPlugin:
-    spec = PluginSpec(
-        name="agent-platform.api-workspace",
-        web_package=__package__,
-        version="0.1.0",
-        provides=(WORKSPACE_CONTROLLER.ref,),
-        requires=(
-            ServiceRequirement(service=RPC_GATEWAY.ref),
-            ServiceRequirement(service=DATABASE.ref),
-            ServiceRequirement(service=SESSION_PERSISTENCE.ref),
-            ServiceRequirement(service=SESSION_TITLE.ref),
-        ),
-    )
+class WorkspaceControllerPlugin(Plugin[WorkspaceConfig]):
+    name = "agent-platform.api-workspace"
+    web_package = __package__
+    version = "0.1.0"
+    provides = (WORKSPACE_CONTROLLER,)
+    requires = (RPC_GATEWAY, DATABASE, SESSION_PERSISTENCE, SESSION_TITLE)
     config_model = WorkspaceConfig
 
-    async def setup(self, ctx: PluginContext, config: WorkspaceConfig) -> None:
+    async def setup(self, ctx: Context, config: WorkspaceConfig) -> None:
         service = WorkspaceService(
             ctx.require(DATABASE),
             ctx.require(SESSION_PERSISTENCE),

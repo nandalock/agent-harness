@@ -5,10 +5,10 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent-platform-plugin-sdk"
 version = "0.1.0"
-description = "Plugin lifecycle and capability contracts for minidsh"
+description = "Business capability contracts for minidsh plugins"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["pydantic>=2,<3", "packaging>=23"]
+dependencies = ["pydantic>=2,<3", "minidsh-cordis==0.1.0+minidsh.3"]
 
 [project.optional-dependencies]
 dev = ["build>=1", "mypy>=1.10"]
@@ -27,3 +27,6 @@ python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
 files = ["src", "examples"]
+
+[tool.uv.sources]
+minidsh-cordis = { path = "../../../vendor/cordis", editable = true }

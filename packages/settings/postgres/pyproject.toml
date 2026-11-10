@@ -11,9 +11,6 @@ dependencies = [
     "agent-platform-plugin-sdk>=0.1,<0.2",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.settings-postgres" = "agent_platform_settings_postgres:PostgresSettingsPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_settings_postgres"]
 

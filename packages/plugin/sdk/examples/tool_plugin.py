@@ -1,8 +1,9 @@
 """A typed plugin entry point; import has no registration or execution effects."""
 from agent_platform_plugin_sdk import (
-    TOOLS, JsonObject, Plugin, PluginContext, PluginSpec, SdkModel,
-    ServiceRequirement, ToolContext, ToolDescriptor, ToolResult,
+    TOOLS, JsonObject, SdkModel,
+    ToolContext, ToolDescriptor, ToolResult,
 )
+from minidsh_cordis import Context, Plugin
 
 
 class EchoConfig(SdkModel):
@@ -17,15 +18,13 @@ class EchoExecutor:
         return ToolResult(data={"text": self.prefix + str(arguments.get("text", ""))})
 
 
-class EchoPlugin:
-    spec = PluginSpec(
-        name="example.echo",
-        version="0.1.0",
-        requires=(ServiceRequirement(service=TOOLS.ref),),
-    )
+class EchoPlugin(Plugin[EchoConfig]):
+    name = "example.echo"
+    version = "0.1.0"
+    requires = (TOOLS,)
     config_model = EchoConfig
 
-    async def setup(self, ctx: PluginContext, config: EchoConfig) -> None:
+    async def setup(self, ctx: Context, config: EchoConfig) -> None:
         tools = ctx.require(TOOLS)
         ctx.track(tools.register_executor("example.echo", EchoExecutor(config.prefix)))
         ctx.track(tools.register_tool(ToolDescriptor(

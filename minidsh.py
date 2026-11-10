@@ -404,7 +404,7 @@ def run(args, env, profile: FrontendProfile):
             # 使用平台默认的 ProactorEventLoop。
             argv += ["--loop", "none"]
         if args.action == "dev":
-            argv += ["--reload", "--reload-dir", "apps", "--reload-dir", "packages"]
+            argv += ["--reload", "--reload-dir", "apps", "--reload-dir", "packages", "--reload-dir", "vendor"]
         backend = spawn(argv, ROOT)
         deadline = time.monotonic() + 120
         while True:
@@ -456,6 +456,7 @@ def main():
                         help=f"local env file (default: {DEFAULT_ENV_FILE})")
     parser.add_argument("--backend-port", type=int, default=8000)
     parser.add_argument("--frontend-port", type=int, default=4000)
+    parser.add_argument("--plugin-patch", type=Path, help="override the plugin configuration")
     parser.add_argument("--frontend", "--profile", dest="profile", default=None,
                         help="frontend profile declared by packages/*/package.json dsh.frontend (default: web)")
     parser.add_argument("--dir", "--frontend-dir", dest="frontend_dir", default=None,
@@ -471,6 +472,8 @@ def main():
         parser.error("web starts the frontend; use 'dev --backend-only' for backend-only")
     if args.profile and args.frontend_dir:
         parser.error("use either --frontend or --dir, not both")
+    if args.plugin_patch is not None:
+        args.plugin_patch = args.plugin_patch.expanduser().resolve()
     os.chdir(ROOT)
     try:
         if args.action == "setup":
@@ -488,11 +491,16 @@ def main():
         if not PYTHON.exists():
             raise RuntimeError("Run python minidsh.py setup first.")
         if Path(sys.prefix).resolve() != VENV.resolve():
-            return subprocess.call([str(PYTHON), str(Path(__file__).resolve()), *sys.argv[1:]], cwd=ROOT)
+            arguments = sys.argv[1:]
+            if args.plugin_patch is not None:
+                arguments = [*arguments, "--plugin-patch", str(args.plugin_patch)]
+            return subprocess.call([str(PYTHON), str(Path(__file__).resolve()), *arguments], cwd=ROOT)
         web_prod = args.action == "web" and args.prod
         if args.action == "web":
             args.action = "start" if web_prod else "dev"
         env = environment(args)
+        if args.plugin_patch is not None:
+            env["MINIDSH_PLUGIN_PATCH"] = str(args.plugin_patch)
         profile = (_default_frontend_profile() if args.backend_only
                    else load_frontend_profile(args.profile, args.frontend_dir))
         if args.action == "doctor":

@@ -121,7 +121,8 @@ class RuntimeAgent:
             session=session,
             # provider 声明的默认重试策略（对齐 A：策略归 provider、执行归循环）。
             # 装配方要换策略，传自己的 LoopHooks 进来即可 —— 这里只兜「没人给」的情况。
-            hooks=LoopHooks(request_error=llm.retry_policy, pre_step=contributions.pre_step),
+            hooks=LoopHooks(request_error=llm.retry_policy, pre_step=contributions.pre_step,
+                            prepare_request=contributions.prepare_request),
             checkpoint=checkpoint, resumed_from=resumed_from,
             task_context=saved_task_context(context),
             sandbox_policy=lambda: self._sandbox_policy(session),

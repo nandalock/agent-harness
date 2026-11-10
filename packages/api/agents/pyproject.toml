@@ -14,9 +14,6 @@ dependencies = [
     "agent-platform-llm>=0.1,<0.2",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.api-agents" = "agent_platform_api_agents:AgentApiPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_api_agents"]
 

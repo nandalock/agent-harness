@@ -6,7 +6,7 @@ and may include lazily discovered provider tools.
 """
 from typing import Protocol
 
-from agent_platform_plugin_sdk import ServiceKey, ServiceRef, ToolDescriptor
+from agent_platform_plugin_sdk import ServiceKey, ToolDescriptor
 
 
 class ToolCatalog(Protocol):
@@ -17,6 +17,4 @@ class ToolCatalog(Protocol):
     def has_tool(self, name: str) -> bool: ...
 
 
-TOOL_CATALOG: ServiceKey[ToolCatalog] = ServiceKey(
-    ServiceRef(name="tools.catalog", api_version=1)
-)
+TOOL_CATALOG: ServiceKey[ToolCatalog] = ServiceKey("tools.catalog")

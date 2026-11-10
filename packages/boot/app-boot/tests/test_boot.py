@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agent_platform_app_boot import compose_plugins, resolve_config_path
-from agent_platform_plugin_sdk import PluginConfiguration
+from agent_platform_plugin_runtime import PluginConfiguration
 
 
 class BootConfigTests(unittest.TestCase):

@@ -13,9 +13,6 @@ dependencies = [
     "agent-platform-session-projection>=0.1,<0.2",
 ]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.sandbox-policy" = "agent_platform_sandbox_policy:SandboxPolicyPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_sandbox_policy"]
 

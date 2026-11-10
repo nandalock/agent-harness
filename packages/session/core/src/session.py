@@ -22,8 +22,10 @@ capability seam，当前阶段不参与执行链。
 import logging
 import time
 from collections.abc import Callable
+from html import escape
 
 from agent_platform_session.events import (
+    CONTEXT_CHECKPOINT,
     SEED,
     SessionEvent,
     SessionHeader,
@@ -198,6 +200,9 @@ class Session:
         """单个 surface 事件 → OpenAI message；非 surface 事件返回 None"""
         t = event.type
         d = event.data
+        if t == CONTEXT_CHECKPOINT:
+            summary = escape(d["summary"], quote=False)
+            return {"role": "user", "content": f"<session_summary>\n{summary}\n</session_summary>"}
         if t == SEED:
             return {"role": d.get("role", "system"), "content": d.get("content", "")}
         if t == "user/message":

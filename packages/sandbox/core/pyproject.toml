@@ -16,10 +16,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["build>=1", "mypy>=1.10"]
 
-[project.entry-points."agent_platform.plugins"]
-"agent-platform.sandbox-local" = "agent_platform_sandbox.plugin:LocalSandboxPlugin"
-"agent-platform.sandbox-docker" = "agent_platform_sandbox.plugin:DockerSandboxPlugin"
-
 [tool.setuptools]
 packages = ["agent_platform_sandbox", "agent_platform_sandbox.backends"]
 
