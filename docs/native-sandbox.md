@@ -4,7 +4,7 @@
 执行后端与权限模式独立：默认仍为 `workspace-write`，不会默认开启全权限。
 
 ```text
-PluginLoader → Cordis Context
+Loader → Cordis Context
   ├─ sandbox-local → sandbox.v1 服务
   └─ sandbox-tools → ctx.require(SANDBOX) → confine → 宿主机子进程
 ```

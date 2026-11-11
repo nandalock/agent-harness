@@ -20,10 +20,10 @@ plugins:
 `id` 标识当前装配中的实例，`name` 对应插件自身名称，`use` 定位类、工厂或插件定义。相同实现可以在一个清单中有多个实例。需要实例级可变状态时，把状态建在 `setup()` 中，或导出类、工厂。
 
 ```python
-from agent_platform_plugin_runtime import PluginLoader
+from minidsh_cordis_plugin_loader import Loader
 from agent_platform_plugin_sdk import TOOLS
 
-loader = PluginLoader.from_yaml("plugins.yaml")
+loader = Loader.from_yaml("plugins.yaml")
 await loader.start()
 try:
     tools = loader.ctx.require(TOOLS)
@@ -31,6 +31,6 @@ finally:
     await loader.aclose()
 ```
 
-`PluginLoader.validate()` 可以在修改 profile 时提前检查导出、参数和依赖图。Web 在 YAML 更新后调用 `reconfigure()`，由 Cordis 重装受影响的插件。应用通过 Loader 的清单读取活跃插件的名称、版本和浏览器资源。
+`Loader.validate()` 可以在修改 profile 时提前检查导出、参数和依赖图。Web 在 YAML 更新后调用 `reconfigure()`，由 Cordis 重装受影响的插件。应用通过 Loader 的清单读取活跃插件的名称、版本和浏览器资源。
 
-[分层配置和分组](../../../docs/startup.md) · [可运行的 Echo 示例](../examples/README.md) · [Cordis 内核](../../../vendor/cordis/README.md)
+[分层配置和分组](../../../docs/startup.md) · [可运行的 Echo 示例](../../plugin/examples/README.md) · [Cordis 内核](../cordis/README.md)

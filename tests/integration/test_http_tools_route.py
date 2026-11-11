@@ -1,7 +1,7 @@
 """The HTTP tools route must use the runtime-provided tools.v1 service.
 
 Regression: after the pluginization refactor the route still read the legacy
-process singleton ``get_unified_tools_optional()``, which the PluginLoader
+process singleton ``get_unified_tools_optional()``, which the Loader
 never initializes. ``GET /api/mcp/tools/all`` returned 503 and the tools page
 crashed into a black screen.
 """

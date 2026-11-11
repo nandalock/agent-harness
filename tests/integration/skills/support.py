@@ -2,7 +2,7 @@
 from agent_platform_skills import SkillRegistry
 from agent_platform_skills_filesystem import FilesystemSkillProvider
 from contextlib import asynccontextmanager
-from agent_platform_plugin_runtime import PluginLoader
+from minidsh_cordis_plugin_loader import Loader
 from agent_platform_agent_runtime import AgentExtensionRegistry
 from agent_platform_plugin_sdk import AGENTS, AGENT_EXTENSIONS, TOOL_BINDINGS, TOOLS
 from agent_platform_skills import SKILLS
@@ -26,7 +26,7 @@ async def installed_skill_runtime(extensions=None):
         async def get_config(self, key):
             return {}
     extensions = extensions or AgentExtensionRegistry()
-    runtime = PluginLoader({"plugins": [
+    runtime = Loader({"plugins": [
         {"id": "skills", "name": "agent-platform.skills-default", "use": "agent_platform_skills_default:SkillsDefaultPlugin"},
         {"id": "filesystem", "name": "agent-platform.skills-filesystem", "use": "agent_platform_skills_filesystem:SkillsFilesystemPlugin"},
         {"id": "tools", "name": "agent-platform.tools-default", "use": "agent_platform_tools_default:ToolsDefaultPlugin"},

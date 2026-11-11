@@ -1,9 +1,12 @@
 # Agent Platform plugin stack for local/application development.
 # Install leaf packages first so editable dependency resolution never falls
 # back to an unpublished PyPI release.
--e ./vendor/cordis
+-e ./packages/framework/cordis
+-e ./packages/framework/group
+-e ./packages/framework/include
+-e ./packages/framework/loader
+-e ./packages/framework/hmr
 -e ./packages/plugin/sdk
--e ./packages/plugin/runtime
 -e ./packages/tools/system
 -e ./packages/database/postgres
 -e ./packages/session/core

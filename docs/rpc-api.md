@@ -17,7 +17,7 @@ remote.workspace.sessions.create(params)
 
 `Connection`/`Gateway`/controllers are plugins. Registering a controller method
 returns a lifecycle handle tracked by that plugin context, so unloading the
-plugin removes its methods. Each `PluginLoader` owns a separate gateway and
+plugin removes its methods. Each `Loader` owns a separate gateway and
 method table.
 
 ## Envelope

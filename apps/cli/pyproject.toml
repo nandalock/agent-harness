@@ -10,7 +10,9 @@ requires-python = ">=3.12"
 dependencies = [
     "agent-platform-app-boot>=0.1,<0.2",
     "agent-platform-agent-entry>=0.1,<0.2",
-    "agent-platform-plugin-runtime>=0.1,<0.2",
+    "minidsh-cordis-plugin-loader>=0.1,<0.2",
+    "minidsh-cordis-plugin-include>=0.1,<0.2",
+    "minidsh-cordis-plugin-group>=0.1,<0.2",
     "agent-platform-server>=0.1,<0.2",
     "python-dotenv>=1,<2",
     "PyYAML>=6,<7",

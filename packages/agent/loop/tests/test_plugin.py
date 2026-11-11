@@ -9,7 +9,7 @@ from agent_platform_agents import AGENT_RUNS, AgentsPlugin, RunConflict
 from agent_platform_agent_loop import AgentLoopPlugin
 from agent_platform_agent_loop.plugin import LoopConfig, LoopFactory
 from agent_platform_llm import LlmResponse, make_retry_policy
-from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
+from minidsh_cordis_plugin_loader import MappingCatalog, Loader
 from agent_platform_plugin_sdk import (
     APPROVAL, TOOLS, SdkModel, ServiceClosedError,
     ServiceUnavailableError, ToolDescriptor, ToolResult,
@@ -84,7 +84,7 @@ def runtime(*, extra=(), catalog_extra=None, loop=True):
     ]
     if not loop:
         entries.pop(0)
-    return PluginLoader({"plugins": entries + list(extra)}, catalog=MappingCatalog({
+    return Loader({"plugins": entries + list(extra)}, catalog=MappingCatalog({
         "agent-platform.agent-loop": AgentLoopPlugin,
         "agent-platform.agents": AgentsPlugin,
         "agent-platform.tools-default": ToolsDefaultPlugin,
@@ -104,7 +104,7 @@ class PluginTests(unittest.IsolatedAsyncioTestCase):
         return next(fiber.ctx for fiber in self.runtime.ctx.fibers if fiber.id == "loop")
 
     async def test_explicit_exports_are_loadable(self):
-        from agent_platform_plugin_runtime import load_module_plugin
+        from minidsh_cordis_plugin_loader import load_module_plugin
 
         self.assertIsInstance(load_module_plugin("agent_platform_agent_loop:AgentLoopPlugin"), AgentLoopPlugin)
         self.assertIsInstance(load_module_plugin("agent_platform_agents:AgentsPlugin"), AgentsPlugin)

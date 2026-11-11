@@ -2,7 +2,7 @@ import unittest
 
 from agent_platform_agent_entry import AGENT_ENTRY
 from agent_platform_llm import LLM
-from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
+from minidsh_cordis_plugin_loader import MappingCatalog, Loader
 from agent_platform_plugin_sdk import (
     AGENTS,
     DATABASE,
@@ -65,7 +65,7 @@ class NodeContributor(Plugin[SdkModel]):
 class WorkflowPluginTests(unittest.IsolatedAsyncioTestCase):
     async def test_plugin_provides_service_and_accepts_node_extensions(self):
         contributor = NodeContributor()
-        runtime = PluginLoader(
+        runtime = Loader(
             {"plugins": [
                 {"id": "workflow", "name": "agent-platform.workflow"},
                 {"id": "contributor", "name": "test.workflow-node"},

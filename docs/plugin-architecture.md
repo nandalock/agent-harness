@@ -40,7 +40,7 @@ or `ctx.get(...)` (optional), and own every effect through their context.
 | `faq.v1` | `agent-platform.faq` | FAQ HTTP routes |
 | `xianyu.v1` | `agent-platform.xianyu` | Xianyu HTTP/WS routes, chat persistence |
 | `approval.v1` / `approval.inbox.v1` | `agent-platform.user-approval` | Agent Loop, sandbox tools, HTTP approval routes |
-| `plugin-catalog.v1` | `PluginLoader` (native) | plugin inventory |
+| `plugin-catalog.v1` | `Loader` (native) | plugin inventory |
 | `plugin.inventory.v1` | `agent-platform.plugin-inventory` | HTTP `/api/plugins`, frontend boot filter |
 | `http.app.v1` | `agent-platform.http-api` | ASGI proxy |
 
@@ -156,10 +156,10 @@ boot packages:
 | --- | --- |
 | `apps/server` | ASGI carrier for uvicorn: start runtime, resolve `http.app.v1` |
 | `apps/cli` | `agent-platform run` (headless turn) and `agent-platform serve` |
-| `packages/boot/app-boot` | composition discovery + `PluginLoader` start/stop |
+| `packages/boot/app-boot` | composition discovery + `Loader` start/stop |
 | `packages/host/plugin-inventory` | `plugin.inventory.v1` projection of started instances |
 
-`PluginLoader` provides `plugin-catalog.v1` natively; the inventory plugin
+`Loader` provides `plugin-catalog.v1` natively; the inventory plugin
 projects it for the HTTP plugin. MCP rows are loaded by
 `agent-platform.mcp-database` after the database plugin starts, so boot never
 reads a business table.

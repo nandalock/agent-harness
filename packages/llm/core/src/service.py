@@ -16,7 +16,7 @@ from agent_platform_llm.providers import (
 
 
 class LLMService:
-    """One provider registry per PluginLoader; no module-level instances."""
+    """One provider registry per Loader; no module-level instances."""
 
     def __init__(self) -> None:
         self._providers: dict[str, ProviderResolver] = {}

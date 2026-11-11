@@ -1,4 +1,4 @@
-"""Compose native Cordis plugins from a minidsh configuration."""
+"""Compose native Cordis plugins from a configuration document."""
 import asyncio
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -7,16 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from minidsh_cordis import Composition, Context, FiberState, Plugin, ServiceClosedError, ServiceKey, plan
+from minidsh_cordis_plugin_group import is_group_disabled
+from minidsh_cordis_plugin_include import ConfigurationError, PluginConfiguration, apply_entry_patches, Include, parse_config
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ValidationError
 
-from agent_platform_plugin_sdk import PLUGIN_CATALOG
-from .models import PluginConfiguration
-
-from .catalog import PluginCatalog, load_module_plugin
-from .config import parse_config
-from .errors import ConfigurationError, DiscoveryError, LifecycleError
-from .layers import apply_patches, load_layers
+from .catalog import PLUGIN_CATALOG, PluginCatalog, load_module_plugin
+from .errors import DiscoveryError, LifecycleError
 
 
 class LoaderState(StrEnum):
@@ -36,7 +33,7 @@ class LoadedPluginInfo:
 
 
 class _PluginInventory:
-    def __init__(self, loader: "PluginLoader") -> None:
+    def __init__(self, loader: "Loader") -> None:
         self._loader = loader
 
     def list(self) -> list[dict[str, Any]]:
@@ -51,7 +48,7 @@ class _PluginInventory:
         ))
 
 
-class PluginLoader:
+class Loader:
     """Validate YAML and delegate plugin execution to a single Cordis root."""
 
     def __init__(
@@ -59,7 +56,7 @@ class PluginLoader:
         catalog: PluginCatalog | None = None,
         host_services: Mapping[ServiceKey[Any], Any] | None = None,
     ) -> None:
-        self._config = apply_patches(config if isinstance(config, PluginConfiguration) else parse_config(config))
+        self._config = apply_entry_patches(config if isinstance(config, PluginConfiguration) else parse_config(config))
         self._catalog = catalog
         self._host_services = dict(host_services or {})
         self._host_services.setdefault(PLUGIN_CATALOG, _PluginInventory(self))
@@ -72,8 +69,8 @@ class PluginLoader:
     def from_yaml(
         cls, path: str | Path, *, catalog: PluginCatalog | None = None,
         host_services: Mapping[ServiceKey[Any], Any] | None = None,
-    ) -> "PluginLoader":
-        return cls(load_layers(path), catalog=catalog, host_services=host_services)
+    ) -> "Loader":
+        return cls(Include(path).read(), catalog=catalog, host_services=host_services)
 
     @property
     def state(self) -> LoaderState:
@@ -100,8 +97,7 @@ class PluginLoader:
     def _prepare(self, config: PluginConfiguration) -> Composition:
         entries: list[tuple[str, Plugin[Any], Any]] = []
         for entry in config.plugins:
-            group = config.groups.get(entry.group) if entry.group is not None else None
-            if entry.disabled or (group is not None and group.disabled):
+            if entry.disabled or is_group_disabled(entry.group, config.groups):
                 continue
             plugin: object
             if entry.use is not None:
@@ -151,7 +147,7 @@ class PluginLoader:
             root, old = self._root, self._plan
             if self._state is not LoaderState.RUNNING or root is None or old is None:
                 raise LifecycleError("plugin loader must be running before reconfiguration")
-            config = apply_patches(config)
+            config = apply_entry_patches(config)
             running = {fiber.id for fiber in root.fibers if fiber.state is FiberState.ACTIVE}
             missing = {instance for instance, _, _ in old.entries} - running
             if config == self._config and not missing:

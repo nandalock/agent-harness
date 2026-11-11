@@ -5,8 +5,7 @@ import os
 from pathlib import Path
 
 from agent_platform_default import compose
-from agent_platform_plugin_runtime import load_layers, merge_layers
-from agent_platform_plugin_runtime import PluginConfiguration
+from minidsh_cordis_plugin_include import PluginConfiguration, Include, merge_layers
 
 
 def resolve_config_path() -> Path | None:
@@ -25,9 +24,9 @@ def resolve_config_path() -> Path | None:
 
 def load_config(document: PluginConfiguration | None = None) -> PluginConfiguration:
     path = resolve_config_path()
-    config = load_layers(path, document=document) if path is not None else (document or PluginConfiguration())
+    config = Include(path).read(document=document) if path is not None else (document or PluginConfiguration())
     if patch := os.environ.get("MINIDSH_PLUGIN_PATCH"):
-        config = merge_layers(config, load_layers(patch))
+        config = merge_layers(config, Include(patch).read())
     return compose_plugins(config)
 
 

@@ -1,30 +1,25 @@
 import asyncio
 import unittest
 
-from agent_platform_plugin_sdk import (
-    RegistrationConflictError,
-    ServiceClosedError,
-    ServiceKey,
-    TOOLS,
-)
+from minidsh_cordis import Plugin, RegistrationConflictError, ServiceClosedError
 
-from agent_platform_plugin_runtime import (
+from minidsh_cordis_plugin_loader import (
     LifecycleError,
     MappingCatalog,
-    PluginLoader,
+    Loader,
     LoaderState,
     UndeclaredServiceError,
 )
 from support import (
+    ECHO,
     EmptyConfig,
     plugin_class,
     service_key,
 )
-from minidsh_cordis import Plugin
 
 
 def runtime_for(entries, catalog, host_services=None):
-    return PluginLoader(
+    return Loader(
         {"version": 1, "plugins": entries},
         catalog=MappingCatalog(catalog),
         host_services=host_services,
@@ -222,7 +217,7 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
-                ctx.require(TOOLS)
+                ctx.require(ECHO)
 
         runtime = runtime_for(
             [{"id": "undeclared", "name": "test.undeclared"}],
@@ -238,7 +233,7 @@ class LifecycleTests(unittest.IsolatedAsyncioTestCase):
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
-                ctx.provide(TOOLS, object())
+                ctx.provide(ECHO, object())
 
         runtime = runtime_for(
             [{"id": "undeclared", "name": "test.undeclared"}],

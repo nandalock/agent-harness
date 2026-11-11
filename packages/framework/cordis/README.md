@@ -58,3 +58,5 @@ asyncio.run(main())
 
 - 上游 Cordis 提供了 Context、Fiber、服务依赖和可逆注册的设计参考。 [Cordis](https://github.com/cordiverse/cordis)
 - DeepSeek Harness 展示了如何用 Cordis 组织插件生命周期，并由独立的 Loader 处理配置装配。 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)
+
+项目内版本 `0.1.0+minidsh.3` 基于独立仓库的 `7c594aae632a7a67b3d2a87ba2903b77ccee6d24`，加入了宿主服务、可选依赖、批量启动和局部重装。 [独立仓库](https://github.com/nandalock/minidsh-cordis)

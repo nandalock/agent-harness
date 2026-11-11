@@ -3,9 +3,20 @@ from collections.abc import Callable, Mapping
 from importlib import import_module
 from typing import Any, Protocol
 
-from minidsh_cordis import Plugin
+from minidsh_cordis import Plugin, ServiceKey
 
 from .errors import DiscoveryError
+
+
+class ActivePluginCatalog(Protocol):
+    """View of active plugin instances and their browser packages."""
+
+    def list(self) -> list[dict[str, Any]]: ...
+
+    def web_packages(self) -> tuple[str, ...]: ...
+
+
+PLUGIN_CATALOG: ServiceKey[ActivePluginCatalog] = ServiceKey("plugin-catalog")
 
 
 class PluginCatalog(Protocol):

@@ -10,7 +10,7 @@ from agent_platform_chat import CHAT
 from agent_platform_http_api import create_app
 from agent_platform_llm import LLM, LlmResponse, ModelConfig
 from agent_platform_memory import MEMORY
-from agent_platform_plugin_runtime import PluginLoader
+from minidsh_cordis_plugin_loader import Loader
 from agent_platform_plugin_sdk import AGENTS, DATABASE, ServiceClosedError
 from agent_platform_session import SESSIONS, SessionStore
 
@@ -28,7 +28,7 @@ class MemoryEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.chat = MagicMock()
         self.sessions = SessionStore()
         self.llm = SimpleNamespace(complete=AsyncMock())
-        self.runtime = PluginLoader(
+        self.runtime = Loader(
             {"plugins": [{"id": "memory", "name": "agent-platform.memory", "use": "agent_platform_memory:MemoryPlugin"}]},
             host_services={
                 DATABASE: database, AGENTS: self.agents, CHAT: SimpleNamespace(store=self.chat),

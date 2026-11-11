@@ -1,13 +1,18 @@
-"""Profile document models owned by the minidsh loader."""
+"""Configuration models shared by Cordis hosts."""
 from typing import Annotated, Literal, Self
 
-from pydantic import Field, StrictBool, StrictStr, field_validator, model_validator
+from minidsh_cordis_plugin_group import Group
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, StrictBool, StrictStr, field_validator, model_validator
 
-from agent_platform_plugin_sdk import JsonObject, SdkModel
-from agent_platform_plugin_sdk.models import Identifier, NonEmptyString
+Identifier = Annotated[StrictStr, Field(pattern=r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$", max_length=128)]
+NonEmptyString = Annotated[StrictStr, Field(min_length=1, pattern=r"\S")]
 
 
-class PluginEntry(SdkModel):
+class _ConfigurationModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False, validate_default=True)
+
+
+class EntryOptions(_ConfigurationModel):
     """One configured instance of a Cordis plugin.
 
     One instance may provide services and zero or many tools. Multiple entries
@@ -20,27 +25,23 @@ class PluginEntry(SdkModel):
     use: Annotated[StrictStr, Field(pattern=r"^[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*:[A-Za-z_]\w*$")] | None = None
     group: Identifier | None = None
     disabled: StrictBool = False
-    config: JsonObject = Field(default_factory=dict)
+    config: dict[str, JsonValue] = Field(default_factory=dict)
 
 
-class PluginGroup(SdkModel):
-    disabled: StrictBool = False
-
-
-class PluginPatch(SdkModel):
+class PatchOptions(_ConfigurationModel):
     id: Identifier
     disabled: StrictBool | None = None
-    config: JsonObject = Field(default_factory=dict)
+    config: dict[str, JsonValue] = Field(default_factory=dict)
 
 
-class PluginConfiguration(SdkModel):
+class PluginConfiguration(_ConfigurationModel):
     """The public YAML/JSON document shape; parsing and loading belong to runtime."""
 
     version: Literal[1] = 1
-    plugins: tuple[PluginEntry, ...] = ()
+    plugins: tuple[EntryOptions, ...] = ()
     includes: tuple[NonEmptyString, ...] = ()
-    groups: dict[Identifier, PluginGroup] = Field(default_factory=dict)
-    patches: tuple[PluginPatch, ...] = ()
+    groups: dict[Identifier, Group] = Field(default_factory=dict)
+    patches: tuple[PatchOptions, ...] = ()
 
     @field_validator("version", mode="before")
     @classmethod

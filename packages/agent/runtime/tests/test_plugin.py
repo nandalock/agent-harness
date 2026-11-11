@@ -14,7 +14,7 @@ from agent_platform_llm import (
     CHUNK_FINISH, CHUNK_TEXT, LLM, LlmResponse, ModelConfig,
     StreamChunk, make_retry_policy,
 )
-from agent_platform_plugin_runtime import PluginLoader, load_module_plugin
+from minidsh_cordis_plugin_loader import Loader, load_module_plugin
 from agent_platform_plugin_sdk import AGENTS, AGENT_EXTENSIONS, APPROVAL, DATABASE, AgentRunContribution, ServiceClosedError
 from agent_platform_sandbox.services import AGENT_SANDBOX
 from agent_platform_session import Session
@@ -126,7 +126,7 @@ class RuntimePluginTests(unittest.IsolatedAsyncioTestCase):
             entries.append({"id": "memory", "name": "agent-platform.memory", "use": "agent_platform_memory:MemoryPlugin", "config": {
                 "context_window": 4096, "compact_ratio": 0.5,
             }})
-        runtime = PluginLoader({"plugins": entries}, host_services={
+        runtime = Loader({"plugins": entries}, host_services={
             AGENTS: SimpleNamespace(get_config=get_config),
             APPROVAL: SimpleNamespace(available=False),
             RUNTIME_PROMPTS: SimpleNamespace(assemble=assemble),

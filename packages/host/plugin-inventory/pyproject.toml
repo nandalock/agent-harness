@@ -7,7 +7,7 @@ name = "agent-platform-plugin-inventory"
 version = "0.1.0"
 description = "Read-only projection of the plugin runtime's started instances"
 requires-python = ">=3.12"
-dependencies = ["agent-platform-plugin-sdk>=0.1,<0.2"]
+dependencies = ["agent-platform-plugin-sdk>=0.1,<0.2", "minidsh-cordis-plugin-loader>=0.1,<0.2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

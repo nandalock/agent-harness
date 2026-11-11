@@ -121,20 +121,3 @@ class Database(Protocol):
 
 
 DATABASE: ServiceKey[Database] = ServiceKey("database")
-
-
-# ── plugin-catalog.v1 ──
-
-class PluginCatalog(Protocol):
-    """Host-supplied view of the plugin instances that actually started.
-
-    Disabled or failed instances are absent; clients use this as the single
-    enablement source when composing their own UI or capabilities.
-    """
-
-    def list(self) -> list[dict[str, Any]]: ...
-
-    def web_packages(self) -> tuple[str, ...]: ...
-
-
-PLUGIN_CATALOG: ServiceKey[PluginCatalog] = ServiceKey("plugin-catalog")

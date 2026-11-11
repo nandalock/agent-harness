@@ -1,19 +1,19 @@
 import asyncio
 import unittest
 
-from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
-from agent_platform_plugin_sdk import SdkModel
+from minidsh_cordis_plugin_loader import MappingCatalog, Loader
 from minidsh_cordis import Plugin
+from support import EmptyConfig
 
 
 class QuiesceTests(unittest.IsolatedAsyncioTestCase):
     def make_runtime(self, *, fail_setup=False, fail_stop=False):
         order = []
 
-        class Driver(Plugin[SdkModel]):
+        class Driver(Plugin[EmptyConfig]):
             name = "test.driver"
             version = "0.1.0"
-            config_model = SdkModel
+            config_model = EmptyConfig
 
             async def setup(self, ctx, config):
                 async def stop():
@@ -24,16 +24,16 @@ class QuiesceTests(unittest.IsolatedAsyncioTestCase):
                 ctx.on_quiesce(stop, label="stop driver")
                 ctx.on_dispose(lambda: order.append("driver disposed"), label="driver effects")
 
-        class LaterProvider(Plugin[SdkModel]):
+        class LaterProvider(Plugin[EmptyConfig]):
             name = "test.provider"
             version = "0.1.0"
-            config_model = SdkModel
+            config_model = EmptyConfig
 
             async def setup(self, ctx, config):
                 ctx.on_dispose(lambda: order.append("provider disposed"), label="provider effects")
                 if fail_setup:
                     raise ValueError("setup failed")
-        runtime = PluginLoader({"plugins": [
+        runtime = Loader({"plugins": [
             {"id": "driver", "name": "test.driver"},
             {"id": "provider", "name": "test.provider"},
         ]}, catalog=MappingCatalog({"test.driver": Driver, "test.provider": LaterProvider}))

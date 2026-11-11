@@ -1,13 +1,13 @@
 import unittest
 
 from agent_platform_default import compose
-from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
+from minidsh_cordis_plugin_loader import MappingCatalog, Loader
 from agent_platform_plugin_sdk import (
     ExecutionScope, RegistrationConflictError,
     SdkModel, ServiceKey, TOOLS,
     ToolCall, ToolContext, ToolDescriptor, ToolResult,
 )
-from agent_platform_plugin_runtime import PluginConfiguration
+from minidsh_cordis_plugin_include import PluginConfiguration
 from agent_platform_tools_default import ToolsDefaultService
 from minidsh_cordis import Plugin
 
@@ -112,7 +112,7 @@ class CompositionTests(unittest.TestCase):
 
 class PackageLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_service_plugin_runs_without_any_tool_service(self):
-        runtime = PluginLoader({"plugins": [
+        runtime = Loader({"plugins": [
             {"id": "prefix", "name": "example.prefix"},
         ]}, catalog=MappingCatalog({"example.prefix": PrefixPlugin}))
         try:
@@ -124,7 +124,7 @@ class PackageLifecycleTests(unittest.IsolatedAsyncioTestCase):
     async def test_zero_tool_service_and_multiple_multi_tool_instances(self):
         tools = ToolsDefaultService()
         scope = ExecutionScope(tenant_id=1, agent_key="test")
-        runtime = PluginLoader({"plugins": [
+        runtime = Loader({"plugins": [
             {"id": "first", "name": "example.text"},
             {"id": "second", "name": "example.text"},
             {"id": "prefix", "name": "example.prefix"},
@@ -153,7 +153,7 @@ class PackageLifecycleTests(unittest.IsolatedAsyncioTestCase):
         scope = ExecutionScope(tenant_id=1, agent_key="test")
         existing = tools.register_tool(ToolDescriptor(
             name="first.lower", executor="external", description="Pre-existing tool"))
-        runtime = PluginLoader({"plugins": [
+        runtime = Loader({"plugins": [
             {"id": "first", "name": "example.text"},
             {"id": "prefix", "name": "example.prefix"},
         ]}, catalog=MappingCatalog({"example.text": TextPlugin, "example.prefix": PrefixPlugin}),

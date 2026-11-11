@@ -2,7 +2,7 @@
 
 The runtime is started by the ASGI carrier (``agent_platform_server``); this
 module only assembles the web application and its routes. Route handlers
-resolve services from the active PluginLoader instead of importing runtime
+resolve services from the active Loader instead of importing runtime
 implementations.
 """
 import logging

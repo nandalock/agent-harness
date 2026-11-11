@@ -9,19 +9,20 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
+from functools import partial
 
-from agent_platform_plugin_runtime import PluginLoader
+from minidsh_cordis_plugin_hmr import Hmr
+from minidsh_cordis_plugin_loader import Loader
 from agent_platform_plugin_sdk import TOOLS, ServiceKey
 
 from .config import load_config
-from .hmr import watch_config
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class PluginHost:
-    runtime: PluginLoader
+    runtime: Loader
     tools: object
     _stop: asyncio.Event
     _lifecycle: asyncio.Task[None]
@@ -57,7 +58,7 @@ async def init_plugin_host(
         return _host
 
     config = load_config()
-    runtime = PluginLoader(config, catalog=catalog)
+    runtime = Loader(config, catalog=catalog)
     stop = asyncio.Event()
     ready: asyncio.Future[object] = asyncio.get_running_loop().create_future()
 
@@ -68,7 +69,8 @@ async def init_plugin_host(
             if os.environ.get("MINIDSH_CONFIG_RELOAD", "true").lower() in ("false", "0", "no"):
                 await stop.wait()
             else:
-                await watch_config(runtime, stop, pinned | {TOOLS})
+                hmr = Hmr(load_config, partial(runtime.reconfigure, pinned=pinned | {TOOLS}))
+                await hmr.watch_config(initial=runtime.config, stop=stop)
         except BaseException as error:
             if not ready.done():
                 ready.set_exception(error)

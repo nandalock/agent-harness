@@ -19,7 +19,7 @@ os.environ.setdefault("PLUGIN_MCP_AUTO", "false")
 os.environ.setdefault("MANAGED_MCP_ENABLED", "false")
 
 try:
-    from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
+    from minidsh_cordis_plugin_loader import MappingCatalog, Loader
     from agent_platform_plugin_sdk import (
         DATABASE,
         SdkModel,
@@ -571,7 +571,7 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
         ExecutionScope,
         SETTINGS,
     )
-    from agent_platform_plugin_runtime import PluginConfiguration
+    from minidsh_cordis_plugin_include import PluginConfiguration
     from agent_platform_sandbox_tools import get_sandbox_control
 
     class Settings:
@@ -605,7 +605,7 @@ def test_default_plugins_expose_skill_and_sandbox_tools():
                 {"id": "sandbox-provider", "name": "agent-platform.sandbox-local"},
             ]
         )
-        runtime = PluginLoader(
+        runtime = Loader(
             config,
             catalog=MappingCatalog(
                 {

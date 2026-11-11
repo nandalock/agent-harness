@@ -18,8 +18,18 @@ def merge_layers(base: PluginConfiguration, layer: PluginConfiguration) -> Plugi
     )
 
 
-def load_layers(path: str | Path, *, document: PluginConfiguration | None = None) -> PluginConfiguration:
-    def expand(file: Path, chain: tuple[Path, ...], override: PluginConfiguration | None = None) -> PluginConfiguration:
+class Include:
+    """Read a root YAML document and its relative includes."""
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = Path(path)
+
+    def read(self, *, document: PluginConfiguration | None = None) -> PluginConfiguration:
+        return self._expand(self.path, (), document)
+
+    def _expand(
+        self, file: Path, chain: tuple[Path, ...], override: PluginConfiguration | None = None,
+    ) -> PluginConfiguration:
         file = file.resolve()
         if file in chain:
             cycle = " -> ".join(map(str, (*chain, file)))
@@ -27,15 +37,12 @@ def load_layers(path: str | Path, *, document: PluginConfiguration | None = None
         current = override if override is not None else load_yaml_config(file)
         base = PluginConfiguration()
         for include in current.includes:
-            base = merge_layers(base, expand(file.parent / include, (*chain, file)))
+            base = merge_layers(base, self._expand(file.parent / include, (*chain, file)))
         return merge_layers(base, current)
 
-    return expand(Path(path), (), document)
-
-
-def apply_patches(config: PluginConfiguration) -> PluginConfiguration:
+def apply_entry_patches(config: PluginConfiguration) -> PluginConfiguration:
     if config.includes:
-        raise ConfigurationError("plugin includes need a file path; load them with load_layers()")
+        raise ConfigurationError("plugin includes need a file path; read them with Include")
     entries = {entry.id: entry for entry in config.plugins}
     for patch in config.patches:
         entry = entries.get(patch.id)

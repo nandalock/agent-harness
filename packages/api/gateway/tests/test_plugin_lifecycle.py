@@ -3,7 +3,7 @@ import unittest
 
 from pydantic import BaseModel
 
-from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
+from minidsh_cordis_plugin_loader import MappingCatalog, Loader
 from minidsh_cordis import Plugin
 from agent_platform_plugin_sdk import SdkModel
 from agent_platform_rpc_gateway import (
@@ -46,8 +46,8 @@ class _Controller(Plugin[_Config]):
 
 
 class _GatewayTest(unittest.IsolatedAsyncioTestCase):
-    def runtime(self, method: str) -> PluginLoader:
-        return PluginLoader(
+    def runtime(self, method: str) -> Loader:
+        return Loader(
             {"plugins": [
                 {"id": "gateway", "name": "agent-platform.rpc-gateway"},
                 {"id": "controller", "name": "test.controller"},

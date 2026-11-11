@@ -10,7 +10,7 @@ from agent_platform_agent_entry import AgentGateway
 from agent_platform_agent_runtime import AgentReply
 from agent_platform_chat import ChatService
 from agent_platform_http_api import create_app
-from agent_platform_plugin_runtime import PluginLoader
+from minidsh_cordis_plugin_loader import Loader
 from agent_platform_plugin_sdk import APPROVAL, ApprovalRequest
 from agent_platform_user_approval import APPROVAL_INBOX
 
@@ -72,7 +72,7 @@ class ChatApprovalTests(unittest.IsolatedAsyncioTestCase):
         assert chat.attach(1, "a", "durable") is None
 
     async def test_approval_http_uses_the_same_inbox_as_tools_and_close_releases_waiters(self):
-        runtime = PluginLoader({"plugins": [{"id": "approval", "name": "agent-platform.user-approval", "use": "agent_platform_user_approval:UserApprovalPlugin"}]})
+        runtime = Loader({"plugins": [{"id": "approval", "name": "agent-platform.user-approval", "use": "agent_platform_user_approval:UserApprovalPlugin"}]})
         await runtime.start()
         self.addAsyncCleanup(runtime.aclose)
         approval = runtime.require(APPROVAL)

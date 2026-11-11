@@ -7,7 +7,7 @@ name = "agent-platform-default"
 version = "0.1.0"
 description = "Default plugin composition for Agent Platform"
 requires-python = ">=3.12"
-dependencies = ["agent-platform-plugin-runtime>=0.1,<0.2"]
+dependencies = ["minidsh-cordis-plugin-include>=0.1,<0.2"]
 
 [tool.setuptools]
 packages = ["agent_platform_default"]

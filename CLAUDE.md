@@ -67,6 +67,6 @@
 
 注意：
 
-- 这是**参考实现**，不是本项目的运行时依赖。本项目的后端插件系统在 `packages/plugin/sdk` / `packages/plugin/runtime`。
+- DeepSeek Harness 提供参考代码。本项目的插件框架位于 `packages/framework`，业务契约位于 `packages/plugin/sdk`。
 - DSH 的 client modules 需要 Node 侧 web server + 浏览器模块加载器；`packages/client` 是按其协议实现的精简版（boot graph + lazy CJS + slots），不是直接依赖 DSH 包。
 - 移植目标是让前端按 DSH 的方式“一切皆插件”：插件包声明 client 入口，Host 组合启动图，浏览器懒加载 bundle，UI 通过 slots 组合。

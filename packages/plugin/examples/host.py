@@ -7,7 +7,7 @@ consumes the plugin service instead of providing one.
 import asyncio
 from pathlib import Path
 
-from agent_platform_plugin_runtime import PluginLoader
+from minidsh_cordis_plugin_loader import Loader
 from agent_platform_plugin_sdk import (
     ExecutionScope,
     TOOLS,
@@ -17,7 +17,7 @@ from agent_platform_plugin_sdk import (
 
 
 async def main() -> None:
-    runtime = PluginLoader.from_yaml(Path(__file__).with_name("plugins.yaml"))
+    runtime = Loader.from_yaml(Path(__file__).with_name("plugins.yaml"))
     try:
         await runtime.start()
         print("started:", [(plugin.instance_id, plugin.name, plugin.version)

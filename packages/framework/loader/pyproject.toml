@@ -3,32 +3,33 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agent-platform-plugin-runtime"
+name = "minidsh-cordis-plugin-loader"
 version = "0.1.0"
 description = "YAML loader and profile composition for minidsh Cordis plugins"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "agent-platform-plugin-sdk>=0.1,<0.2",
     "minidsh-cordis==0.1.0+minidsh.3",
+    "minidsh-cordis-plugin-group>=0.1,<0.2",
+    "minidsh-cordis-plugin-include>=0.1,<0.2",
     "packaging>=23",
-    "PyYAML>=6,<7",
+    "pydantic>=2,<3",
 ]
 
 [project.optional-dependencies]
-dev = ["build>=1", "mypy>=1.10", "types-PyYAML>=6"]
+dev = ["build>=1", "mypy>=1.10"]
 
 [project.urls]
 Source = "https://github.com/nandalock/agent-low-code-platform"
 
 [tool.setuptools]
-packages = ["agent_platform_plugin_runtime"]
+packages = ["minidsh_cordis_plugin_loader"]
 
 [tool.setuptools.package-dir]
-agent_platform_plugin_runtime = "src"
+minidsh_cordis_plugin_loader = "src"
 
 [tool.setuptools.package-data]
-agent_platform_plugin_runtime = ["py.typed"]
+minidsh_cordis_plugin_loader = ["py.typed"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -37,5 +38,6 @@ files = ["src"]
 
 # Editable development resolves the sibling source tree instead of an index.
 [tool.uv.sources]
-agent-platform-plugin-sdk = { path = "../sdk", editable = true }
-minidsh-cordis = { path = "../../../vendor/cordis", editable = true }
+minidsh-cordis = { path = "../cordis", editable = true }
+minidsh-cordis-plugin-group = { path = "../group", editable = true }
+minidsh-cordis-plugin-include = { path = "../include", editable = true }

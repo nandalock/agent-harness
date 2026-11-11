@@ -1,7 +1,7 @@
 # Default composition
 
 `plugins.yaml` is the default application assembly. Backend loads this package,
-adds host configuration such as database MCP servers, and starts Cordis through PluginLoader.
+adds host configuration such as database MCP servers, and starts Cordis through Loader.
 It does not enumerate individual tools.
 
 A plugin package is a lifecycle and assembly unit. Each configured instance may

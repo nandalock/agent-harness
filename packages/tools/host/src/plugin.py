@@ -1,4 +1,4 @@
-"""Plugin that owns the single-track tools runtime for one PluginLoader."""
+"""Plugin that owns the single-track tools runtime for one Loader."""
 from agent_platform_plugin_sdk import (
     SdkModel,
     TOOLS,

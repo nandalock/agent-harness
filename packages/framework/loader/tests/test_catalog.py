@@ -2,7 +2,7 @@ import unittest
 
 from minidsh_cordis import Plugin
 
-from agent_platform_plugin_runtime import DiscoveryError, MappingCatalog, load_module_plugin
+from minidsh_cordis_plugin_loader import DiscoveryError, MappingCatalog, load_module_plugin
 from support import EchoPlugin
 
 

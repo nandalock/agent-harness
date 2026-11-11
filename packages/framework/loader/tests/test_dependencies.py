@@ -1,17 +1,17 @@
 import unittest
 
-from agent_platform_plugin_runtime import (
+from minidsh_cordis_plugin_loader import (
     DependencyCycleError,
     MissingServiceError,
     MappingCatalog,
-    PluginLoader,
+    Loader,
     ServiceConflictError,
 )
 from support import plugin_class, service_key
 
 
 def runtime_for(entries, catalog, host_services=None):
-    return PluginLoader(
+    return Loader(
         {"version": 1, "plugins": entries},
         catalog=MappingCatalog(catalog),
         host_services=host_services,

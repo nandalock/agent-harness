@@ -1,7 +1,7 @@
 import unittest
 
 from agent_platform_chat import CHAT
-from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
+from minidsh_cordis_plugin_loader import MappingCatalog, Loader
 from agent_platform_xianyu import XIANYU, XianyuManager, XianyuPlugin
 
 
@@ -20,7 +20,7 @@ class FakeChat:
 
 class XianyuPluginTests(unittest.IsolatedAsyncioTestCase):
     async def test_plugin_provides_offline_manager(self):
-        runtime = PluginLoader(
+        runtime = Loader(
             {"plugins": [{"id": "xianyu", "name": "agent-platform.xianyu"}]},
             catalog=MappingCatalog({"agent-platform.xianyu": XianyuPlugin}),
             host_services={CHAT: FakeChat()},

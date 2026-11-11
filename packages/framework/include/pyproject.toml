@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "minidsh-cordis-plugin-include"
+version = "0.1.0"
+description = "YAML configuration includes and patches for Cordis"
+requires-python = ">=3.12"
+dependencies = ["minidsh-cordis-plugin-group>=0.1,<0.2", "pydantic>=2,<3", "PyYAML>=6,<7"]
+
+[tool.setuptools]
+packages = ["minidsh_cordis_plugin_include"]
+
+[tool.setuptools.package-dir]
+minidsh_cordis_plugin_include = "src"
+
+[tool.setuptools.package-data]
+minidsh_cordis_plugin_include = ["py.typed"]
+
+[tool.uv.sources]
+minidsh-cordis-plugin-group = { path = "../group", editable = true }

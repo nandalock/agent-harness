@@ -2,20 +2,14 @@ import unittest
 
 from minidsh_cordis import Plugin
 
-from agent_platform_plugin_sdk import SdkModel
 
-from agent_platform_plugin_runtime import (
-    ConfigurationError,
-    DiscoveryError,
-    MappingCatalog,
-    PluginLoader,
-    LoaderState,
-)
+from minidsh_cordis_plugin_include import ConfigurationError
+from minidsh_cordis_plugin_loader import DiscoveryError, MappingCatalog, Loader, LoaderState
 from support import EmptyConfig, plugin_class
 
 
 def runtime_for(entries, catalog):
-    return PluginLoader(
+    return Loader(
         {"version": 1, "plugins": entries},
         catalog=MappingCatalog(catalog),
     )
@@ -61,7 +55,7 @@ class LoaderTests(unittest.IsolatedAsyncioTestCase):
             await runtime.start()
 
     async def test_plugin_config_is_validated_before_setup(self):
-        class RequiredConfig(SdkModel):
+        class RequiredConfig(EmptyConfig):
             value: int
 
         class Configured(Plugin):
@@ -144,7 +138,7 @@ class LoaderTests(unittest.IsolatedAsyncioTestCase):
             await runtime.start()
 
     async def test_same_implementation_can_serve_two_instances_with_different_config(self):
-        class ValueConfig(SdkModel):
+        class ValueConfig(EmptyConfig):
             value: str
 
         seen = []

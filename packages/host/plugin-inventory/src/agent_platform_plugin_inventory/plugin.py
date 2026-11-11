@@ -1,9 +1,6 @@
 """Plugin entry: expose the runtime catalog as plugin.inventory.v1."""
-from agent_platform_plugin_sdk import (
-    PLUGIN_CATALOG,
-    PluginCatalog,
-    SdkModel,
-)
+from agent_platform_plugin_sdk import SdkModel
+from minidsh_cordis_plugin_loader import PLUGIN_CATALOG, ActivePluginCatalog
 
 from .client import ClientModule, discover_clients
 from .contracts import PLUGIN_INVENTORY
@@ -15,7 +12,7 @@ class InventoryConfig(SdkModel):
 
 
 class _Inventory:
-    def __init__(self, catalog: PluginCatalog) -> None:
+    def __init__(self, catalog: ActivePluginCatalog) -> None:
         self._catalog = catalog
 
     def list(self) -> list[dict]:

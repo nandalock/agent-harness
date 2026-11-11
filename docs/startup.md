@@ -9,7 +9,7 @@ minidsh web --profile web
   → 选择 ~/.minidsh/profiles/web/.venv 的 Python
   → Uvicorn 导入 agent_platform_server:app
   → app-boot 合并默认清单和 profile/plugins.yaml
-  → PluginLoader 导入插件、校验配置，把插件交给 Cordis
+  → Loader 导入插件、校验配置，把插件交给 Cordis
   → Cordis 为各插件创建 Fiber 和 ctx，启动插件并持有服务及清理动作
   → HTTP 插件发布 FastAPI 应用
   → 服务端挂载 wheel 里的浏览器壳
@@ -21,8 +21,8 @@ minidsh web --profile web
 1. [发布 CLI](../apps/cli/src/agent_platform_cli/profiles.py) 选择 profile，显式指定配置文件，启动子进程。
 2. [服务端入口](../apps/server/src/agent_platform_server/__init__.py) 接到 ASGI 启动事件，创建运行时并拿到 HTTP 应用。
 3. [配置读取](../packages/boot/app-boot/src/agent_platform_app_boot/config.py) 与 [默认清单](../packages/plugin/default/src/plugins.yaml) 决定有效插件列表。
-4. [入口发现](../packages/plugin/runtime/src/catalog.py) 按配置导入 Python 模块和导出对象。
-5. [PluginLoader](../packages/plugin/runtime/src/loader.py) 将原生插件交给 [Cordis 内核](../vendor/cordis/src/context.py)。Cordis 按依赖顺序启动，在关停时先收口运行中的任务，再逆序清理。
+4. [入口发现](../packages/framework/loader/src/catalog.py) 按配置导入 Python 模块和导出对象。
+5. [Loader](../packages/framework/loader/src/loader.py) 将原生插件交给 [Cordis 内核](../packages/framework/cordis/src/context.py)。Cordis 按依赖顺序启动，在关停时先收口运行中的任务，再逆序清理。
 6. [浏览器启动](../packages/client/kernel/boot.ts) 读取宿主公布的入口，注册菜单、路由和插槽。
 
 ## 跟踪一个真实插件
@@ -55,5 +55,7 @@ patches:
 用 `minidsh web --plugin-patch override.yaml` 临时叠加一层配置。源码版使用 `python minidsh.py web --plugin-patch override.yaml`。最终顺序为内置清单、Include 文件、用户配置和命令行覆盖。
 
 Web 进程默认检测配置变化。通过依赖校验后，Cordis 只重装变更实例及受影响的依赖者。启动失败会尝试恢复旧装配，结果会写入后端日志。涉及宿主绑定的 HTTP 或工具服务需要重启进程。可用 `MINIDSH_CONFIG_RELOAD=false` 停用监听。源码开发的 Python 变更由 Uvicorn 重启后端进程。
+
+[Include 和 Patch](../packages/framework/include/src/layers.py) 负责合并配置，[Group](../packages/framework/group/src/__init__.py) 提供分组启停规则，[HMR](../packages/framework/hmr/src/__init__.py) 负责监听与调用更新回调。应用的配置查找顺序和重启限制由 `app-boot` 传入。
 
 [下一篇：自己写一个工具插件](plugin-development.md)

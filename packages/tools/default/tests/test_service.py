@@ -16,7 +16,7 @@ from agent_platform_plugin_sdk import (
     TOOL_TIMEOUT,
     TOOL_UNAVAILABLE,
 )
-from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
+from minidsh_cordis_plugin_loader import MappingCatalog, Loader
 from agent_platform_tools_default import (
     TOOL_CATALOG,
     ToolsDefaultPlugin,
@@ -167,7 +167,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
                 ctx.track(tools.register_executor("echo", EchoExecutor("c:")))
                 ctx.track(tools.register_tool(descriptor("echo")))
 
-        runtime = PluginLoader(
+        runtime = Loader(
             {
                 "version": 1,
                 "plugins": [

@@ -55,7 +55,7 @@ CONTEXT_ORDERS: dict[str, int] = {
 
 
 class SystemPrompt:
-    """提示词贡献注册表（每个 PluginLoader 一份）"""
+    """提示词贡献注册表（每个 Loader 一份）"""
 
     def __init__(self) -> None:
         self._sections: dict[str, PromptSection] = {}

@@ -17,7 +17,8 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name, parse_wheel_filename
 import yaml
 
-from agent_platform_plugin_runtime import PluginConfiguration, PluginEntry, PluginPatch, load_yaml_config
+from minidsh_cordis_plugin_group import is_group_disabled
+from minidsh_cordis_plugin_include import PluginConfiguration, EntryOptions, PatchOptions, load_yaml_config
 
 
 def atomic_write(path: Path, content: str) -> None:
@@ -147,11 +148,10 @@ class Profile:
                                                 sort_keys=False, allow_unicode=True))
 
     def list_plugins(self) -> None:
-        config = self.worker("config")
-        for row in config["plugins"]:
-            group = config["groups"].get(row.get("group"), {})
-            state = "disabled" if row["disabled"] or group.get("disabled") else "enabled"
-            print(f'{row["id"]:<26} {state:<12} {row["use"] or row["name"]}')
+        config = PluginConfiguration.model_validate(self.worker("config"))
+        for entry in config.plugins:
+            state = "disabled" if entry.disabled or is_group_disabled(entry.group, config.groups) else "enabled"
+            print(f"{entry.id:<26} {state:<12} {entry.use or entry.name}")
 
     def toggle(self, plugin_id: str, *, disabled: bool) -> None:
         document = load_yaml_config(self.config)
@@ -159,15 +159,14 @@ class Profile:
         target = next((row for row in current.plugins if row.id == plugin_id), None)
         if target is None:
             raise ValueError(f"Unknown plugin ID: {plugin_id}. Use minidsh plugin list.")
-        group = current.groups.get(target.group) if target.group is not None else None
-        if not disabled and group is not None and group.disabled:
+        if not disabled and is_group_disabled(target.group, current.groups):
             raise ValueError(f"Plugin group {target.group!r} is disabled in the configuration.")
         if target.disabled == disabled:
             return
         patches = [patch.model_copy(update={"disabled": None}) if patch.id == plugin_id else patch
                    for patch in document.patches]
         patches = [patch for patch in patches if patch.config or patch.disabled is not None]
-        patches.append(PluginPatch(id=target.id, disabled=disabled))
+        patches.append(PatchOptions(id=target.id, disabled=disabled))
         self._save_configuration(document.model_copy(update={"patches": tuple(patches)}))
 
     def install(self, source: str, *, target: str, plugin_id: str | None,
@@ -194,7 +193,7 @@ class Profile:
                 self.execute("-m", "pip", "install", "--constraint", self.lockfile, *links, wheel)
                 try:
                     export = self.worker("describe", distribution, target)
-                    candidate = PluginEntry(
+                    candidate = EntryOptions(
                         id=plugin_id or export["name"], name=export["name"], use=export["use"],
                         config=config, disabled=disabled,
                     )

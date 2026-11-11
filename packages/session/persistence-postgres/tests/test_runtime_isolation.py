@@ -2,7 +2,7 @@
 import asyncio
 import unittest
 
-from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
+from minidsh_cordis_plugin_loader import MappingCatalog, Loader
 from agent_platform_plugin_sdk import DATABASE
 from agent_platform_session import SESSIONS, SessionPlugin
 from agent_platform_llm import LLM, LLMPlugin
@@ -15,8 +15,8 @@ class _Database:
         raise AssertionError("no database access expected")
 
 
-def _runtime() -> PluginLoader:
-    return PluginLoader(
+def _runtime() -> Loader:
+    return Loader(
         {"plugins": [
             {"id": "session", "name": "agent-platform.session"},
             {"id": "llm", "name": "agent-platform.llm"},

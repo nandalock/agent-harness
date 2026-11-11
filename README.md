@@ -21,7 +21,7 @@
 <p align="center"><sub>当前界面截图，使用固定演示数据；新安装不预置图中的 Agent 和会话。</sub></p>
 
 minidsh 把 Agent 执行循环、模型接入、工具、技能、记忆、会话持久化和 HTTP API 拆成可以组合的包。
-通过 YAML 选择插件，由 `PluginLoader` 导入，再由 `minidsh-cordis` 管理服务依赖与生命周期。
+通过 YAML 选择插件，由 `Loader` 导入，再由 `minidsh-cordis` 管理服务依赖与生命周期。
 默认提供浏览器工作台，也可以使用无 HTTP 的命令行入口执行 Agent。
 
 项目参考 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的插件与客户端模块设计，
@@ -210,7 +210,7 @@ python minidsh.py web --dir /path/to/your/frontend
 
 ```mermaid
 flowchart TB
-    CLI["minidsh 启动器"] --> LOADER["PluginLoader<br/>合并 YAML、导入模块、校验参数"]
+    CLI["minidsh 启动器"] --> LOADER["Loader<br/>合并 YAML、导入模块、校验参数"]
     LOADER --> CTX["minidsh-cordis 根 Context<br/>服务注册、依赖顺序、启动和清理"]
     CTX --> WEB["HTTP API 插件"]
     CTX --> AR["Agent Runtime / Loop"]
@@ -296,7 +296,8 @@ apps/
   server/              ASGI carrier（uvicorn 入口）
   cli/                 agent-platform run / serve
 packages/
-  plugin/              SDK、加载器与默认插件清单
+  framework/           Cordis 内核、Loader、配置引入与补丁、分组、热更新
+  plugin/              业务服务 SDK 与默认插件清单
   boot/app-boot/       合并配置并启动 Cordis
   agent/               配置、运行时、Loop 与系统提示词
   api/                 RPC Connection、Gateway 与业务 Controller
@@ -313,7 +314,7 @@ packages/
   sandbox/             沙箱 provider、策略与工具
   mcp/                 MCP 连接与各类集成
   client/              React + Vite 插件壳与页面
-vendor/cordis/         Python 插件内核 minidsh-cordis
+vendor/                第三方源码
 tests/integration/     跨包集成测试
 config/                环境与插件配置模板
 docs/                  部署、架构与使用说明

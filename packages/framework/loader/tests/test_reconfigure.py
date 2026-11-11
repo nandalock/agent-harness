@@ -2,17 +2,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent_platform_plugin_runtime import ConfigurationError, MappingCatalog, PluginLoader, load_layers, parse_config
-from agent_platform_plugin_sdk import SdkModel
+from minidsh_cordis_plugin_include import ConfigurationError, Include, parse_config
+from minidsh_cordis_plugin_loader import MappingCatalog, Loader
 
-from support import service_key
+from support import EmptyConfig, service_key
 from minidsh_cordis import Plugin
 
 
 PREFIX = service_key("test.prefix")
 
 
-class ProviderConfig(SdkModel):
+class ProviderConfig(EmptyConfig):
     prefix: str
 
 
@@ -32,11 +32,11 @@ class ReconfigureTests(unittest.IsolatedAsyncioTestCase):
     async def test_optional_provider_changes_reactivate_consumer_on_the_same_context(self):
         seen = []
 
-        class Consumer(Plugin[SdkModel]):
+        class Consumer(Plugin[EmptyConfig]):
             name = "test.consumer"
             version = "0.1.0"
             optional = (PREFIX,)
-            config_model = SdkModel
+            config_model = EmptyConfig
 
             async def setup(self, ctx, config):
                 seen.append(ctx.get(PREFIX))
@@ -47,7 +47,7 @@ class ReconfigureTests(unittest.IsolatedAsyncioTestCase):
                 {"id": "provider", "name": "test.provider", "disabled": disabled, "config": {"prefix": "new"}},
             ]})
 
-        loader = PluginLoader(configuration(True), catalog=MappingCatalog({
+        loader = Loader(configuration(True), catalog=MappingCatalog({
             "test.provider": Provider, "test.consumer": Consumer,
         }))
         await loader.start()
@@ -61,11 +61,11 @@ class ReconfigureTests(unittest.IsolatedAsyncioTestCase):
     async def test_replacement_restarts_dependents_and_restores_old_configuration(self):
         seen = []
 
-        class Consumer(Plugin[SdkModel]):
+        class Consumer(Plugin[EmptyConfig]):
             name = "test.consumer"
             version = "0.1.0"
             requires = (PREFIX,)
-            config_model = SdkModel
+            config_model = EmptyConfig
 
             async def setup(self, ctx, config):
                 seen.append(ctx.require(PREFIX))
@@ -76,7 +76,7 @@ class ReconfigureTests(unittest.IsolatedAsyncioTestCase):
                 {"id": "provider", "name": "test.provider", "config": {"prefix": prefix}},
             ]})
 
-        runtime = PluginLoader(configuration("old"), catalog=MappingCatalog({
+        runtime = Loader(configuration("old"), catalog=MappingCatalog({
             "test.provider": Provider, "test.consumer": Consumer,
         }))
         await runtime.start()
@@ -104,7 +104,7 @@ patches:
   - id: provider
     config: {prefix: patched}
 """, encoding="utf-8")
-            runtime = PluginLoader.from_yaml(profile, catalog=MappingCatalog({}))
+            runtime = Loader.from_yaml(profile, catalog=MappingCatalog({}))
             await runtime.start()
             self.addAsyncCleanup(runtime.aclose)
             self.assertEqual(runtime.require(PREFIX), "patched")
@@ -118,11 +118,11 @@ plugins:
     group: extras
     config: {{prefix: higher-entry}}
 """, encoding="utf-8")
-            await runtime.reconfigure(load_layers(profile))
+            await runtime.reconfigure(Include(profile).read())
             self.assertEqual(runtime.require(PREFIX), "higher-entry")
             profile.write_text("includes: [provider.yaml]\ngroups: {extras: {disabled: true}}\n", encoding="utf-8")
-            self.assertEqual(await runtime.reconfigure(load_layers(profile)), ("provider",))
+            self.assertEqual(await runtime.reconfigure(Include(profile).read()), ("provider",))
             self.assertEqual(runtime.plugins, ())
             profile.write_text("includes: [plugins.yaml]\n", encoding="utf-8")
             with self.assertRaisesRegex(ConfigurationError, "include cycle"):
-                load_layers(profile)
+                Include(profile).read()

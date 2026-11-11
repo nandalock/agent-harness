@@ -7,9 +7,8 @@ from importlib.machinery import EXTENSION_SUFFIXES
 from packaging.utils import canonicalize_name
 
 from agent_platform_app_boot.config import load_config, resolve_config_path
-from agent_platform_plugin_runtime import (
-    PluginConfiguration, PluginEntry, PluginLoader, load_layers, load_module_plugin, load_yaml_config,
-)
+from minidsh_cordis_plugin_include import PluginConfiguration, EntryOptions, Include, load_yaml_config
+from minidsh_cordis_plugin_loader import Loader, load_module_plugin
 
 
 def owns_export(files: set[str], target: str) -> bool:
@@ -36,7 +35,7 @@ def main():
         result = load_config().model_dump(mode="json")
     elif action == "validate":
         config = load_config(PluginConfiguration.model_validate_json(sys.stdin.read()))
-        PluginLoader(config).validate()
+        Loader(config).validate()
         return
     elif action in ("describe", "owned"):
         distribution = metadata.distribution(sys.argv[2])
@@ -46,7 +45,7 @@ def main():
             if not owns_export(files, target):
                 raise ValueError(f"{target!r} is outside {distribution.metadata['Name']}")
             plugin = load_module_plugin(target)
-            entry = PluginEntry(id=plugin.name, name=plugin.name, use=target)
+            entry = EntryOptions(id=plugin.name, name=plugin.name, use=target)
             result = entry.model_dump(mode="json")
         else:
             def owned(config: PluginConfiguration) -> list[str]:
@@ -57,7 +56,7 @@ def main():
             included = []
             if path is not None:
                 document = load_yaml_config(path).model_copy(update={"plugins": (), "patches": ()})
-                included = owned(load_layers(path, document=document))
+                included = owned(Include(path).read(document=document))
             result = {"configured": owned(load_config()), "included": included}
     else:
         raise ValueError(f"Unknown profile operation: {action}")

@@ -65,7 +65,6 @@ RUN npm install --global overleaf-mcp-rt@2.2.0
 # 插件 SDK / runtime / 示例插件：editable 安装指向 /app/packages，
 # 包含浏览器资源的功能用普通安装，确保 Compose 挂载 /app 后仍能从包内读取资源。
 COPY packages ./packages
-COPY vendor ./vendor
 COPY apps ./apps
 COPY requirements-plugins.txt ./requirements-plugins.txt
 COPY --from=browser-build /plugin-web/ ./packages/

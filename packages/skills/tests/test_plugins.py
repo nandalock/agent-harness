@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from agent_platform_plugin_runtime import PluginLoader
+from minidsh_cordis_plugin_loader import Loader
 from agent_platform_plugin_sdk import (
     AGENTS, AGENT_EXTENSIONS, TOOLS, AgentRunContext, AgentRunContribution,
     ExecutionScope, ToolCall, ToolContext, ServiceClosedError,
@@ -61,7 +61,7 @@ class SkillPluginTests(unittest.IsolatedAsyncioTestCase):
             {"id": "skills", "name": "agent-platform.skills-default", "use": "agent_platform_skills_default:SkillsDefaultPlugin"},
             {"id": "tools", "name": "agent-platform.tools-default", "use": "agent_platform_tools_default:ToolsDefaultPlugin"},
         ])
-        runtime = PluginLoader({"plugins": entries}, host_services={
+        runtime = Loader({"plugins": entries}, host_services={
             AGENTS: Agents(), AGENT_EXTENSIONS: extensions or self.extensions,
         })
         self.runtimes.append(runtime)
@@ -91,7 +91,7 @@ class SkillPluginTests(unittest.IsolatedAsyncioTestCase):
             service.load("demo", replace(self.scope, tenant_id=8))
 
     async def test_registry_runs_without_tools_agents_or_filesystem(self):
-        runtime = PluginLoader({"plugins": [{"id": "skills", "name": "agent-platform.skills-default", "use": "agent_platform_skills_default:SkillsDefaultPlugin"}]})
+        runtime = Loader({"plugins": [{"id": "skills", "name": "agent-platform.skills-default", "use": "agent_platform_skills_default:SkillsDefaultPlugin"}]})
         self.runtimes.append(runtime)
         await runtime.start()
         self.assertEqual(runtime.require(SKILLS).list(self.scope), [])

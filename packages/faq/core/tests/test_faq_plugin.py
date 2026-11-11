@@ -1,7 +1,7 @@
 import unittest
 
 from agent_platform_faq import FAQ, FAQService, FaqPlugin
-from agent_platform_plugin_runtime import MappingCatalog, PluginLoader
+from minidsh_cordis_plugin_loader import MappingCatalog, Loader
 from agent_platform_plugin_sdk import DATABASE
 
 
@@ -12,7 +12,7 @@ class FakeDatabase:
 
 class FaqPluginTests(unittest.IsolatedAsyncioTestCase):
     async def test_plugin_provides_service(self):
-        runtime = PluginLoader(
+        runtime = Loader(
             {"plugins": [{"id": "faq", "name": "agent-platform.faq"}]},
             catalog=MappingCatalog({"agent-platform.faq": FaqPlugin}),
             host_services={DATABASE: FakeDatabase()},

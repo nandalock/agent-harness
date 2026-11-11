@@ -29,7 +29,7 @@
 | `provider.py` | `SandboxProvider` 抽象 seam + `ConfinedArgv` + `RunnerFailureRule` | 后端实现、executor |
 | `backends/local.py` | 本地 Windows 受限令牌、Linux bwrap、macOS Seatbelt | sandbox-local 插件 |
 | `backends/docker.py` | 可选 Docker 后端 | sandbox-docker 插件 |
-| `plugin.py` | 两个可替换的 sandbox.v1 服务插件 | PluginLoader、sandbox-tools |
+| `plugin.py` | 两个可替换的 sandbox.v1 服务插件 | Loader、sandbox-tools |
 | `policy.py` | 模式优先级链（纯函数） | `runtime.py`、executor |
 | `escalation.py` | **完整升权链**：严格序表、参数校验、调用 `approval.v1`、两个模型可见标记。不认识 session / agent / **审批实现** | executor、`runtime.py` |
 | `classify.py` | 结果分类：`denied` / `runner_failed` / `normal` | executor |

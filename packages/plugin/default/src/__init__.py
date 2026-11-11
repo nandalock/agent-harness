@@ -1,8 +1,7 @@
 """Default assembly, analogous to a harness bundle rather than a tool plugin."""
 from importlib.resources import files
 
-from agent_platform_plugin_runtime import apply_patches, parse_yaml
-from agent_platform_plugin_runtime import PluginConfiguration
+from minidsh_cordis_plugin_include import PluginConfiguration, apply_entry_patches, parse_yaml
 
 
 def compose(config: PluginConfiguration, *, sandbox_backend: str = "local") -> PluginConfiguration:
@@ -59,7 +58,7 @@ def compose(config: PluginConfiguration, *, sandbox_backend: str = "local") -> P
         elif entry.use is None and entry.name in extra_exports:
             entry = entry.model_copy(update={"use": extra_exports[entry.name]})
         overrides.append(entry)
-    return apply_patches(PluginConfiguration(
+    return apply_entry_patches(PluginConfiguration(
         plugins=(*services, *overrides, *features), groups={**defaults.groups, **config.groups},
         patches=(*defaults.patches, *config.patches),
     ))

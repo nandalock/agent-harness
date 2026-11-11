@@ -1,7 +1,7 @@
 # 部署方式
 
 参考 DeepSeek Harness 的 CLI/profile 启动方式，本项目使用根目录 `minidsh.py`
-统一安装、环境检查、进程启动和关闭。插件仍由同一个 PluginLoader 装配。
+统一安装、环境检查、进程启动和关闭。插件仍由同一个 Loader 装配。
 
 | 方式 | 前后端 | PostgreSQL / Redis | 命令 |
 | --- | --- | --- | --- |

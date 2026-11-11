@@ -4,10 +4,10 @@ import unittest
 from pydantic import ValidationError
 from pathlib import Path
 
-from agent_platform_plugin_runtime import (
+from minidsh_cordis_plugin_include import (
     ConfigurationError,
     PluginConfiguration,
-    PluginEntry,
+    EntryOptions,
     load_yaml_config,
     parse_config,
     parse_yaml,
@@ -99,15 +99,15 @@ class ConfigurationModelTests(unittest.TestCase):
                       {"id": "echo", "name": "example.echo", "config": {"callback": object()}},
                       {"id": "echo", "name": "example.echo", "config": {"number": float("nan")}}):
             with self.subTest(value=value), self.assertRaises(ValidationError):
-                PluginEntry.model_validate(value)
+                EntryOptions.model_validate(value)
         for version in (2, True, "1"):
             with self.subTest(version=version), self.assertRaises(ValidationError):
                 PluginConfiguration(version=version)
 
     def test_plugin_config_defaults_are_isolated(self):
-        entry = PluginEntry(id="one", name="example.one")
+        entry = EntryOptions(id="one", name="example.one")
         entry.config["changed"] = True
-        self.assertEqual(PluginEntry(id="two", name="example.two").config, {})
+        self.assertEqual(EntryOptions(id="two", name="example.two").config, {})
 
 
 if __name__ == "__main__":

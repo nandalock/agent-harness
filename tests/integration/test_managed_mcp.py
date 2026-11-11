@@ -2,7 +2,7 @@ import socket
 import unittest
 from unittest.mock import patch
 
-from agent_platform_plugin_runtime import PluginLoader, MappingCatalog
+from minidsh_cordis_plugin_loader import Loader, MappingCatalog
 from agent_platform_plugin_sdk import SdkModel, TOOLS, ExecutionScope, ToolCall, ToolContext
 from agent_platform_tools_default import ToolsDefaultPlugin
 from agent_platform_mcp_client import McpManagerPlugin, MCP_MANAGER
@@ -33,7 +33,7 @@ def runtime_for(plugin, port, failing=False):
     ]
     if failing:
         entries.append({"id": "failure", "name": "test.fail"})
-    return PluginLoader({"plugins": entries}, catalog=MappingCatalog({
+    return Loader({"plugins": entries}, catalog=MappingCatalog({
         "agent-platform.tools-default": ToolsDefaultPlugin, "agent-platform.mcp-manager": McpManagerPlugin,
         plugin.name: plugin, "test.fail": Fail,
     }))

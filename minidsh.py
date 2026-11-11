@@ -404,7 +404,7 @@ def run(args, env, profile: FrontendProfile):
             # 使用平台默认的 ProactorEventLoop。
             argv += ["--loop", "none"]
         if args.action == "dev":
-            argv += ["--reload", "--reload-dir", "apps", "--reload-dir", "packages", "--reload-dir", "vendor"]
+            argv += ["--reload", "--reload-dir", "apps", "--reload-dir", "packages"]
         backend = spawn(argv, ROOT)
         deadline = time.monotonic() + 120
         while True:
