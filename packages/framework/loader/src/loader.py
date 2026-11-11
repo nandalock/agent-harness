@@ -1,18 +1,18 @@
 """Compose native Cordis plugins from a configuration document."""
 import asyncio
 from collections.abc import Mapping
-from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from minidsh_cordis import Composition, Context, FiberState, Plugin, ServiceClosedError, ServiceKey, plan
+from minidsh_cordis import Context, PinnedServiceError, Plugin, ServiceClosedError, ServiceKey
 from minidsh_cordis_plugin_group import is_group_disabled
 from minidsh_cordis_plugin_include import ConfigurationError, PluginConfiguration, apply_entry_patches, Include, parse_config
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ValidationError
 
-from .catalog import PLUGIN_CATALOG, PluginCatalog, load_module_plugin
+from .catalog import PLUGIN_CATALOG, PluginCatalog, _PluginInventory, load_module_plugin
+from .catalog import LoadedPluginInfo as LoadedPluginInfo
 from .errors import DiscoveryError, LifecycleError
 
 
@@ -22,30 +22,6 @@ class LoaderState(StrEnum):
     RUNNING = "running"
     STOPPING = "stopping"
     CLOSED = "closed"
-
-
-@dataclass(frozen=True)
-class LoadedPluginInfo:
-    instance_id: str
-    name: str
-    version: str
-    web_package: str | None
-
-
-class _PluginInventory:
-    def __init__(self, loader: "Loader") -> None:
-        self._loader = loader
-
-    def list(self) -> list[dict[str, Any]]:
-        return [
-            {"id": plugin.instance_id, "name": plugin.name, "version": plugin.version}
-            for plugin in self._loader.plugins
-        ]
-
-    def web_packages(self) -> tuple[str, ...]:
-        return tuple(dict.fromkeys(
-            plugin.web_package for plugin in self._loader.plugins if plugin.web_package is not None
-        ))
 
 
 class Loader:
@@ -59,11 +35,11 @@ class Loader:
         self._config = apply_entry_patches(config if isinstance(config, PluginConfiguration) else parse_config(config))
         self._catalog = catalog
         self._host_services = dict(host_services or {})
-        self._host_services.setdefault(PLUGIN_CATALOG, _PluginInventory(self))
+        self._host_services.setdefault(PLUGIN_CATALOG, _PluginInventory(lambda: self.plugins))
         self._state = LoaderState.NEW
         self._lock = asyncio.Lock()
         self._root: Context | None = None
-        self._plan: Composition | None = None
+        self._entries: tuple[tuple[str, Plugin[Any], Any], ...] = ()
 
     @classmethod
     def from_yaml(
@@ -82,19 +58,19 @@ class Loader:
 
     @property
     def plugins(self) -> tuple[LoadedPluginInfo, ...]:
-        if self._root is None or self._plan is None:
+        if self._root is None:
             return ()
-        active = {fiber.id for fiber in self._root.fibers if fiber.state is FiberState.ACTIVE}
+        entries = {instance: plugin for instance, plugin, _ in self._entries}
         return tuple(
-            LoadedPluginInfo(instance, plugin.name, str(Version(plugin.version)), plugin.web_package)
-            for instance, plugin, _ in self._plan.entries if instance in active
+            LoadedPluginInfo(fiber.id, plugin.name, str(Version(plugin.version)), plugin.web_package)
+            for fiber in self._root.active_fibers if (plugin := entries.get(fiber.id)) is not None
         )
 
     def validate(self) -> None:
-        """Resolve exports, validate config and check the graph without starting plugins."""
-        self._prepare(self._config)
+        """Resolve exports and validate declarations without starting plugins."""
+        Context(host_services=self._host_services).validate(self._prepare(self._config))
 
-    def _prepare(self, config: PluginConfiguration) -> Composition:
+    def _prepare(self, config: PluginConfiguration) -> tuple[tuple[str, Plugin[Any], Any], ...]:
         entries: list[tuple[str, Plugin[Any], Any]] = []
         for entry in config.plugins:
             if entry.disabled or is_group_disabled(entry.group, config.groups):
@@ -122,7 +98,7 @@ class Loader:
             except ValidationError as exc:
                 raise ConfigurationError(f"plugin {entry.id!r} ({entry.name}) rejected its config: {exc}") from exc
             entries.append((entry.id, plugin, validated))
-        return plan(entries, self._host_services)
+        return tuple(entries)
 
     async def start(self) -> None:
         if self._state is LoaderState.CLOSED:
@@ -131,44 +107,52 @@ class Loader:
             raise LifecycleError(f"cannot start plugin loader in state {self._state.value!r}")
         self._state = LoaderState.STARTING
         try:
-            composition = self._prepare(self._config)
+            entries = self._prepare(self._config)
             root = Context(host_services=self._host_services, lifecycle_in_caller=True)
-            await root.start(composition.entries)
+            await root.start(entries)
         except BaseException:
             self._state = LoaderState.NEW
             raise
-        self._root, self._plan = root, composition
+        self._root, self._entries = root, entries
         self._state = LoaderState.RUNNING
 
     async def reconfigure(
         self, config: PluginConfiguration, *, pinned: frozenset[ServiceKey[Any]] = frozenset(),
     ) -> tuple[str, ...]:
         async with self._lock:
-            root, old = self._root, self._plan
-            if self._state is not LoaderState.RUNNING or root is None or old is None:
+            root, old = self._root, self._entries
+            if self._state is not LoaderState.RUNNING or root is None:
                 raise LifecycleError("plugin loader must be running before reconfiguration")
             config = apply_entry_patches(config)
-            running = {fiber.id for fiber in root.fibers if fiber.state is FiberState.ACTIVE}
-            missing = {instance for instance, _, _ in old.entries} - running
+            running = {fiber.id for fiber in root.active_fibers}
+            missing = {instance for instance, _, _ in old} - running
             if config == self._config and not missing:
                 return ()
             new = self._prepare(config)
-            before = {instance: (plugin, value) for instance, plugin, value in old.entries}
+            before = {instance: (plugin, value) for instance, plugin, value in old}
+            after = {instance for instance, _, _ in new}
             old_targets = {row.id: row.use for row in self._config.plugins}
             new_targets = {row.id: row.use for row in config.plugins}
-            changed = missing | {
-                instance for instance, plugin, value in new.entries if instance in before
-                and (old_targets[instance] != new_targets[instance]
-                     or type(plugin) is not type(before[instance][0]) or value != before[instance][1])
-            }
-            affected = new.affected(old, changed)
-            if any(pinned.intersection(plugin.provides) for graph in (old, new)
-                   for instance, plugin, _ in graph.entries if instance in affected):
-                raise LifecycleError("plugin configuration changes a service bound to the host; restart required")
-            if affected:
-                await root.replace(affected & running, (row for row in new.entries if row[0] in affected))
-            self._config, self._plan = config, new
-            return tuple(sorted(affected))
+            changed = missing | (before.keys() ^ after)
+            for instance, plugin, value in new:
+                if instance not in before:
+                    continue
+                previous, old_value = before[instance]
+                if (old_targets[instance] != new_targets[instance] or type(plugin) is not type(previous)
+                    or plugin.name != previous.name or plugin.provides != previous.provides
+                    or plugin.requires != previous.requires or plugin.optional != previous.optional or value != old_value):
+                    changed.add(instance)
+            registered = {fiber.id for fiber in root.fibers}
+            try:
+                affected = ()
+                if changed:
+                    affected = await root.reconfigure(
+                        changed & registered, (row for row in new if row[0] in changed), pinned=pinned,
+                    )
+            except PinnedServiceError as error:
+                raise LifecycleError(str(error)) from error
+            self._config, self._entries = config, new
+            return tuple(sorted(changed.union(affected)))
 
     async def aclose(self) -> None:
         async with self._lock:
@@ -181,7 +165,8 @@ class Loader:
                 if self._root is not None:
                     await self._root.aclose()
             finally:
-                self._root = self._plan = None
+                self._root = None
+                self._entries = ()
                 self._state = LoaderState.CLOSED
 
     @property

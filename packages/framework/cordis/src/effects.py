@@ -20,17 +20,21 @@ class Registration:
     def closed(self) -> bool:
         return self._cleanup is None
 
-    async def aclose(self) -> None:
+    def _release(self) -> Awaitable[None] | None:
         cleanup, self._cleanup = self._cleanup, None
         if cleanup is not None:
-            try:
-                result = cleanup()
-                if isawaitable(result):
-                    await result
-            except BaseException as exc:
-                if self._label is not None:
-                    exc.add_note(f"plugin cleanup callback {self._label!r} failed")
-                raise
+            return cleanup()
+        return None
+
+    async def aclose(self) -> None:
+        try:
+            result = self._release()
+            if isawaitable(result):
+                await result
+        except BaseException as exc:
+            if self._label is not None:
+                exc.add_note(f"plugin cleanup callback {self._label!r} failed")
+            raise
 
 
 async def unwind(registrations: list[Registration]) -> list[BaseException]:

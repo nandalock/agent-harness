@@ -5,9 +5,9 @@ from minidsh_cordis import (
 
 from minidsh_cordis_plugin_include import ConfigurationError, PluginRuntimeError
 
-from .catalog import PLUGIN_CATALOG, ActivePluginCatalog, MappingCatalog, PluginCatalog, load_module_plugin
+from .catalog import PLUGIN_CATALOG, ActivePluginCatalog, LoadedPluginInfo, MappingCatalog, PluginCatalog, load_module_plugin
 from .errors import DiscoveryError, LifecycleError
-from .loader import LoadedPluginInfo, LoaderState, Loader
+from .loader import LoaderState, Loader
 
 __version__ = "0.1.0"
 

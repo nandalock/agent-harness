@@ -133,6 +133,44 @@ class LifecycleTests(IsolatedAsyncioTestCase):
             await self.root.plugin(Plugin(provide_prefix, provides=(PREFIX,)), id="extra", config="b")
         self.assertEqual(self.root.require(LABEL), "a")
 
+    async def test_cancellation_on_the_lifecycle_task_still_drains_and_unloads(self):
+        root = Context(lifecycle_in_caller=True)
+        self.addAsyncCleanup(root.aclose)
+        entered = asyncio.Event()
+        release = asyncio.Event()
+        quiesced = asyncio.Event()
+        cleaned = []
+
+        async def render(value):
+            entered.set()
+            await release.wait()
+            return value
+
+        def setup(ctx, _):
+            ctx.on(RENDER, render)
+            ctx.on_quiesce(quiesced.set)
+            ctx.on_dispose(lambda: cleaned.append(asyncio.current_task()))
+
+        fiber = await root.plugin(Plugin(setup), id="consumer", config=None)
+        running = asyncio.create_task(root.waterfall(RENDER, "in flight"))
+        closing = None
+        try:
+            await asyncio.wait_for(entered.wait(), timeout=2)
+            closing = asyncio.create_task(root.aclose())
+            await asyncio.wait_for(quiesced.wait(), timeout=2)
+            closing.cancel()
+            await asyncio.sleep(0)
+            self.assertFalse(closing.done())
+        finally:
+            release.set()
+            await running
+            if closing is not None:
+                with self.assertRaises(asyncio.CancelledError):
+                    await closing
+        self.assertEqual(cleaned, [closing])
+        self.assertIs(fiber.state, FiberState.DISPOSED)
+        self.assertTrue(root.closed)
+
     async def test_cleanup_attempts_all_callbacks_and_withdraws_service_on_error(self):
         cleaned = []
 
@@ -229,3 +267,51 @@ class LifecycleTests(IsolatedAsyncioTestCase):
         self.assertEqual(disposed, ["prefix"])
         with self.assertRaises(LookupError):
             self.root.require(PREFIX)
+
+    async def test_optional_consumer_refreshes_on_binding_changes_only(self):
+        observed = []
+
+        def consumer(ctx, _):
+            observed.append(("start", ctx.get(PREFIX)))
+            ctx.on_dispose(lambda: observed.append(("stop", ctx.get(PREFIX))))
+
+        use = await self.root.plugin(Plugin(consumer, optional=(PREFIX,)), id="use", config=None)
+        unavailable = await self.root.plugin(
+            Plugin(provide_prefix, requires=(LABEL,), provides=(PREFIX,)), id="source", config="unavailable",
+        )
+        self.assertIs(unavailable.state, FiberState.PENDING)
+        await unavailable.aclose()
+        self.assertEqual(observed, [("start", None)])
+
+        provider = await self.root.plugin(Plugin(provide_prefix, provides=(PREFIX,)), id="source", config="available")
+        self.assertIs(use.state, FiberState.ACTIVE)
+        await provider.aclose()
+        self.assertIs(use.state, FiberState.ACTIVE)
+        self.assertEqual(observed, [
+            ("start", None), ("stop", None), ("start", "available"), ("stop", "available"), ("start", None),
+        ])
+
+    async def test_diamond_refreshes_the_shared_consumer_once(self):
+        right = ServiceKey[str]("right")
+        observed = []
+
+        def middle(key):
+            def setup(ctx, _):
+                ctx.provide(key, ctx.require(PREFIX))
+            return Plugin(setup, requires=(PREFIX,), provides=(key,))
+
+        def consumer(ctx, _):
+            observed.append(("start", ctx.require(LABEL), ctx.require(right)))
+            ctx.on_dispose(lambda: observed.append(("stop", ctx.require(LABEL), ctx.require(right))))
+
+        await self.root.plugin(middle(LABEL), id="left", config=None)
+        await self.root.plugin(middle(right), id="right", config=None)
+        use = await self.root.plugin(Plugin(consumer, requires=(LABEL, right)), id="use", config=None)
+        spec = Plugin(provide_prefix, provides=(PREFIX,))
+        first = await self.root.plugin(spec, id="source", config="first")
+        await first.aclose()
+        self.assertIs(use.state, FiberState.PENDING)
+        await self.root.plugin(spec, id="source", config="second")
+        self.assertEqual(observed, [
+            ("start", "first", "first"), ("stop", "first", "first"), ("start", "second", "second"),
+        ])

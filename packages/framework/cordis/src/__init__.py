@@ -3,17 +3,17 @@
 from .context import Context
 from .effects import Closeable, Registration
 from .errors import (
-    DependencyCycleError, DependencyError, MissingServiceError, RegistrationConflictError,
+    DependencyCycleError, DependencyError, MissingServiceError, PinnedServiceError, RegistrationConflictError,
     ServiceClosedError, ServiceConflictError, ServiceUnavailableError, UndeclaredServiceError,
 )
-from .events import EventKey
+from .events import EventKey, EventsService, Handler, Listener, Middleware
 from .fiber import Fiber, FiberState, Plugin
-from .graph import Composition, plan
 from .services import ServiceKey
 
 __all__ = [
-    "Closeable", "Composition", "Context", "DependencyCycleError", "DependencyError", "EventKey",
-    "Fiber", "FiberState", "MissingServiceError", "Plugin", "Registration", "RegistrationConflictError",
+    "Closeable", "Context", "DependencyCycleError", "DependencyError", "EventKey", "EventsService",
+    "Fiber", "FiberState", "Handler", "Listener", "Middleware", "MissingServiceError", "Plugin",
+    "PinnedServiceError", "Registration", "RegistrationConflictError",
     "ServiceClosedError", "ServiceConflictError", "ServiceKey", "ServiceUnavailableError",
-    "UndeclaredServiceError", "plan",
+    "UndeclaredServiceError",
 ]

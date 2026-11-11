@@ -7,15 +7,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from dataclasses import dataclass
-from functools import partial
+from typing import Any
 
-from minidsh_cordis_plugin_hmr import Hmr
-from minidsh_cordis_plugin_loader import Loader
-from agent_platform_plugin_sdk import TOOLS, ServiceKey
+from agent_platform_plugin_sdk import ServiceKey
+from minidsh_cordis_plugin_loader import Loader, PluginCatalog
 
 from .config import load_config
+from .lifecycle import run_lifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,7 @@ def get_plugin_host() -> PluginHost | None:
 
 
 async def init_plugin_host(
-    catalog: object | None = None, *, pinned: frozenset[ServiceKey] = frozenset(),
+    catalog: PluginCatalog | None = None, *, pinned: frozenset[ServiceKey[Any]] = frozenset(),
 ) -> PluginHost:
     """Start the composed runtime once per process."""
     global _host
@@ -62,23 +61,10 @@ async def init_plugin_host(
     stop = asyncio.Event()
     ready: asyncio.Future[object] = asyncio.get_running_loop().create_future()
 
-    async def lifecycle() -> None:
-        try:
-            await runtime.start()
-            ready.set_result(runtime.require(TOOLS))
-            if os.environ.get("MINIDSH_CONFIG_RELOAD", "true").lower() in ("false", "0", "no"):
-                await stop.wait()
-            else:
-                hmr = Hmr(load_config, partial(runtime.reconfigure, pinned=pinned | {TOOLS}))
-                await hmr.watch_config(initial=runtime.config, stop=stop)
-        except BaseException as error:
-            if not ready.done():
-                ready.set_exception(error)
-            raise
-        finally:
-            await runtime.aclose()
-
-    task = asyncio.create_task(lifecycle(), name="minidsh-plugin-lifecycle")
+    task = asyncio.create_task(
+        run_lifecycle(runtime, ready, stop, pinned=pinned),
+        name="minidsh-plugin-lifecycle",
+    )
     try:
         tools = await asyncio.shield(ready)
     except BaseException:

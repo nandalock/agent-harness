@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from minidsh_cordis_plugin_include import ConfigurationError, Include, parse_config
-from minidsh_cordis_plugin_loader import MappingCatalog, Loader
+from minidsh_cordis_plugin_loader import LifecycleError, Loader, MappingCatalog, MissingServiceError
 
 from support import EmptyConfig, service_key
 from minidsh_cordis import Plugin
@@ -60,15 +60,18 @@ class ReconfigureTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_replacement_restarts_dependents_and_restores_old_configuration(self):
         seen = []
+        output = service_key("test.output")
 
         class Consumer(Plugin[EmptyConfig]):
             name = "test.consumer"
             version = "0.1.0"
             requires = (PREFIX,)
+            provides = (output,)
             config_model = EmptyConfig
 
             async def setup(self, ctx, config):
                 seen.append(ctx.require(PREFIX))
+                ctx.provide(output, seen[-1])
 
         def configuration(prefix):
             return parse_config({"plugins": [
@@ -81,7 +84,18 @@ class ReconfigureTests(unittest.IsolatedAsyncioTestCase):
         }))
         await runtime.start()
         self.addAsyncCleanup(runtime.aclose)
+        consumer = next(fiber for fiber in runtime.ctx.fibers if fiber.id == "consumer")
+        context = consumer.ctx
+        with self.assertRaisesRegex(LifecycleError, "restart required"):
+            await runtime.reconfigure(configuration("new"), pinned=frozenset({output}))
+        missing = parse_config({"plugins": [{"id": "consumer", "name": "test.consumer"}]})
+        with self.assertRaises(MissingServiceError):
+            await runtime.reconfigure(missing)
+        self.assertIs(consumer.ctx, context)
+        self.assertEqual(seen, ["old"])
         self.assertEqual(await runtime.reconfigure(configuration("new")), ("consumer", "provider"))
+        self.assertIn(consumer, runtime.ctx.fibers)
+        self.assertIsNot(consumer.ctx, context)
         with self.assertRaisesRegex(ValueError, "invalid provider setup"):
             await runtime.reconfigure(configuration("broken"))
         self.assertEqual(seen, ["old", "new", "new"])

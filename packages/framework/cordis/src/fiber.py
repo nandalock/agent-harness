@@ -1,14 +1,18 @@
-"""Plugin declarations and the state of an individual mounted instance."""
+"""Plugin declarations and the lifecycle of a single instance."""
 
-from asyncio import Event
+from asyncio import CancelledError, Event
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
+from inspect import isawaitable
 from typing import TYPE_CHECKING, Any
 
+from .effects import Registration, unwind
 from .services import ServiceKey
 
 if TYPE_CHECKING:
-    from .context import Context, _Runtime
+    from .context import Context
+    from .reflect import Binding
+    from .registry import RegistryService
 
 
 class Plugin[Config]:
@@ -56,14 +60,17 @@ class FiberState(StrEnum):
 
 
 class Fiber:
-    def __init__(self, runtime: "_Runtime", instance_id: str, plugin: Plugin[Any], config: Any) -> None:
-        self._runtime = runtime
+    def __init__(self, registry: "RegistryService", instance_id: str, plugin: Plugin[Any], config: Any) -> None:
+        self._registry = registry
         self._id = instance_id
         self._plugin = plugin
         self._config = config
         self._state = FiberState.PENDING
         self._ctx: Context | None = None
         self._error: BaseException | None = None
+        self._bindings: dict[ServiceKey[Any], Binding] = {}
+        self._effects: list[Registration] = []
+        self._quiesce_effects: list[Registration] = []
         self._calls = 0
         self._idle = Event()
         self._idle.set()
@@ -86,7 +93,66 @@ class Fiber:
 
     @property
     def waiting_for(self) -> tuple[ServiceKey[Any], ...]:
-        return tuple(key for key in self._plugin.requires if key not in self._runtime.services)
+        return tuple(key for key in self._plugin.requires if key not in self._registry.reflect)
+
+    def _can_activate(self, batch: set["Fiber"]) -> bool:
+        if self._state not in (FiberState.PENDING, FiberState.FAILED) or self.waiting_for:
+            return False
+        reflect = self._registry.reflect
+        return not any(
+            provider in batch and provider.state in (FiberState.PENDING, FiberState.FAILED)
+            for key in self._plugin.optional
+            if key not in reflect and (provider := reflect.provider(key)) is not None
+        )
+
+    async def _refresh(self) -> dict["Fiber", None]:
+        from .context import Context
+
+        ctx = Context(_registry=self._registry, _fiber=self)
+        self._ctx = ctx
+        self._bindings = self._registry.reflect.bindings(self)
+        self._state = FiberState.STARTING
+        self._error = None
+        result = self._plugin.setup(ctx, self._config)
+        if isawaitable(result):
+            await result
+        notified = self._registry.reflect.publish(self)
+        self._state = FiberState.ACTIVE
+        return notified
+
+    def _begin_stop(self) -> None:
+        self._state = FiberState.STOPPING
+
+    async def _quiesce(self) -> list[BaseException]:
+        return await unwind(self._quiesce_effects)
+
+    async def _unload(self) -> list[BaseException]:
+        errors: list[BaseException] = []
+        while not self._idle.is_set():
+            try:
+                await self._idle.wait()
+            except CancelledError as error:
+                # Keep draining on the same task that owns the plugin resources.
+                errors.append(error)
+        ctx = self._ctx
+        assert ctx is not None
+        errors.extend(await unwind(self._effects))
+        ctx._closed = True
+        self._registry.reflect.revoke(self)
+        self._bindings.clear()
+        return errors
+
+    def _fail(self, error: BaseException) -> None:
+        self._state = FiberState.FAILED
+        self._error = error
+
+    def _reset(self) -> None:
+        self._state = FiberState.PENDING
+        self._ctx = None
+        self._error = None
+
+    def _dispose(self) -> None:
+        self._state = FiberState.DISPOSED
 
     def _enter_call(self) -> None:
         self._calls += 1
@@ -98,4 +164,4 @@ class Fiber:
             self._idle.set()
 
     async def aclose(self) -> None:
-        await self._runtime.remove(self)
+        await self._registry.remove(self)

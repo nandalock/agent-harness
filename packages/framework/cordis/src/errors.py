@@ -43,6 +43,10 @@ class ServiceUnavailableError(LookupError, RuntimeError):
         super().__init__(f"service {service} is unavailable")
 
 
+class PinnedServiceError(RuntimeError):
+    """A live host binding would be invalidated by a replacement."""
+
+
 class ServiceClosedError(RuntimeError):
     """A service or context has already closed."""
 

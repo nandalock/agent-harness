@@ -1,5 +1,6 @@
 """Resolve explicit module exports or classes supplied by an embedding host."""
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, Protocol
 
@@ -17,6 +18,30 @@ class ActivePluginCatalog(Protocol):
 
 
 PLUGIN_CATALOG: ServiceKey[ActivePluginCatalog] = ServiceKey("plugin-catalog")
+
+
+@dataclass(frozen=True)
+class LoadedPluginInfo:
+    instance_id: str
+    name: str
+    version: str
+    web_package: str | None
+
+
+class _PluginInventory:
+    def __init__(self, active_plugins: Callable[[], tuple[LoadedPluginInfo, ...]]) -> None:
+        self._active_plugins = active_plugins
+
+    def list(self) -> list[dict[str, Any]]:
+        return [
+            {"id": plugin.instance_id, "name": plugin.name, "version": plugin.version}
+            for plugin in self._active_plugins()
+        ]
+
+    def web_packages(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(
+            plugin.web_package for plugin in self._active_plugins() if plugin.web_package is not None
+        ))
 
 
 class PluginCatalog(Protocol):

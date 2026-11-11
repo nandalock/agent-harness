@@ -1,6 +1,6 @@
 # minidsh 插件 Loader
 
-Loader 合并 YAML、导入 `use` 指定的模块导出，并通过插件自己的 `config_model` 校验参数。随后把原生 Cordis 插件交给根 `Context`。Cordis 统一处理依赖排序、服务发布、启动、停止和重装。
+Loader 合并 YAML、导入 `use` 指定的模块导出，并通过插件自己的 `config_model` 校验参数。随后把原生 Cordis 插件交给根 `Context`。Fiber 等待依赖服务可用后启动，并在订阅的服务变化时重新装配。
 
 ## 最小清单
 
@@ -31,6 +31,6 @@ finally:
     await loader.aclose()
 ```
 
-`Loader.validate()` 可以在修改 profile 时提前检查导出、参数和依赖图。Web 在 YAML 更新后调用 `reconfigure()`，由 Cordis 重装受影响的插件。应用通过 Loader 的清单读取活跃插件的名称、版本和浏览器资源。
+`Loader.validate()` 可以在修改 profile 时提前检查导出、参数和服务依赖声明。Web 在 YAML 更新后调用 `reconfigure()`，由 Loader 找出配置变化的条目，再由 Cordis 按服务订阅传播变更。应用通过 Loader 的清单读取活跃插件的名称、版本和浏览器资源。
 
 [分层配置和分组](../../../docs/startup.md) · [可运行的 Echo 示例](../../plugin/examples/README.md) · [Cordis 内核](../cordis/README.md)
