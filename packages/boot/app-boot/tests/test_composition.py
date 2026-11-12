@@ -1,7 +1,8 @@
 import unittest
 
+from agent_platform_app_boot import create_runtime
 from agent_platform_app_boot.bundles import compose, read_bundle
-from minidsh_cordis_plugin_loader import MappingCatalog, Loader
+from minidsh_cordis_plugin_loader import PLUGIN_CATALOG, MappingCatalog, Loader
 from agent_platform_plugin_sdk import (
     ExecutionScope, RegistrationConflictError,
     SdkModel, ServiceKey, TOOLS,
@@ -180,3 +181,23 @@ class PackageLifecycleTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RuntimeBootTests(unittest.IsolatedAsyncioTestCase):
+    async def test_boot_mounts_loader_and_application_plugins_in_one_root(self):
+        config = PluginConfiguration.model_validate({
+            "plugins": [{"id": "prefix", "name": PrefixPlugin.name}],
+        })
+        runtime = create_runtime(config, catalog=MappingCatalog({PrefixPlugin.name: PrefixPlugin}))
+        self.addAsyncCleanup(runtime.aclose)
+
+        runtime.validate()
+        await runtime.start()
+
+        root = runtime.ctx
+        self.assertEqual([fiber.id for fiber in root.active_fibers], ["minidsh.loader", "prefix"])
+        self.assertEqual(root.require(PREFIX), "package:")
+        self.assertEqual([row["id"] for row in root.require(PLUGIN_CATALOG).list()], ["prefix"])
+
+        await runtime.aclose()
+        self.assertTrue(root.closed)

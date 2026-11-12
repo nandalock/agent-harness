@@ -9,6 +9,7 @@ description = "Composition loading and plugin-runtime boot glue"
 requires-python = ">=3.12"
 dependencies = [
     "agent-platform-plugin-sdk>=0.1,<0.2",
+    "minidsh-cordis>=0.1,<0.2",
     "minidsh-cordis-plugin-loader>=0.1,<0.2",
     "minidsh-cordis-plugin-include>=0.1,<0.2",
     "minidsh-cordis-plugin-hmr>=0.1,<0.2",

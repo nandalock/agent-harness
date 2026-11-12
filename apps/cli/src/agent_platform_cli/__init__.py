@@ -8,8 +8,7 @@ import sys
 from pathlib import Path
 
 from agent_platform_agent_entry import AGENT_ENTRY, RequestContext
-from agent_platform_app_boot import load_config
-from minidsh_cordis_plugin_loader import Loader
+from agent_platform_app_boot import create_runtime, load_config
 
 
 def _load_local_env() -> None:
@@ -27,7 +26,7 @@ async def run_agent(agent_key: str, question: str, tenant_id: int) -> str:
     config = load_config()
     interactive = {"agent-platform.http-api", "agent-platform.user-approval"}
     plugins = tuple(entry for entry in config.plugins if entry.name not in interactive)
-    runtime = Loader(config.model_copy(update={"plugins": plugins}))
+    runtime = create_runtime(config.model_copy(update={"plugins": plugins}))
     await runtime.start()
     try:
         reply = await runtime.require(AGENT_ENTRY).chat(

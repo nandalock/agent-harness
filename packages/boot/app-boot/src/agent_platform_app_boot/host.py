@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from agent_platform_plugin_sdk import ServiceKey
+from minidsh_cordis import Context
+from minidsh_cordis_plugin_include import PluginConfiguration
 from minidsh_cordis_plugin_loader import Loader, PluginCatalog
 
 from .config import load_config
@@ -48,6 +50,12 @@ def get_plugin_host() -> PluginHost | None:
     return _host
 
 
+def create_runtime(config: PluginConfiguration, *, catalog: PluginCatalog | None = None) -> Loader:
+    """Create the application's root and its Cordis loader."""
+    context = Context(lifecycle_in_caller=True)
+    return Loader(config, context=context, catalog=catalog)
+
+
 async def init_plugin_host(
     catalog: PluginCatalog | None = None, *, pinned: frozenset[ServiceKey[Any]] = frozenset(),
 ) -> PluginHost:
@@ -57,7 +65,7 @@ async def init_plugin_host(
         return _host
 
     config = load_config()
-    runtime = Loader(config, catalog=catalog)
+    runtime = create_runtime(config, catalog=catalog)
     stop = asyncio.Event()
     ready: asyncio.Future[object] = asyncio.get_running_loop().create_future()
 

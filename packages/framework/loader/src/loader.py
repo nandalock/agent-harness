@@ -24,18 +24,31 @@ class LoaderState(StrEnum):
     CLOSED = "closed"
 
 
-class Loader:
-    """Validate YAML and delegate plugin execution to a single Cordis root."""
+class Loader(Plugin[None]):
+    """Compose configured plugins and provide their inventory as a Cordis plugin."""
+
+    name = "minidsh.loader"
+    version = "0.1.0"
+    _instance_id = "minidsh.loader"
 
     def __init__(
         self, config: PluginConfiguration | Mapping[str, object], *,
+        context: Context | None = None,
         catalog: PluginCatalog | None = None,
         host_services: Mapping[ServiceKey[Any], Any] | None = None,
     ) -> None:
+        super().__init__()
+        if context is not None and host_services is not None:
+            raise TypeError("configure host_services on the supplied Context")
+        self._context = context
         self._config = apply_entry_patches(config if isinstance(config, PluginConfiguration) else parse_config(config))
         self._catalog = catalog
         self._host_services = dict(host_services or {})
-        self._host_services.setdefault(PLUGIN_CATALOG, _PluginInventory(lambda: self.plugins))
+        has_catalog = (
+            context.get(PLUGIN_CATALOG) is not None if context is not None
+            else PLUGIN_CATALOG in self._host_services
+        )
+        self.provides = () if has_catalog else (PLUGIN_CATALOG,)
         self._state = LoaderState.NEW
         self._lock = asyncio.Lock()
         self._root: Context | None = None
@@ -43,10 +56,10 @@ class Loader:
 
     @classmethod
     def from_yaml(
-        cls, path: str | Path, *, catalog: PluginCatalog | None = None,
+        cls, path: str | Path, *, context: Context | None = None, catalog: PluginCatalog | None = None,
         host_services: Mapping[ServiceKey[Any], Any] | None = None,
     ) -> "Loader":
-        return cls(Include(path).read(), catalog=catalog, host_services=host_services)
+        return cls(Include(path).read(), context=context, catalog=catalog, host_services=host_services)
 
     @property
     def state(self) -> LoaderState:
@@ -68,13 +81,20 @@ class Loader:
 
     def validate(self) -> None:
         """Resolve exports and validate declarations without starting plugins."""
-        Context(host_services=self._host_services).validate(self._prepare(self._config))
+        root = self._context or Context(host_services=self._host_services)
+        root.validate(((self._instance_id, self, None), *self._prepare(self._config)))
+
+    def setup(self, ctx: Context, config: None) -> None:
+        if PLUGIN_CATALOG in self.provides:
+            ctx.provide(PLUGIN_CATALOG, _PluginInventory(lambda: self.plugins))
 
     def _prepare(self, config: PluginConfiguration) -> tuple[tuple[str, Plugin[Any], Any], ...]:
         entries: list[tuple[str, Plugin[Any], Any]] = []
         for entry in config.plugins:
             if entry.disabled or is_group_disabled(entry.group, config.groups):
                 continue
+            if entry.id == self._instance_id:
+                raise ConfigurationError(f"plugin id {entry.id!r} is reserved for the loader")
             plugin: object
             if entry.use is not None:
                 plugin = load_module_plugin(entry.use)
@@ -108,8 +128,8 @@ class Loader:
         self._state = LoaderState.STARTING
         try:
             entries = self._prepare(self._config)
-            root = Context(host_services=self._host_services, lifecycle_in_caller=True)
-            await root.start(entries)
+            root = self._context or Context(host_services=self._host_services, lifecycle_in_caller=True)
+            await root.start(((self._instance_id, self, None), *entries))
         except BaseException:
             self._state = LoaderState.NEW
             raise
