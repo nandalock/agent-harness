@@ -8,7 +8,7 @@
 minidsh web --profile web
   → 选择 ~/.minidsh/profiles/web/.venv 的 Python
   → Uvicorn 导入 agent_platform_server:app
-  → app-boot 合并默认清单、profile/cordis.yml 和 cordis.patch.yml
+  → app-boot 合并 base、web-app、profile 根配置和 Patch
   → Loader 导入插件、校验配置，把插件交给 Cordis
   → Cordis 为各插件创建 Fiber 和 ctx，启动插件并持有服务及清理动作
   → HTTP 插件发布 FastAPI 应用
@@ -20,7 +20,7 @@ minidsh web --profile web
 
 1. [发布 CLI](../apps/cli/src/agent_platform_cli/profiles.py) 选择 profile，显式指定配置文件，启动子进程。
 2. [服务端入口](../apps/server/src/agent_platform_server/__init__.py) 接到 ASGI 启动事件，创建运行时并拿到 HTTP 应用。
-3. [配置读取](../packages/boot/app-boot/src/agent_platform_app_boot/config.py) 与 [默认清单](../packages/plugin/default/src/plugins.yaml) 决定有效插件列表。
+3. [app-boot](../packages/boot/app-boot/src/agent_platform_app_boot/bundles.py) 用 `importlib.resources` 从已安装的 [base](../packages/bundle/base/src/plugins.yaml) 和 [web-app](../packages/bundle/web-app/src/plugins.yaml) 读取清单，再合并 [Profile 配置](../packages/boot/app-boot/src/agent_platform_app_boot/config.py)。
 4. [入口发现](../packages/framework/loader/src/catalog.py) 按配置导入 Python 模块和导出对象。
 5. [Loader](../packages/framework/loader/src/loader.py) 将原生插件交给 [Cordis 内核](../packages/framework/cordis/src/context.py)。每个 Fiber 在必需服务可用后启动。关停时先收口运行中的任务，再清理消费者和它们的提供方。
 6. [浏览器启动](../packages/client/kernel/boot.ts) 读取宿主公布的入口，注册菜单、路由和插槽。
@@ -52,7 +52,7 @@ patches:
 
 `use` 指向已安装模块的 Cordis 插件类、工厂或 `plugin` 对象，`name` 对应插件声明的名称。覆盖内置插件时可沿用默认清单里的 `use`。自定义插件需要显式填写 `use`。把 `demos.disabled` 设为 `true` 可整组停用。
 
-把常用覆盖写进同目录的 `cordis.patch.yml`。它接受 `- id: echo` 开头的补丁列表，也接受带 `patches` 或 `groups` 的映射。用 `minidsh web --profile web --plugin-patch override.yaml` 临时叠加一层，源码入口也支持这两个参数。优先级从低到高是内置清单、根文件的 Include、`cordis.yml`、`cordis.patch.yml`、命令行覆盖。
+把常用覆盖写进同目录的 `cordis.patch.yml`。它接受 `- id: echo` 开头的补丁列表，也接受带 `patches` 或 `groups` 的映射。优先级从低到高是 base、web-app、用户根配置（`cordis.yml`，兼容 `plugins.yaml`）、Profile Patch、环境变量 `MINIDSH_PLUGIN_PATCH` 指定的临时覆盖。Web 的 `--plugin-patch override.yaml` 会设置这个环境变量。
 
 Web 进程默认检测配置变化。通过依赖校验后，Cordis 只重装变更实例及受影响的依赖者。启动失败会尝试恢复旧装配，结果会写入后端日志。涉及宿主绑定的 HTTP 或工具服务需要重启进程。可用 `MINIDSH_CONFIG_RELOAD=false` 停用监听。源码开发的 Python 变更由 Uvicorn 重启后端进程。
 

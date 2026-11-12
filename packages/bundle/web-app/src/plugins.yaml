@@ -1,0 +1,32 @@
+version: 1
+groups:
+  web: {}
+plugins:
+  - id: plugin-inventory
+    name: agent-platform.plugin-inventory
+    use: agent_platform_plugin_inventory:PluginInventoryPlugin
+    group: web
+  - id: rpc-gateway
+    name: agent-platform.rpc-gateway
+    use: agent_platform_rpc_gateway:RpcGatewayPlugin
+    group: web
+  - id: rpc-connection
+    name: agent-platform.rpc-connection
+    use: agent_platform_rpc_connection:RpcConnectionPlugin
+    group: web
+  - id: api-workspace
+    name: agent-platform.api-workspace
+    use: agent_platform_api_workspace:WorkspaceControllerPlugin
+    group: web
+  - id: api-agents
+    name: agent-platform.api-agents
+    use: agent_platform_api_agents:AgentApiPlugin
+    group: web
+  - id: api-sessions
+    name: agent-platform.api-sessions
+    use: agent_platform_api_sessions:SessionApiPlugin
+    group: web
+  - id: http-api
+    name: agent-platform.http-api
+    use: agent_platform_http_api:HttpApiPlugin
+    group: web

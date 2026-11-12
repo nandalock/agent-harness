@@ -12,7 +12,7 @@ dependencies = [
     "minidsh-cordis-plugin-loader>=0.1,<0.2",
     "minidsh-cordis-plugin-include>=0.1,<0.2",
     "minidsh-cordis-plugin-hmr>=0.1,<0.2",
-    "agent-platform-default>=0.1,<0.2",
+    "agent-platform-bundle-web-app>=0.1,<0.2",
     "agent-platform-tool-host>=0.1,<0.2",
 ]
 

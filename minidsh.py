@@ -275,7 +275,7 @@ def doctor(env, backend_only=False, profile: FrontendProfile | None = None):
     profile = profile or _default_frontend_profile()
     import psycopg2
 
-    for module in ("uvicorn", "agent_platform_server", "agent_platform_default"):
+    for module in ("uvicorn", "agent_platform_server", "agent_platform_bundle_base", "agent_platform_bundle_web_app"):
         if importlib.util.find_spec(module) is None:
             raise RuntimeError(f"Missing {module}; run python minidsh.py setup.")
     try:

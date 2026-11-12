@@ -8,7 +8,7 @@
 | `loop/` | `agent-platform.agent-loop` | 注册默认工厂，实现 inbox、LLM → 工具 → LLM、流式装配、重试、取消和执行限制 |
 | `runtime/` | `agent-platform.agent-runtime` | 提供 `agent.runtime.v1` 和 `agent.extensions.v1`；装配提示词、技能等扩展、LLM 和 Loop，管理一次 reply 的完整生命周期 |
 
-默认装配在 `packages/plugin/default/src/plugins.yaml`，本地和 Docker 都加载它们。现有安装更新一次：
+Agent 默认装配在 [base Bundle](../bundle/base/src/plugins.yaml)，本地和 Docker 都会加载。现有安装更新一次：
 
 ```bash
 python -m pip install -r requirements-plugins.txt

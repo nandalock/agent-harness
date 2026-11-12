@@ -245,7 +245,7 @@ RPC 已覆盖的操作见 [接口清单](docs/rpc-api.md)。
 
 ### 配置插件
 
-默认实例定义在 [默认插件清单](packages/plugin/default/src/plugins.yaml)。
+默认实例来自两个随 Python 包发布的清单，[base](packages/bundle/base/src/plugins.yaml) 提供公共能力，[web-app](packages/bundle/web-app/src/plugins.yaml) 提供 Web 和 API。
 源码版和发布版都从 `--profile` 选择的目录读取 `cordis.yml` 和 `cordis.patch.yml`，默认目录是 `~/.minidsh/profiles/web/`。
 例如把 Agent Loop 的工具并发上限改为 2。
 

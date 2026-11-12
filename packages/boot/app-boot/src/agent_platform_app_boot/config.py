@@ -4,8 +4,9 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from agent_platform_default import compose
 from minidsh_cordis_plugin_include import Include, PluginConfiguration
+
+from .bundles import compose
 
 
 def resolve_config_path() -> Path | None:

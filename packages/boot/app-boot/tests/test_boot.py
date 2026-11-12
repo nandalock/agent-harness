@@ -67,6 +67,25 @@ class BootConfigTests(unittest.TestCase):
                 root.write_text("version: 1\n", encoding="utf-8")
                 self.assertEqual(resolve_config_path(), root)
 
+    def test_user_root_and_environment_patch_override_the_web_bundle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "plugins.yaml"
+            overlay = root.with_name("override.yml")
+            root.write_text(
+                "plugins: [{id: api-sessions, name: agent-platform.api-sessions, disabled: true},"
+                " {id: extra, name: test.extra, use: example:Plugin}]\n",
+                encoding="utf-8",
+            )
+            overlay.write_text("- id: api-sessions\n  disabled: false\n", encoding="utf-8")
+            with patch.dict(os.environ, {"PLUGIN_CONFIG": str(root)}, clear=True):
+                configured = {row.id: row for row in load_config().plugins}
+                self.assertTrue(configured["api-sessions"].disabled)
+                self.assertEqual(configured["api-sessions"].use, "agent_platform_api_sessions:SessionApiPlugin")
+                self.assertIn("extra", configured)
+                os.environ["MINIDSH_PLUGIN_PATCH"] = str(overlay)
+                configured = {row.id: row for row in load_config().plugins}
+                self.assertFalse(configured["api-sessions"].disabled)
+
     def test_default_composition_has_no_host_mcp_scan(self):
         config = compose_plugins(PluginConfiguration())
         names = {entry.name for entry in config.plugins}

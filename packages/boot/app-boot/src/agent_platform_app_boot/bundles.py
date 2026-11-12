@@ -1,7 +1,12 @@
-"""Default assembly, analogous to a harness bundle rather than a tool plugin."""
+"""Compose the installed Web bundle layers with user configuration."""
 from importlib.resources import files
 
-from minidsh_cordis_plugin_include import Include, PluginConfiguration, apply_entry_patches, parse_yaml
+from minidsh_cordis_plugin_include import PluginConfiguration, apply_entry_patches, merge_layers, parse_yaml
+
+
+def read_bundle(package: str) -> PluginConfiguration:
+    resource = files(package).joinpath("plugins.yaml")
+    return parse_yaml(resource.read_text(encoding="utf-8"), source=f"{package}/plugins.yaml")
 
 
 def compose(config: PluginConfiguration, *, sandbox_backend: str = "local") -> PluginConfiguration:
@@ -11,9 +16,9 @@ def compose(config: PluginConfiguration, *, sandbox_backend: str = "local") -> P
     package name. Multiple explicitly configured instances remain independent.
     PluginConfiguration validates the final instance identities.
     """
-    defaults = parse_yaml(
-        files(__package__).joinpath("plugins.yaml").read_text(encoding="utf-8"),
-        source="agent-platform-default/plugins.yaml",
+    defaults = merge_layers(
+        read_bundle("agent_platform_bundle_base"),
+        read_bundle("agent_platform_bundle_web_app"),
     )
     if sandbox_backend not in ("local", "docker"):
         raise ValueError("SANDBOX_BACKEND must be local or docker")
@@ -59,5 +64,5 @@ def compose(config: PluginConfiguration, *, sandbox_backend: str = "local") -> P
         overrides.append(entry)
     base = defaults.model_copy(update={"plugins": tuple(missing)})
     explicit = config.model_copy(update={"plugins": tuple(overrides)})
-    merged = Include.merge(base, [explicit])
+    merged = merge_layers(base, explicit)
     return apply_entry_patches(merged.model_copy(update={"plugins": (*services, *overrides, *features)}))

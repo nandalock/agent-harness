@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-bundle-web-app"
+version = "0.1.0"
+description = "Web application configuration for minidsh"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-api-agents>=0.1,<0.2",
+    "agent-platform-api-sessions>=0.1,<0.2",
+    "agent-platform-api-workspace>=0.1,<0.2",
+    "agent-platform-bundle-base>=0.1,<0.2",
+    "agent-platform-http-api>=0.1,<0.2",
+    "agent-platform-plugin-inventory>=0.1,<0.2",
+    "agent-platform-rpc-connection>=0.1,<0.2",
+    "agent-platform-rpc-gateway>=0.1,<0.2",
+]
+
+[tool.setuptools]
+packages = ["agent_platform_bundle_web_app"]
+
+[tool.setuptools.package-dir]
+agent_platform_bundle_web_app = "src"
+
+[tool.setuptools.package-data]
+agent_platform_bundle_web_app = ["plugins.yaml"]

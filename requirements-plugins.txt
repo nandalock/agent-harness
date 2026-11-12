@@ -31,7 +31,6 @@
 -e ./packages/memory/core
 -e ./packages/agent/system-prompt
 -e ./packages/session/recovery
--e ./packages/plugin/default
 -e ./packages/skills/core
 -e ./packages/skills/default
 -e ./packages/skills/filesystem
@@ -48,12 +47,14 @@
 -e ./packages/faq/core
 -e ./packages/integrations/xianyu
 -e ./packages/host/plugin-inventory
--e ./packages/boot/app-boot
 -e ./packages/api/gateway
 -e ./packages/api/connection
 -e ./packages/api/workspace
 -e ./packages/api/agents
 -e ./packages/api/sessions
 -e ./packages/host/http-api
+-e ./packages/bundle/base
+-e ./packages/bundle/web-app
+-e ./packages/boot/app-boot
 -e ./apps/server
 -e ./apps/cli

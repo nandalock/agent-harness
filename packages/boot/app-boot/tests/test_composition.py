@@ -1,6 +1,6 @@
 import unittest
 
-from agent_platform_default import compose
+from agent_platform_app_boot.bundles import compose, read_bundle
 from minidsh_cordis_plugin_loader import MappingCatalog, Loader
 from agent_platform_plugin_sdk import (
     ExecutionScope, RegistrationConflictError,
@@ -61,6 +61,14 @@ class TextPlugin(Plugin[EmptyConfig]):
 
 
 class CompositionTests(unittest.TestCase):
+    def test_installed_bundle_resources_keep_web_plugins_in_the_web_layer(self):
+        base = read_bundle("agent_platform_bundle_base")
+        web = read_bundle("agent_platform_bundle_web_app")
+        self.assertEqual(len(base.plugins), 35)
+        self.assertEqual(len(web.plugins), 7)
+        self.assertTrue(all(row.group == "web" for row in web.plugins))
+        self.assertFalse({row.id for row in base.plugins} & {row.id for row in web.plugins})
+
     def test_docker_can_replace_the_default_native_service(self):
         config = compose(PluginConfiguration(), sandbox_backend="docker")
         names = {entry.name for entry in config.plugins}

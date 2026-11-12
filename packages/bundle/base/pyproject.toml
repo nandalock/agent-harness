@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-platform-bundle-base"
+version = "0.1.0"
+description = "Base services and features for minidsh"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-platform-agent-config>=0.1,<0.2",
+    "agent-platform-agent-entry>=0.1,<0.2",
+    "agent-platform-agent-loop>=0.1,<0.2",
+    "agent-platform-agent-runtime>=0.1,<0.2",
+    "agent-platform-agents>=0.1,<0.2",
+    "agent-platform-chat>=0.1,<0.2",
+    "agent-platform-database-postgres>=0.1,<0.2",
+    "agent-platform-faq>=0.1,<0.2",
+    "agent-platform-llm>=0.1,<0.2",
+    "agent-platform-llm-deepseek>=0.1,<0.2",
+    "agent-platform-managed-mcp>=0.1,<0.2",
+    "agent-platform-mcp-client>=0.1,<0.2",
+    "agent-platform-mcp-database>=0.1,<0.2",
+    "agent-platform-memory>=0.1,<0.2",
+    "agent-platform-sandbox>=0.1,<0.2",
+    "agent-platform-sandbox-policy>=0.1,<0.2",
+    "agent-platform-sandbox-tools>=0.1,<0.2",
+    "agent-platform-session>=0.1,<0.2",
+    "agent-platform-session-persistence-postgres>=0.1,<0.2",
+    "agent-platform-session-projection>=0.1,<0.2",
+    "agent-platform-session-recovery>=0.1,<0.2",
+    "agent-platform-session-title>=0.1,<0.2",
+    "agent-platform-settings-postgres>=0.1,<0.2",
+    "agent-platform-skill-tools>=0.1,<0.2",
+    "agent-platform-skills-default>=0.1,<0.2",
+    "agent-platform-skills-filesystem>=0.1,<0.2",
+    "agent-platform-system-prompt>=0.1,<0.2",
+    "agent-platform-tool-host>=0.1,<0.2",
+    "agent-platform-tools-default>=0.1,<0.2",
+    "agent-platform-user-approval>=0.1,<0.2",
+    "agent-platform-workflow>=0.1,<0.2",
+    "agent-platform-xianyu>=0.1,<0.2",
+]
+
+[tool.setuptools]
+packages = ["agent_platform_bundle_base"]
+
+[tool.setuptools.package-dir]
+agent_platform_bundle_base = "src"
+
+[tool.setuptools.package-data]
+agent_platform_bundle_base = ["plugins.yaml"]

@@ -16,7 +16,7 @@ removes the current owned connection generation before closing its HTTP server.
 Setup failure rolls back already acquired resources through the Cordis context.
 Each HTTP activation uses a fresh FastMCP instance, so close/start is repeatable.
 
-Default composition lives in packages/plugin/default/plugins.yaml. For example:
+The [base bundle](../../bundle/base/src/plugins.yaml) declares the defaults. For example:
 
 ```yaml
 version: 1
