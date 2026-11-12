@@ -19,7 +19,7 @@
 
 ## 配置与源码
 
-在当前 profile 的 `plugins.yaml` 覆盖默认记忆策略：
+在当前 profile 的 `cordis.yml` 覆盖默认记忆策略：
 
 ```yaml
 version: 1

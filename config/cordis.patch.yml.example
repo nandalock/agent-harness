@@ -1,0 +1,7 @@
+# 本地复制到所选 profile，Docker Compose 复制到 config/cordis.patch.yml。
+# 按实例 ID 覆盖 config 或 disabled，例如：
+#
+# - id: llm-deepseek
+#   config:
+#     model: deepseek-flash
+[]

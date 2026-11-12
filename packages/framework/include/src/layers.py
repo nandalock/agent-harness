@@ -1,10 +1,11 @@
 """Include files and apply instance patches to a composed configuration."""
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from .models import PluginConfiguration
 
-from .config import load_yaml_config
+from .config import load_yaml_config, load_yaml_patch
 from .errors import ConfigurationError
 
 
@@ -26,6 +27,16 @@ class Include:
 
     def read(self, *, document: PluginConfiguration | None = None) -> PluginConfiguration:
         return self._expand(self.path, (), document)
+
+    def read_patch(self, *, document: PluginConfiguration | None = None) -> PluginConfiguration:
+        layer = document if document is not None else load_yaml_patch(self.path)
+        return self.read(document=layer)
+
+    @staticmethod
+    def merge(defaults: PluginConfiguration, layers: Iterable[PluginConfiguration]) -> PluginConfiguration:
+        for layer in layers:
+            defaults = merge_layers(defaults, layer)
+        return defaults
 
     def _expand(
         self, file: Path, chain: tuple[Path, ...], override: PluginConfiguration | None = None,

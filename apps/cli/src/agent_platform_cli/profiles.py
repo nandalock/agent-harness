@@ -18,7 +18,7 @@ from packaging.utils import canonicalize_name, parse_wheel_filename
 import yaml
 
 from minidsh_cordis_plugin_group import is_group_disabled
-from minidsh_cordis_plugin_include import PluginConfiguration, EntryOptions, PatchOptions, load_yaml_config
+from minidsh_cordis_plugin_include import PluginConfiguration, EntryOptions, PatchOptions, load_yaml_config, load_yaml_patch
 
 
 def atomic_write(path: Path, content: str) -> None:
@@ -32,17 +32,41 @@ def atomic_write(path: Path, content: str) -> None:
 
 
 class Profile:
-    def __init__(self, name: str):
+    def __init__(self, name: str, *, home: str | Path | None = None):
         if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", name):
             raise ValueError("Profile names use lowercase letters, digits, underscores and hyphens")
-        home = Path(os.environ.get("MINIDSH_HOME", Path.home() / ".minidsh")).expanduser().resolve()
-        self.root = home / "profiles" / name
+        home = home or os.environ.get("MINIDSH_HOME") or Path.home() / ".minidsh"
+        self.root = Path(home).expanduser().resolve() / "profiles" / name
         self.venv = self.root / ".venv"
         self.python = self.venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
-        self.config = self.root / "plugins.yaml"
+        self.config = self.root / "cordis.yml"
+        self.patch = self.root / "cordis.patch.yml"
         self.env_file = self.root / "local.env"
         self.lockfile = self.root / "requirements.lock"
         self.base = self.root / "runtime.lock"
+
+    def configuration_environment(self) -> dict[str, str]:
+        return {
+            "MINIDSH_PROFILE_CONFIG": str(self.config),
+            "MINIDSH_PROFILE_PATCH": str(self.patch),
+            "PLUGIN_CONFIG": "",
+        }
+
+    def root_document(self) -> PluginConfiguration:
+        legacy = self.root / "plugins.yaml"
+        path = self.config if self.config.exists() or not legacy.exists() else legacy
+        return load_yaml_config(path) if path.exists() else PluginConfiguration()
+
+    def patch_document(self) -> PluginConfiguration:
+        return load_yaml_patch(self.patch) if self.patch.exists() else PluginConfiguration()
+
+    def data_environment(self) -> dict[str, str]:
+        return {
+            "SANDBOX_WORKSPACE_ROOT": str(self.root / "workspaces"),
+            "SKILL_INSTALL_ROOT": str(self.root / "skills"),
+            "PAPER_CACHE_DIR": str(self.root / "cache" / "paper-mcp"),
+            "MINIDSH_MEMORY_DIR": str(self.root / "memory"),
+        }
 
     @contextmanager
     def exclusive(self):
@@ -67,8 +91,8 @@ class Profile:
                 env.setdefault(key, value)
         env.pop("PYTHONHOME", None)
         env.pop("PYTHONPATH", None)
+        env.update(self.configuration_environment())
         env.update({
-            "PLUGIN_CONFIG": str(self.config),
             "AGENT_PLATFORM_ENV": str(self.env_file),
             "PYTHONUTF8": "1",
             "PYTHONNOUSERSITE": "1",
@@ -76,9 +100,7 @@ class Profile:
             "PATH": str(self.python.parent) + os.pathsep + env.get("PATH", ""),
         })
         defaults = {
-            "SANDBOX_WORKSPACE_ROOT": str(self.root / "workspaces"),
-            "SKILL_INSTALL_ROOT": str(self.root / "skills"),
-            "PAPER_CACHE_DIR": str(self.root / "cache" / "paper-mcp"),
+            **self.data_environment(),
             "OVERLEAF_ENV_FILE": str(self.env_file),
             "OVERLEAF_ENABLED": "false",
             "OVERLEAF_RT_ENABLED": "false",
@@ -116,12 +138,14 @@ class Profile:
         if not requirements.is_file():
             raise ValueError(f"Release manifest not found: {requirements}")
         with self.exclusive():
+            if not self.config.exists() and not (self.root / "plugins.yaml").exists():
+                atomic_write(self.config, "version: 1\nplugins: []\n")
+            if not self.patch.exists():
+                atomic_write(self.patch, "[]\n")
             if self.base.is_file():
                 self.require_initialized()
                 print(self.root)
                 return
-            if not self.config.exists():
-                atomic_write(self.config, "version: 1\nplugins: []\n")
             if not self.env_file.exists():
                 atomic_write(self.env_file, "# Set your database and optional model credentials here.\n"
                              "DATABASE_URL=postgresql://saas:your_password@127.0.0.1:5432/saas\n")
@@ -134,18 +158,40 @@ class Profile:
             print(self.root)
 
     def validate_and_save(self, entries) -> None:
-        document = load_yaml_config(self.config)
+        document = self.root_document()
         entries = tuple(entries)
         removed = {entry.id for entry in document.plugins} - {entry.id for entry in entries}
         config = document.model_copy(update={
             "plugins": entries, "patches": tuple(patch for patch in document.patches if patch.id not in removed),
         })
-        self._save_configuration(config)
+        overlay = self.patch_document()
+        cleaned = tuple(patch for patch in overlay.patches if patch.id not in removed)
+        if cleaned != overlay.patches:
+            self._save_configuration(root=config, overlay=overlay.model_copy(update={"patches": cleaned}))
+        else:
+            self._save_configuration(root=config)
 
-    def _save_configuration(self, config: PluginConfiguration) -> None:
-        self.execute("-m", "agent_platform_cli._profile_worker", "validate", input=config.model_dump_json())
-        atomic_write(self.config, yaml.safe_dump(config.model_dump(mode="json", exclude_defaults=True),
-                                                sort_keys=False, allow_unicode=True))
+    def _save_configuration(
+        self, *, root: PluginConfiguration | None = None, overlay: PluginConfiguration | None = None,
+    ) -> None:
+        documents = {key: doc.model_dump(mode="json", exclude_defaults=True)
+                     for key, doc in (("root", root), ("patch", overlay)) if doc is not None}
+        self.execute("-m", "agent_platform_cli._profile_worker", "validate", input=json.dumps(documents))
+        previous = self.patch.read_text(encoding="utf-8") if overlay is not None and self.patch.exists() else None
+        if overlay is not None:
+            patch = documents["patch"]
+            payload = patch.get("patches", []) if not (patch.keys() - {"patches"}) else patch
+            atomic_write(self.patch, yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
+        try:
+            if root is not None:
+                atomic_write(self.config, yaml.safe_dump(documents["root"], sort_keys=False, allow_unicode=True))
+        except OSError:
+            if overlay is not None:
+                if previous is None:
+                    self.patch.unlink(missing_ok=True)
+                else:
+                    atomic_write(self.patch, previous)
+            raise
 
     def list_plugins(self) -> None:
         config = PluginConfiguration.model_validate(self.worker("config"))
@@ -154,7 +200,7 @@ class Profile:
             print(f"{entry.id:<26} {state:<12} {entry.use or entry.name}")
 
     def toggle(self, plugin_id: str, *, disabled: bool) -> None:
-        document = load_yaml_config(self.config)
+        document = self.patch_document()
         current = PluginConfiguration.model_validate(self.worker("config"))
         target = next((row for row in current.plugins if row.id == plugin_id), None)
         if target is None:
@@ -167,7 +213,7 @@ class Profile:
                    for patch in document.patches]
         patches = [patch for patch in patches if patch.config or patch.disabled is not None]
         patches.append(PatchOptions(id=target.id, disabled=disabled))
-        self._save_configuration(document.model_copy(update={"patches": tuple(patches)}))
+        self._save_configuration(overlay=document.model_copy(update={"patches": tuple(patches)}))
 
     def install(self, source: str, *, target: str, plugin_id: str | None,
                 config: dict, wheelhouse: Path | None, disabled: bool = False) -> None:
@@ -186,7 +232,7 @@ class Profile:
             installed = self.inventory()
             if distribution in installed:
                 raise ValueError(f"{distribution} is already installed in this profile")
-            overrides = load_yaml_config(self.config).plugins
+            overrides = self.root_document().plugins
             effective = PluginConfiguration.model_validate(self.worker("config")).plugins
             self.refresh_lock()
             try:
@@ -230,7 +276,7 @@ class Profile:
         owned = set(ownership["configured"])
         if not owned:
             raise ValueError(f"No configured exports belong to {distribution}")
-        document = load_yaml_config(self.config)
+        document = self.root_document()
         if owned - {row.id for row in document.plugins}:
             raise ValueError("Remove this plugin's declarations from the included YAML files first.")
         entries = [row for row in document.plugins if row.id not in owned]

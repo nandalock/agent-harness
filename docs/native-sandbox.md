@@ -29,7 +29,7 @@ SANDBOX_IMAGE=agent-sandbox:1
 ```
 
 Compose 的容器部署显式选择 Docker；本地 CLI 和通用装配默认选择 local。
-也可以在 `config/plugins.yaml` 中显式覆盖默认实例：
+也可以在所选 profile 的 `cordis.yml` 中显式覆盖默认实例：
 
 ```yaml
 version: 1

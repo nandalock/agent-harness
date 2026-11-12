@@ -1,8 +1,10 @@
 """Introspection executed inside a profile's interpreter."""
 import json
+import os
 import sys
 from importlib import metadata
 from importlib.machinery import EXTENSION_SUFFIXES
+from pathlib import Path
 
 from packaging.utils import canonicalize_name
 
@@ -34,7 +36,10 @@ def main():
     elif action == "config":
         result = load_config().model_dump(mode="json")
     elif action == "validate":
-        config = load_config(PluginConfiguration.model_validate_json(sys.stdin.read()))
+        documents = json.load(sys.stdin)
+        root = PluginConfiguration.model_validate(documents["root"]) if "root" in documents else None
+        patch = PluginConfiguration.model_validate(documents["patch"]) if "patch" in documents else None
+        config = load_config(root, patch_document=patch)
         Loader(config).validate()
         return
     elif action in ("describe", "owned"):
@@ -57,6 +62,8 @@ def main():
             if path is not None:
                 document = load_yaml_config(path).model_copy(update={"plugins": (), "patches": ()})
                 included = owned(Include(path).read(document=document))
+            if (patch := os.environ.get("MINIDSH_PROFILE_PATCH")) and Path(patch).exists():
+                included.extend(owned(Include(patch).read_patch()))
             result = {"configured": owned(load_config()), "included": included}
     else:
         raise ValueError(f"Unknown profile operation: {action}")

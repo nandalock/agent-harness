@@ -1,7 +1,7 @@
 """Default assembly, analogous to a harness bundle rather than a tool plugin."""
 from importlib.resources import files
 
-from minidsh_cordis_plugin_include import PluginConfiguration, apply_entry_patches, parse_yaml
+from minidsh_cordis_plugin_include import Include, PluginConfiguration, apply_entry_patches, parse_yaml
 
 
 def compose(config: PluginConfiguration, *, sandbox_backend: str = "local") -> PluginConfiguration:
@@ -32,8 +32,7 @@ def compose(config: PluginConfiguration, *, sandbox_backend: str = "local") -> P
         if entry.id not in ids and entry.name not in names
         and not (entry.id == "sandbox-provider" and has_sandbox)
     ]
-    # Keep the service provider first for readable diagnostics; the runtime
-    # still resolves the actual dependency graph before starting any plugin.
+    # Keep the tool service first in the displayed configuration.
     services = [entry for entry in missing if entry.id == "tools"]
     features = [entry for entry in missing if entry.id != "tools"]
     default_by_id = {entry.id: entry for entry in defaults.plugins}
@@ -58,7 +57,7 @@ def compose(config: PluginConfiguration, *, sandbox_backend: str = "local") -> P
         elif entry.use is None and entry.name in extra_exports:
             entry = entry.model_copy(update={"use": extra_exports[entry.name]})
         overrides.append(entry)
-    return apply_entry_patches(PluginConfiguration(
-        plugins=(*services, *overrides, *features), groups={**defaults.groups, **config.groups},
-        patches=(*defaults.patches, *config.patches),
-    ))
+    base = defaults.model_copy(update={"plugins": tuple(missing)})
+    explicit = config.model_copy(update={"plugins": tuple(overrides)})
+    merged = Include.merge(base, [explicit])
+    return apply_entry_patches(merged.model_copy(update={"plugins": (*services, *overrides, *features)}))

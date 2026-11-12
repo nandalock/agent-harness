@@ -8,6 +8,8 @@ venv
 config/local.env
 config/docker.env
 config/plugins.yaml
+config/cordis.yml
+config/cordis.patch.yml
 config/backup
 .env
 .env.*

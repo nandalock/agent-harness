@@ -1,5 +1,5 @@
-# 复制为 config/plugins.yaml 后自动生效（backend 会自动发现，无需设置 PLUGIN_CONFIG）。
-# Docker 中对应容器内的 /app/config/plugins.yaml，同样会被自动发现。
+# 本地复制为 ~/.minidsh/profiles/<profile>/cordis.yml。
+# Docker Compose 读取仓库的 config/cordis.yml。
 # 默认服务和功能插件会自动补上；mcp_servers 表里的
 # MCP server 也会自动转换成 agent-platform.mcp-client 实例
 # （PLUGIN_MCP_AUTO=false 可关闭）。

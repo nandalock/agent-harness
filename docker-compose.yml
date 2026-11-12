@@ -86,10 +86,9 @@ services:
       JWT_SECRET: dev-secret
       CORS_ORIGINS: http://localhost:4000,http://127.0.0.1:4000
       OLLAMA_HOST: http://host.docker.internal:11434
-      # 插件默认零配置：tools-default 自动装配。
-      # 要额外加载插件，把 config/plugins.yaml.example 复制成 config/plugins.yaml
-      # 即可（容器内 /app/config/plugins.yaml 会被自动发现），不需要设置这个变量。
-      # PLUGIN_CONFIG 仅用于把配置放到其他路径。
+      # Compose 将显式配置路径传给 app-boot。
+      MINIDSH_PROFILE_CONFIG: /app/config/cordis.yml
+      MINIDSH_PROFILE_PATCH: /app/config/cordis.patch.yml
       PLUGIN_CONFIG: ${PLUGIN_CONFIG:-}
       # 沙箱工作区根（必须是独立目录，不能是仓库根——见 §9.2）
       SANDBOX_WORKSPACE_ROOT: /srv/agent/workspaces

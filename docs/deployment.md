@@ -72,7 +72,7 @@ Ctrl+C 关闭本次启动的前后端进程树，不关闭数据库。
 
 ```sh
 python minidsh.py web                        # 默认 web
-python minidsh.py web --profile web2         # 按 packages/client2 目录名或包名
+python minidsh.py web --frontend web2        # 按 packages/client2 目录名或包名
 python minidsh.py web --dir D:/jk/Code/web2  # 仓库外的前端包
 ```
 
@@ -138,7 +138,7 @@ CLI 默认只监听回环地址，适合本地部署。公网服务应由进程�
   安装 `overleaf-mcp-plus[compile]` 和 python-dotenv，通过 `OVERLEAF_MCP_PYTHON` 指定解释器。
   主后端使用 MCP SDK 1，不能把 SDK 2 服务装入同一个 `.venv`。
   Overleaf RT 使用 `OVERLEAF_RT_ENABLED=true`，另需 Node/npx 和相应凭据。
-- 自定义插件继续使用 `config/plugins.yaml` 或环境变量 `PLUGIN_CONFIG`。
+- 本地自定义插件使用所选 profile 的 `cordis.yml` 和 `cordis.patch.yml`。Compose 使用 `config/` 下的同名文件。
   内置/论文 MCP 与 Overleaf 的启动、连接和关闭现由 managed-mcp 插件包负责，
   不再由 app boot 逐项启动。可按插件实例设置 disabled 或 config.enabled。
   `MANAGED_MCP_ENABLED=false` 可整体关闭这些集成；`PLUGIN_MCP_AUTO` 仅控制其他数据库 MCP 的自动发现。

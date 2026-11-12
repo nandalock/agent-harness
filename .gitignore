@@ -22,6 +22,8 @@ playwright-report/
 config/local.env
 config/docker.env
 config/plugins.yaml
+config/cordis.yml
+config/cordis.patch.yml
 config/backup/
 # Legacy root locations, kept ignored for compatibility.
 .env

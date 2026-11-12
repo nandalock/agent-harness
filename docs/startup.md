@@ -8,7 +8,7 @@
 minidsh web --profile web
   → 选择 ~/.minidsh/profiles/web/.venv 的 Python
   → Uvicorn 导入 agent_platform_server:app
-  → app-boot 合并默认清单和 profile/plugins.yaml
+  → app-boot 合并默认清单、profile/cordis.yml 和 cordis.patch.yml
   → Loader 导入插件、校验配置，把插件交给 Cordis
   → Cordis 为各插件创建 Fiber 和 ctx，启动插件并持有服务及清理动作
   → HTTP 插件发布 FastAPI 应用
@@ -33,7 +33,7 @@ YAML 决定要启动哪个插件实例。`ctx.require(KEY)` 查找本次运行�
 
 ## 叠加配置与热更新
 
-默认清单提供模块路径。用户配置可以通过 `includes` 引用其他 YAML，路径相对于声明它的文件。同 ID 的插件条目由较高层替换，`patches` 则按 ID 覆盖 `config` 的顶层字段或 `disabled` 状态。
+默认清单提供模块路径。Profile 根文件 `cordis.yml` 可以通过 `includes` 引用其他 YAML，路径相对于声明它的文件。同 ID 的插件条目由较高层替换，`patches` 则按 ID 覆盖 `config` 的顶层字段或 `disabled` 状态。
 
 ```yaml
 includes: [tools.local.yaml]
@@ -52,7 +52,7 @@ patches:
 
 `use` 指向已安装模块的 Cordis 插件类、工厂或 `plugin` 对象，`name` 对应插件声明的名称。覆盖内置插件时可沿用默认清单里的 `use`。自定义插件需要显式填写 `use`。把 `demos.disabled` 设为 `true` 可整组停用。
 
-用 `minidsh web --plugin-patch override.yaml` 临时叠加一层配置。源码版使用 `python minidsh.py web --plugin-patch override.yaml`。最终顺序为内置清单、Include 文件、用户配置和命令行覆盖。
+把常用覆盖写进同目录的 `cordis.patch.yml`。它接受 `- id: echo` 开头的补丁列表，也接受带 `patches` 或 `groups` 的映射。用 `minidsh web --profile web --plugin-patch override.yaml` 临时叠加一层，源码入口也支持这两个参数。优先级从低到高是内置清单、根文件的 Include、`cordis.yml`、`cordis.patch.yml`、命令行覆盖。
 
 Web 进程默认检测配置变化。通过依赖校验后，Cordis 只重装变更实例及受影响的依赖者。启动失败会尝试恢复旧装配，结果会写入后端日志。涉及宿主绑定的 HTTP 或工具服务需要重启进程。可用 `MINIDSH_CONFIG_RELOAD=false` 停用监听。源码开发的 Python 变更由 Uvicorn 重启后端进程。
 

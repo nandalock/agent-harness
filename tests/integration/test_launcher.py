@@ -50,10 +50,13 @@ class LauncherTests(unittest.TestCase):
             (root / "config" / "local.env").write_text("", encoding="utf-8")
             data_home = root / "custom-data"
             with patch.object(harness, "ROOT", root), patch.dict(os.environ, {"MINIDSH_HOME": str(data_home)}, clear=True), patch.object(Path, "home", return_value=root):
-                env = harness.environment(self.args())
-            self.assertEqual(env["SANDBOX_WORKSPACE_ROOT"], str(data_home / "workspaces"))
-            self.assertEqual(env["SKILL_INSTALL_ROOT"], str(data_home / "skills"))
-            self.assertEqual(env["PAPER_CACHE_DIR"], str(data_home / "cache" / "paper-mcp"))
+                env = harness.environment(self.args(profile="research"))
+            profile = data_home / "profiles" / "research"
+            self.assertEqual(env["SANDBOX_WORKSPACE_ROOT"], str(profile / "workspaces"))
+            self.assertEqual(env["SKILL_INSTALL_ROOT"], str(profile / "skills"))
+            self.assertEqual(env["PAPER_CACHE_DIR"], str(profile / "cache" / "paper-mcp"))
+            self.assertEqual(env["MINIDSH_PROFILE_CONFIG"], str(profile / "cordis.yml"))
+            self.assertEqual(env["MINIDSH_PROFILE_PATCH"], str(profile / "cordis.patch.yml"))
 
     def test_legacy_root_env_local_still_loads(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -113,19 +116,19 @@ class LauncherTests(unittest.TestCase):
         harness.stop(child)
         child.send_signal.assert_not_called()
 
-    def test_plugin_config_uses_working_directory_or_explicit_override(self):
+    def test_app_boot_uses_paths_passed_by_the_launcher(self):
         from agent_platform_app_boot import resolve_config_path
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            config = root / "config" / "plugins.yaml"
-            config.parent.mkdir()
+            config = root / "profiles" / "research" / "cordis.yml"
+            config.parent.mkdir(parents=True)
             config.write_text("version: 1\n", encoding="utf-8")
             explicit = root / "custom.yaml"
             explicit.write_text("version: 1\n", encoding="utf-8")
             old_cwd = Path.cwd()
             os.chdir(root)
             try:
-                with patch.dict(os.environ, {}, clear=True):
+                with patch.dict(os.environ, {"MINIDSH_PROFILE_CONFIG": str(config)}, clear=True):
                     self.assertEqual(resolve_config_path(), config)
                 with patch.dict(
                     os.environ, {"PLUGIN_CONFIG": str(explicit)}, clear=True

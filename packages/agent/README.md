@@ -84,7 +84,7 @@ async with runs.open(
 
 `runs.get(session_id)` 返回同一个活动句柄，可调用 `steer`、`followup`、`inject` 或 `cancel`。同一运行时内，同一会话只能有一个运行作用域；作用域覆盖宿主的检查点清理，避免上一轮尚未保存时下一轮进入。不同运行时各自持有服务实例，没有进程级循环登记表。
 
-`config/plugins.yaml` 可覆盖默认实例：
+所选 profile 的 `cordis.yml` 可覆盖默认实例：
 
 ```yaml
 version: 1

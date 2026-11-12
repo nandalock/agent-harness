@@ -4,6 +4,7 @@ import pytest
 
 from agent_platform_cli._profile_worker import owns_export
 from agent_platform_cli.profiles import Profile, atomic_write, main
+from agent_platform_app_boot import load_config
 
 
 def test_managed_profile_uses_home_and_ignores_repository_plugin_configuration(tmp_path, monkeypatch):
@@ -16,12 +17,31 @@ def test_managed_profile_uses_home_and_ignores_repository_plugin_configuration(t
         monkeypatch.delenv("DATABASE_URL", raising=False)
         env = profile.environment()
     assert profile.root == tmp_path / "profiles" / "research"
-    assert env["PLUGIN_CONFIG"] == str(profile.config)
+    assert not env["PLUGIN_CONFIG"]
+    assert env["MINIDSH_PROFILE_CONFIG"] == str(profile.root / "cordis.yml")
+    assert env["MINIDSH_PROFILE_PATCH"] == str(profile.root / "cordis.patch.yml")
     assert env["DATABASE_URL"] == "postgresql://profile"
     assert "PYTHONPATH" not in env
     assert profile.venv != Profile("web").venv
     with pytest.raises(ValueError):
         Profile("../repo")
+
+
+def test_toggling_writes_profile_patch_and_preserves_the_root(tmp_path, monkeypatch):
+    monkeypatch.setenv("MINIDSH_HOME", str(tmp_path))
+    profile = Profile("web")
+    profile.root.mkdir(parents=True)
+    root = "plugins: []\n"
+    profile.config.write_text(root, encoding="utf-8")
+    monkeypatch.setattr(profile, "execute", lambda *args, **kwargs: None)
+    for key, value in profile.configuration_environment().items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr(profile, "worker", lambda action: load_config().model_dump(mode="json"))
+    profile.toggle("memory", disabled=True)
+    assert profile.config.read_text(encoding="utf-8") == root
+    assert profile.patch_document().patches[0].disabled is True
+    profile.toggle("memory", disabled=False)
+    assert profile.patch_document().patches[0].disabled is False
 
 
 def test_profile_lock_refuses_an_overlapping_operation(tmp_path, monkeypatch):

@@ -1,6 +1,6 @@
 # 配置目录
 
-所有运行配置都放在这里。根目录只保留 `docker-compose.yml` 和 `minidsh.py` 等入口文件。
+这里存放部署环境文件和配置模板。本地插件配置位于所选 [Profile](../docs/profiles.md)。
 
 ## 文件
 
@@ -10,8 +10,8 @@
 | `local.env.example` | 本地配置模板；`setup` 用它生成 `local.env` | 是 |
 | `docker.env` | Docker Compose 变量替换（`docker compose --env-file config/docker.env ...`） | 否，gitignored |
 | `docker.env.example` | Docker 配置模板 | 是 |
-| `plugins.yaml` | 插件实例清单，运行时自动发现 | 否，gitignored |
-| `plugins.yaml.example` | 插件配置模板 | 是 |
+| `cordis.yml.example` | 插件根配置模板 | 是 |
+| `cordis.patch.yml.example` | 插件覆盖配置模板 | 是 |
 
 ## 本地运行
 
@@ -22,7 +22,7 @@ python minidsh.py doctor
 python minidsh.py web
 ```
 
-优先级：**进程环境变量 > `config/local.env` > CLI 默认值**。
+环境变量优先级从高到低是进程环境、所选 profile 的 `local.env`（有此文件时）或 `config/local.env`、CLI 默认值。
 
 ## 前端 profile
 
@@ -49,7 +49,7 @@ python minidsh.py web
 
 ```sh
 python minidsh.py web                        # 默认 web
-python minidsh.py web --profile web2         # 按 packages/client2 目录名或包名
+python minidsh.py web --frontend web2        # 按 packages/client2 目录名或包名
 python minidsh.py web --dir D:/jk/Code/web2  # 仓库外的前端包
 ```
 
@@ -69,25 +69,27 @@ Compose 只从这个文件读取 `${...}` 变量；容器内的 `DATABASE_URL`�
 
 ## 插件
 
-默认零配置。需要额外插件时：
+首次启动可以直接使用内置清单。本地可把模板复制到 `~/.minidsh/profiles/<profile>/`，分别命名为 `cordis.yml` 和 `cordis.patch.yml`。Docker Compose 使用当前目录下的两个文件：
 
 ```sh
-cp config/plugins.yaml.example config/plugins.yaml
-# 编辑后重启服务
+cp config/cordis.yml.example config/cordis.yml
+cp config/cordis.patch.yml.example config/cordis.patch.yml
 ```
 
-发现顺序：`PLUGIN_CONFIG` 环境变量 → 仓库内的 `config/plugins.yaml`。
-根目录 `plugins.yaml` 不再读取。
+Compose 显式传递容器内的配置路径。可用 `PLUGIN_CONFIG` 指定另一个容器内的根配置文件。
 
 ## 迁移说明
 
-旧版根目录的 `.env`、`.env.local` 仍会被兼容读取；如果还有根目录 `plugins.yaml`，请手动移到 `config/plugins.yaml`（不再自动读取）：
+旧版根目录的 `.env`、`.env.local` 仍会被兼容读取。如果源码启动原来使用仓库内的 `config/plugins.yaml`，请把它复制到所选 profile 的 `cordis.yml`：
 
 ```sh
 mv .env config/docker.env
 mv .env.local config/local.env
-mv plugins.yaml config/plugins.yaml
+mkdir -p ~/.minidsh/profiles/web
+cp config/plugins.yaml ~/.minidsh/profiles/web/cordis.yml
 ```
+
+如果旧配置使用相对 `includes`，请一并复制引用文件并保留相对目录结构。
 
 `python minidsh.py setup` 也会在 `config/local.env` 不存在时自动迁移旧的
 `.env.local`。备份存放在 `~/.minidsh/backup/`。

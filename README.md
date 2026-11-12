@@ -90,7 +90,7 @@ minidsh web
 ```
 
 从任意目录启动后，打开 **http://127.0.0.1:4000**。额外插件装在
-`~/.minidsh/profiles/web/.venv`，启用状态写入同一个 profile 的 `plugins.yaml`。
+`~/.minidsh/profiles/web/.venv`，启用状态写入同一个 profile 的 `cordis.patch.yml`。
 
 ```powershell
 minidsh plugin install D:/downloads/agent_platform_example_echo-0.1.0-py3-none-any.whl --use example_echo_plugin:plugin --id echo
@@ -246,7 +246,7 @@ RPC 已覆盖的操作见 [接口清单](docs/rpc-api.md)。
 ### 配置插件
 
 默认实例定义在 [默认插件清单](packages/plugin/default/src/plugins.yaml)。
-源码版的覆盖配置写到 `config/plugins.yaml`，发布版写到当前 profile 的 `plugins.yaml`。
+源码版和发布版都从 `--profile` 选择的目录读取 `cordis.yml` 和 `cordis.patch.yml`，默认目录是 `~/.minidsh/profiles/web/`。
 例如把 Agent Loop 的工具并发上限改为 2。
 
 ```yaml
@@ -261,7 +261,7 @@ patches:
 启动时还可以传 `--plugin-patch override.yaml` 叠加一层。
 Web 运行中会读取 YAML 变更，重装受影响的插件。涉及宿主绑定的 HTTP 或工具服务时需要重启。
 
-源码版可以从 [配置示例](config/plugins.yaml.example) 开始。外部插件先安装到目标 Python 环境，
+可以从 [根配置示例](config/cordis.yml.example) 和 [覆盖示例](config/cordis.patch.yml.example) 开始。外部插件先安装到目标 Python 环境，
 再在 YAML 中声明 `use`。发布版的安装命令会把入口写进 profile。旧第三方插件需要改为导出
 Cordis 插件，并补上 `use`。 [分层配置与热更新](docs/startup.md#叠加配置与热更新) · [插件开发](docs/plugin-development.md)
 
@@ -271,7 +271,7 @@ Cordis 插件，并补上 `use`。 [分层配置与热更新](docs/startup.md#�
 | --- | --- |
 | `config/local.env` | 本地进程配置，由 setup 生成 |
 | `config/docker.env` | Docker Compose 配置，从模板复制 |
-| `config/plugins.yaml` | 默认插件实例的覆盖或追加配置 |
+| `config/cordis.yml`、`config/cordis.patch.yml` | Docker Compose 的插件配置 |
 | `.venv/` | 仓库中的 Python 虚拟环境 |
 | `packages/client/node_modules/` | 默认前端的 npm 依赖 |
 | `~/.minidsh/workspaces/` | 本地会话工作目录 |

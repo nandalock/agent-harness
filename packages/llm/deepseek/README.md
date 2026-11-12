@@ -3,7 +3,7 @@
 DeepSeek provider plugin. It registers the `deepseek` model route into
 `agent-platform-llm`; it owns no tools and no service.
 
-Default composition includes it. Override its config in `config/plugins.yaml`:
+Default composition includes it. Override its config in your profile's `cordis.yml`:
 
 ```yaml
 plugins:

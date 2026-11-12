@@ -13,7 +13,7 @@ scope/document validation and installation helpers. Each package maps its Python
 import name to `src/` using `pyproject.toml`; no repeated module directory is needed.
 
 The default composition enables all three. Configure sources or disable consumers
-in `config/plugins.yaml`; see `filesystem/README.md` and `config/plugins.yaml.example`.
+in your profile's `cordis.yml`. See `filesystem/README.md` and `config/cordis.yml.example`.
 
 ```text
 filesystem → skills.v1 ← skill-tools → tools.v1 + agent.extensions.v1

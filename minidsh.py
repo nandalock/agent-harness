@@ -6,10 +6,10 @@
     python minidsh.py web --prod          # build, then serve the web shell
     python minidsh.py web --mode hybrid   # Docker only for PostgreSQL/Redis
 
-Runtime configuration lives in config/:
+Deployment environment files live in config/:
     config/local.env   local processes (this CLI)
     config/docker.env  Docker Compose variable substitution
-    config/plugins.yaml  plugin instances (auto-discovered by the runtime)
+Plugin configuration comes from ~/.minidsh/profiles/<profile>/cordis*.yml.
 """
 from __future__ import annotations
 
@@ -156,7 +156,7 @@ def load_frontend_profile(
     """Discover a frontend from packages/*/package.json `dsh.frontend`.
 
     This mirrors DSH's package-declared client/bundle manifests. There is no
-    central frontend config file: `--profile web2` matches a package directory
+    central frontend config file: `--frontend web2` matches a package directory
     or package name, and `--dir` points at a package outside packages/.
     """
     if directory is not None:
@@ -232,21 +232,24 @@ def _env_file(args) -> Path:
 
 
 def environment(args):
+    from agent_platform_cli.profiles import Profile
     from dotenv import dotenv_values
 
     env = os.environ.copy()
-    path = _env_file(args)
+    name = getattr(args, "profile", "web")
+    profile = Profile(name)
+    path = profile.env_file if args.env_file == DEFAULT_ENV_FILE and profile.env_file.is_file() else _env_file(args)
     # Explicit shell environment takes precedence; never read Docker's env file.
     for key, value in dotenv_values(path).items():
         if value is not None:
             env.setdefault(key, value)
-    data_home = Path(env.get("MINIDSH_HOME", str(Path.home() / ".minidsh"))).expanduser().resolve()
+    profile = Profile(name, home=env.get("MINIDSH_HOME"))
+    env.update(profile.configuration_environment())
     defaults = {
         "DATABASE_URL": "postgresql://saas:saas@127.0.0.1:5432/saas",
         "REDIS_URL": "redis://localhost:6379/0",
-        "SANDBOX_WORKSPACE_ROOT": str(data_home / "workspaces"),
-        "SKILL_INSTALL_ROOT": str(data_home / "skills"),
-        "PAPER_CACHE_DIR": str(data_home / "cache" / "paper-mcp"),
+        **profile.data_environment(),
+        "AGENT_PLATFORM_ENV": str(path.resolve()),
         "BUILTIN_MCP_PORT": "19001", "PAPER_MCP_PORT": "19002",
         "SANDBOX_BACKEND": "local",
         "OVERLEAF_ENABLED": "false", "OVERLEAF_RT_ENABLED": "false",
@@ -296,7 +299,7 @@ def doctor(env, backend_only=False, profile: FrontendProfile | None = None):
             if not (profile.dir / "node_modules").is_dir():
                 raise RuntimeError(
                     f"Frontend dependencies missing for {profile.name!r}; "
-                    f"run python minidsh.py setup --profile {profile.name}."
+                    f"run python minidsh.py setup --frontend {profile.name}."
                 )
             print(f"OK Node {version} + frontend profile {profile.name} ({_display_path(profile.dir)})")
         else:
@@ -426,7 +429,7 @@ def run(args, env, profile: FrontendProfile):
                 dist_index = profile.dir / profile.dist / "index.html"
                 if not dist_index.is_file():
                     raise RuntimeError(
-                        f"Frontend build missing for {profile.name!r}; run python minidsh.py build --profile {profile.name} first."
+                        f"Frontend build missing for {profile.name!r}; run python minidsh.py build --frontend {profile.name} first."
                     )
             command = (profile.start if args.action == "start" else profile.dev).format(port=args.frontend_port)
             spawn_shell(command, profile.dir)
@@ -457,10 +460,11 @@ def main():
     parser.add_argument("--backend-port", type=int, default=8000)
     parser.add_argument("--frontend-port", type=int, default=4000)
     parser.add_argument("--plugin-patch", type=Path, help="override the plugin configuration")
-    parser.add_argument("--frontend", "--profile", dest="profile", default=None,
+    parser.add_argument("--profile", default="web", help="runtime profile under MINIDSH_HOME/profiles (default: web)")
+    parser.add_argument("--frontend", default=None,
                         help="frontend profile declared by packages/*/package.json dsh.frontend (default: web)")
     parser.add_argument("--dir", "--frontend-dir", dest="frontend_dir", default=None,
-                        help="frontend package directory declaring dsh.frontend (overrides --profile)")
+                        help="frontend package directory declaring dsh.frontend")
     parser.add_argument("--backend-only", action="store_true")
     parser.add_argument("--rag", action="store_true", help="Install optional reranker during setup")
     args = parser.parse_args()
@@ -470,14 +474,14 @@ def main():
         parser.error("--prod is only valid with the web action")
     if args.action == "web" and args.backend_only:
         parser.error("web starts the frontend; use 'dev --backend-only' for backend-only")
-    if args.profile and args.frontend_dir:
+    if args.frontend and args.frontend_dir:
         parser.error("use either --frontend or --dir, not both")
     if args.plugin_patch is not None:
         args.plugin_patch = args.plugin_patch.expanduser().resolve()
     os.chdir(ROOT)
     try:
         if args.action == "setup":
-            return setup(args, load_frontend_profile(args.profile, args.frontend_dir))
+            return setup(args, load_frontend_profile(args.frontend, args.frontend_dir))
         if args.action == "docker":
             argv = [executable("docker"), "compose"]
             env_file = docker_env_file()
@@ -502,7 +506,7 @@ def main():
         if args.plugin_patch is not None:
             env["MINIDSH_PLUGIN_PATCH"] = str(args.plugin_patch)
         profile = (_default_frontend_profile() if args.backend_only
-                   else load_frontend_profile(args.profile, args.frontend_dir))
+                   else load_frontend_profile(args.frontend, args.frontend_dir))
         if args.action == "doctor":
             return doctor(env, args.backend_only, profile)
         if args.action == "build":
@@ -512,7 +516,7 @@ def main():
             # One-command production web startup: always rebuild before preview.
             shell_command(profile.build, cwd=profile.dir, env=env)
         return run(args, env, profile)
-    except (RuntimeError, subprocess.CalledProcessError) as exc:
+    except (RuntimeError, ValueError, subprocess.CalledProcessError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 
